@@ -23,9 +23,10 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
   `localhost` URL in a browser. Browser is sufficient for UI-only work (participant
   list, session screen, styling); Android Studio / a device is only needed once BLE
   is involved, since Bluetooth doesn't work in a desktop browser.
-- Current status: `app/project-scaffold` is the only Sprint 1 task completed so far.
-  Natural next step is `app/participant-list` (no dependencies) or `app/sqlite-schema`
-  (so the turn manager and event logging have somewhere to write to).
+- Current status: `app/project-scaffold` and `app/participant-list` are done.
+  Natural next step is `app/sqlite-schema` (so participants/events have somewhere to
+  persist to) or `app/active-session-screen` (to give the Start Session button
+  somewhere to navigate).
 
 ---
 
@@ -77,8 +78,11 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
     — Vite+React+Tailwind v4+Capacitor+Android added, feature-based `src/` layout in
     place per ARCHITECTURE.md, `npm run dev` confirmed working in browser. Native
     Gradle/APK build not yet verified (needs Android Studio / device run).
-- [ ] Participant list screen: add/remove/reorder people before starting a session
-  - Owner: _unassigned_ · Branch: `app/participant-list`
+- [x] Participant list screen: add/remove/reorder people before starting a session
+  - Owner: fumio65 · Branch: `app/participant-list` (merged to `main` via PR #1) ·
+    Done 2026-10-05 — in-memory add/remove/move-up/move-down, empty state, Start
+    Session button present but disabled/non-functional (wiring it up is
+    app/active-session-screen). No persistence yet (app/sqlite-schema).
 - [ ] Active session screen: current person's name, Pour button, Pass button, status
       indicator reflecting ESP32 STATUS notifications
   - Owner: _unassigned_ · Branch: `app/active-session-screen`

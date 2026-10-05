@@ -116,3 +116,33 @@ void onPourCommand() {
 Note: `REFILL_BOTTLE` is a backlog item (see `TASKS.md`) — don't wire it into the MVP
 firmware build until it's pulled into an active sprint and added to the BLE contract in
 `ARCHITECTURE.md`.
+
+## Feature state: local hook, not Context/Redux (sample)
+
+Each feature folder owns its state via a plain hook, not a global store. Screens
+import the hook and pass callbacks down — no cross-feature state library needed
+at this scale. Established in `app/participant-list`; follow this shape for other
+feature-local state (e.g. a future `usePourVolume`, `useBleConnection`).
+
+```jsx
+// src/features/session/useParticipants.js
+export function useParticipants(initial = []) {
+  const [participants, setParticipants] = useState(initial)
+
+  const addParticipant = useCallback((name) => {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    setParticipants((prev) => [...prev, { id: crypto.randomUUID(), name: trimmed }])
+  }, [])
+
+  // ...removeParticipant, moveParticipant follow the same
+  // "copy array, return new array" immutable-update pattern
+
+  return { participants, addParticipant, removeParticipant, moveParticipant }
+}
+```
+
+Participant shape is `{ id, name }` — matches the `participants` table in
+`ARCHITECTURE.md`'s schema (minus `session_id`, which only matters once this list
+is persisted in `app/sqlite-schema`). Keeping the shape aligned now avoids a
+mapping step later.
