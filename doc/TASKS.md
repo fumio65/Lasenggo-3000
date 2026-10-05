@@ -1,0 +1,172 @@
+# TASKS.md — Lasenggo 3000
+
+Current sprint only. Completed tasks move to `TASKS_ARCHIVE.md` once a sprint closes —
+don't let this file grow indefinitely. Each task should get its own git branch and
+commit(s); fill in the branch name once work starts. Assign an owner before starting
+a task — this is a team project, nothing here is implicitly "whoever."
+
+Legend: `[ ]` not started · `[~]` in progress · `[x]` done
+
+---
+
+## Context for future use
+
+- All project docs now live in `doc/` in this repo (ARCHITECTURE.md, CONTEXT.md,
+  DECISIONS.md, EXAMPLES.md, PRD.md, TASKS.md) — this is the source of truth going
+  forward, not just the claude.ai project.
+- Repo: https://github.com/fumio65/Lasenggo-3000 (started empty; first commit —
+  the `app/project-scaffold` work — was pushed straight to `main` since there was
+  nothing to branch from yet. Every task after this one should branch off `main`
+  and merge back via PR, per the Notes for contributors below.)
+- Local dev path (this machine): `C:\Users\Teng\Documents\Personal Project\Lasenggo-3000`
+- To run the app locally: `npm install` then `npm run dev`, open the printed
+  `localhost` URL in a browser. Browser is sufficient for UI-only work (participant
+  list, session screen, styling); Android Studio / a device is only needed once BLE
+  is involved, since Bluetooth doesn't work in a desktop browser.
+- Current status: `app/project-scaffold` is the only Sprint 1 task completed so far.
+  Natural next step is `app/participant-list` (no dependencies) or `app/sqlite-schema`
+  (so the turn manager and event logging have somewhere to write to).
+
+---
+
+## Sprint 1 — MVP Foundations
+
+### Hardware (sensors, pump, enclosure)
+- [ ] Source components: ESP32, 12V peristaltic pump, MOSFET/relay module, load cell +
+      HX711, WS2812B ring, 12V supply, food-grade silicone tubing
+  - Owner: _unassigned_ · Branch: `hw/source-components`
+- [ ] Wire ESP32 → MOSFET → pump (bench test: pump runs on GPIO trigger)
+  - Owner: _unassigned_ · Branch: `hw/pump-wiring`
+- [ ] Wire load cell + HX711 → ESP32, confirm raw weight readings in serial monitor
+  - Owner: _unassigned_ · Branch: `hw/load-cell-wiring`
+- [ ] Wire WS2812B ring → ESP32, confirm basic on/off/color control
+  - Owner: _unassigned_ · Branch: `hw/led-wiring`
+- [ ] Build cup platform + mounting (load cell under platform, LED ring around base,
+      spout positioned above platform center)
+  - Owner: _unassigned_ · Branch: `hw/platform-assembly`
+- [ ] Calibrate load cell (tare + known-weight calibration) and document EMPTY_CUP_MIN /
+      LIQUID_ADDED_MIN thresholds used
+  - Owner: _unassigned_ · Branch: `hw/load-cell-calibration`
+- [ ] Calibrate pump flow rate (mL/sec) for Standard volume baseline
+  - Owner: _unassigned_ · Branch: `hw/pump-calibration`
+
+### Firmware (ESP32)
+- [ ] Set up BLE peripheral, advertise as "Lasenggo3000", define GATT service +
+      COMMAND/STATUS characteristics (UUIDs documented in `tagaybox_spec.md`)
+  - Owner: _unassigned_ · Branch: `fw/ble-setup`
+- [ ] Implement COMMAND handling: `POUR`, `TARE`, `STOP`
+  - Owner: _unassigned_ · Branch: `fw/command-handling`
+- [ ] Implement load-cell state machine (NO_CUP / CUP_DETECTED / HAS_DRINK / EMPTY),
+      delta-based detection, debounce/moving-average smoothing
+  - Owner: _unassigned_ · Branch: `fw/cup-state-machine`
+- [ ] Tie LED state to cup state machine (glow on HAS_DRINK, off otherwise)
+  - Owner: _unassigned_ · Branch: `fw/led-logic`
+- [ ] Implement pour sequence: validate cup present → run pump for calibrated duration
+      (based on selected volume) → re-check weight → send STATUS result
+  - Owner: _unassigned_ · Branch: `fw/pour-sequence`
+- [ ] Send STATUS notifications on all state transitions (`READY`, `POURING`, `POURED`,
+      `NO_CUP`, `HAS_DRINK`, `EMPTY`)
+  - Owner: _unassigned_ · Branch: `fw/status-notifications`
+- [ ] Bench-test full pour cycle end-to-end with a BLE test tool (e.g. nRF Connect)
+      before app integration
+  - Owner: _unassigned_ · Branch: `fw/bench-test`
+
+### App — Frontend (React + Tailwind)
+- [x] Scaffold React + Tailwind project, set up Capacitor, confirm Android build runs
+  - Owner: fumio65 · Branch: `app/project-scaffold` (merged to `main`) · Done 2026-10-05
+    — Vite+React+Tailwind v4+Capacitor+Android added, feature-based `src/` layout in
+    place per ARCHITECTURE.md, `npm run dev` confirmed working in browser. Native
+    Gradle/APK build not yet verified (needs Android Studio / device run).
+- [ ] Participant list screen: add/remove/reorder people before starting a session
+  - Owner: _unassigned_ · Branch: `app/participant-list`
+- [ ] Active session screen: current person's name, Pour button, Pass button, status
+      indicator reflecting ESP32 STATUS notifications
+  - Owner: _unassigned_ · Branch: `app/active-session-screen`
+- [ ] Turn manager logic: circular order, advance on confirmed POUR or on PASS (PASS is
+      local-only, no BLE call)
+  - Owner: _unassigned_ · Branch: `app/turn-manager`
+- [ ] Pour volume setting (Light/Standard/Heavy selector)
+  - Owner: _unassigned_ · Branch: `app/pour-volume-setting`
+- [ ] NO_CUP handling in UI (alert/snackbar, don't advance turn)
+  - Owner: _unassigned_ · Branch: `app/no-cup-alert`
+
+### App — Bluetooth integration
+- [ ] Integrate `@capacitor-community/bluetooth-le`: scan for "Lasenggo3000", connect,
+      discover GATT service/characteristics
+  - Owner: _unassigned_ · Branch: `app/ble-connect`
+- [ ] Write COMMAND characteristic (POUR/TARE/STOP) from UI actions
+  - Owner: _unassigned_ · Branch: `app/ble-commands`
+- [ ] Subscribe to STATUS notifications, wire into app state (drives UI + turn advance)
+  - Owner: _unassigned_ · Branch: `app/ble-status-subscription`
+- [ ] Handle disconnect/reconnect gracefully (device out of range, app backgrounded)
+  - Owner: _unassigned_ · Branch: `app/ble-reconnect-handling`
+
+### App — Local data (SQLite, offline-first)
+- [ ] Set up `@capacitor-community/sqlite`, create local schema: `sessions`,
+      `participants`, `events` tables (+ `synced` flag per row)
+  - Owner: _unassigned_ · Branch: `app/sqlite-schema`
+- [ ] Write session/participant/event records locally on every Pour/Pass action
+  - Owner: _unassigned_ · Branch: `app/local-event-logging`
+- [ ] Verify app is fully usable with zero internet (manual offline test pass)
+  - Owner: _unassigned_ · Branch: `app/offline-verification`
+
+### Backend — Supabase
+- [ ] Create Supabase project, apply schema migration (`sessions`, `participants`,
+      `events` tables matching local SQLite structure)
+  - Owner: _unassigned_ · Branch: `backend/supabase-schema`
+- [ ] Enable anonymous auth (`signInAnonymously`), confirm device identity persists
+      across app restarts
+  - Owner: _unassigned_ · Branch: `backend/anonymous-auth`
+- [ ] Implement sync job: push unsynced local rows to Supabase when online, mark
+      `synced_at` locally on success
+  - Owner: _unassigned_ · Branch: `backend/sync-job`
+- [ ] Test offline → online transition (queue builds up offline, flushes on reconnect)
+  - Owner: _unassigned_ · Branch: `backend/sync-reconnect-test`
+
+### App — Session history (moved up from backlog — user wants history visible in MVP)
+- [ ] History list screen: past sessions (date, participant count) pulled from local
+      SQLite, newest first
+  - Owner: _unassigned_ · Branch: `app/history-list`
+- [ ] Session detail view: per-participant drink/pass counts for a selected past session
+  - Owner: _unassigned_ · Branch: `app/history-detail`
+- [ ] History reflects synced Supabase data when available, falls back to local-only
+      sessions when offline/unsynced (no broken state either way)
+  - Owner: _unassigned_ · Branch: `app/history-sync-fallback`
+
+### Integration & QA
+- [ ] Full end-to-end test: app + firmware + hardware, multiple participants, multiple
+      pour/pass rounds, varied cup types
+  - Owner: _unassigned_ · Branch: `qa/e2e-mvp-test`
+- [ ] Spill/edge-case test: no cup, cup removed mid-pour, bottle running low
+  - Owner: _unassigned_ · Branch: `qa/edge-case-test`
+
+---
+
+## Backlog (approved, not in current sprint)
+Pull into a future sprint section when scheduled — don't start early without team
+agreement, since some of these affect firmware command set (e.g. `FLUSH`, battery).
+
+- [ ] Per-liquid-type flow calibration (beer/Tanduay/lambanog presets)
+- [ ] Low/empty bottle detection (`REFILL_BOTTLE` status)
+- [ ] Pump priming/flush cycle (`FLUSH` command)
+- [ ] Battery status reporting (`BATTERY_LOW` notification)
+- [ ] Pace-awareness indicator (soft, non-gatekeeping)
+- [ ] Sound/haptic feedback on pour complete
+- [ ] "Tagay King/Queen" end-of-session leaderboard (cross-session ranking)
+- [ ] Session naming (custom titles like "Jojo's Birthday" — basic history list/detail
+      is now in Sprint 1, naming is the deferred part)
+- [ ] QR code BLE pairing
+- [ ] Spill containment in enclosure design (raised lip / drip tray)
+- [ ] Undo last action (safety net)
+- [ ] Pass limit house rule (optional toggle)
+- [ ] Multiple pour stations (v2 scalability — architecture TBD, see `tagaybox_spec.md`)
+
+---
+
+## Notes for contributors
+- One branch per task, named as shown above (`area/short-description`)
+- Reference the task in your commit message and PR description
+- Update this file's checkboxes as part of the PR, not after merge — keeps status honest
+- Hardware/firmware changes that affect the BLE command or status vocabulary must be
+  reflected in `tagaybox_spec.md` in the same PR, so app and firmware owners don't drift
+  out of sync
