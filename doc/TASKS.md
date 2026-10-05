@@ -155,9 +155,18 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
     always been on fumio65's side to confirm in Android Studio).
 
 ### Backend — Supabase
-- [ ] Create Supabase project, apply schema migration (`sessions`, `participants`,
+- [x] Create Supabase project, apply schema migration (`sessions`, `participants`,
       `events` tables matching local SQLite structure)
-  - Owner: _unassigned_ · Branch: `backend/supabase-schema`
+  - Owner: fumio65 · Branch: `backend/supabase-schema` · Done: 2026-10-05
+  - Notes: Created Supabase project `lasenggo-3000` (region `ap-southeast-1`). Applied
+    migration `create_sessions_participants_events` via Supabase MCP: `sessions`,
+    `participants`, `events` tables matching the local SQLite schema exactly (same
+    columns/FKs as `ARCHITECTURE.md`'s data model), plus indexes on
+    `events.session_id` and `participants.session_id`. RLS enabled on all three tables,
+    scoped via `device_id = auth.uid()` on `sessions` and `EXISTS` subqueries joining
+    to `sessions.device_id` for `participants`/`events` — ready for anonymous auth
+    (next task). Verified live via `list_tables` (columns, PKs, FKs, RLS all correct).
+    No app code changes in this task — infra only.
 - [ ] Enable anonymous auth (`signInAnonymously`), confirm device identity persists
       across app restarts
   - Owner: _unassigned_ · Branch: `backend/anonymous-auth`
