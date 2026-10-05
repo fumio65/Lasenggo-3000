@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { useParticipants } from './useParticipants'
 
 function ParticipantRow({ participant, index, total, onRemove, onMoveUp, onMoveDown }) {
   return (
@@ -38,14 +37,24 @@ function ParticipantRow({ participant, index, total, onRemove, onMoveUp, onMoveD
   )
 }
 
-export function ParticipantList() {
-  const { participants, addParticipant, removeParticipant, moveParticipant } =
-    useParticipants()
+/**
+ * Presentational participant list screen. Participant state lives in `App`
+ * (lifted up) so `onStartSession` can hand the finished list to the active
+ * session screen.
+ */
+export function ParticipantList({
+  participants,
+  onAdd,
+  onRemove,
+  onMoveUp,
+  onMoveDown,
+  onStartSession,
+}) {
   const [name, setName] = useState('')
 
   function handleSubmit(e) {
     e.preventDefault()
-    addParticipant(name)
+    onAdd(name)
     setName('')
   }
 
@@ -88,9 +97,9 @@ export function ParticipantList() {
                 participant={participant}
                 index={index}
                 total={participants.length}
-                onRemove={() => removeParticipant(participant.id)}
-                onMoveUp={() => moveParticipant(participant.id, -1)}
-                onMoveDown={() => moveParticipant(participant.id, 1)}
+                onRemove={() => onRemove(participant.id)}
+                onMoveUp={() => onMoveUp(participant.id)}
+                onMoveDown={() => onMoveDown(participant.id)}
               />
             ))}
           </ul>
@@ -98,6 +107,7 @@ export function ParticipantList() {
 
         <button
           type="button"
+          onClick={onStartSession}
           disabled={participants.length < 2}
           className="w-full rounded-lg bg-neutral-100 px-4 py-3 font-semibold text-neutral-950 disabled:opacity-30"
         >
