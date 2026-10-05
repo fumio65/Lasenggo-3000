@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ParticipantList } from './features/session/ParticipantList'
 import { ActiveSessionScreen } from './features/session/ActiveSessionScreen'
-import { HistoryList } from './features/history/HistoryList'
+import { HistoryScreen } from './features/history/HistoryScreen'
 import { useParticipants } from './features/session/useParticipants'
 import { initDatabase } from './features/storage/db'
 import { createSession, endSession } from './features/storage/sessionQueries'
@@ -61,7 +61,7 @@ function App() {
           onExit={handleExitSession}
         />
       )}
-      {screen === 'history' && <HistoryList onBack={() => setScreen('participants')} />}
+      {screen === 'history' && <HistoryScreen onExit={() => setScreen('participants')} />}
       {screen === 'participants' && (
         <ParticipantList
           participants={participants}

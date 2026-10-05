@@ -23,15 +23,14 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
   `localhost` URL in a browser. Browser is sufficient for UI-only work (participant
   list, session screen, styling); Android Studio / a device is only needed once BLE
   is involved, since Bluetooth doesn't work in a desktop browser.
-- Current status: `app/project-scaffold` through `app/history-list` are done.
-  `ActiveSessionScreen`'s temporary debug event-count line was intentionally
-  left in place — it was never actually superseded by HistoryList (different
-  screen, different purpose: a live in-session counter vs. a browsable past-
-  sessions list) — fine to remove whenever someone feels it's no longer useful.
-  Natural next step: `app/history-detail` (per-session participant counts) or
-  `app/history-sync-fallback`, both still pure local-data work. Everything
-  else remaining in Sprint 1 needs real ESP32 hardware or a Supabase project,
-  neither set up yet (CONTEXT.md).
+- Current status: `app/project-scaffold` through `app/history-detail` are
+  done — that's everything in App Frontend, App Local Data, and App Session
+  History except `app/history-sync-fallback` (needs Supabase to have anything
+  to fall back from) and `app/no-cup-alert` (needs real BLE status). Every
+  remaining Sprint 1 task now needs either real ESP32 hardware or a Supabase
+  project — neither set up yet (CONTEXT.md). `ActiveSessionScreen`'s temporary
+  debug event-count line is still there, independent of HistoryList/Detail;
+  remove whenever it's no longer useful.
 - **Process note**: doc updates (this file's checkboxes, and any EXAMPLES.md/
   ARCHITECTURE.md notes) now go in the same branch/commit as the feature work,
   before pushing — not as a separate follow-up commit after merge. Matches the
@@ -177,8 +176,14 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
     history" link added to ParticipantList as the entry point. Rows aren't
     clickable yet — that's app/history-detail. Verified: real past sessions
     from earlier testing showed up correctly in browser.
-- [ ] Session detail view: per-participant drink/pass counts for a selected past session
-  - Owner: _unassigned_ · Branch: `app/history-detail`
+- [x] Session detail view: per-participant drink/pass counts for a selected past session
+  - Owner: fumio65 · Branch: `app/history-detail` · Done 2026-10-05 —
+    getSessionDetail() query (participants LEFT JOIN events, counted by type),
+    useSessionDetail hook, HistoryDetail screen. Added HistoryScreen wrapper
+    to own list↔detail navigation locally within the history feature (same
+    local-state convention as App.jsx, see EXAMPLES.md). History rows are now
+    clickable. Verified: real pour/pass counts from a tested session displayed
+    correctly.
 - [ ] History reflects synced Supabase data when available, falls back to local-only
       sessions when offline/unsynced (no broken state either way)
   - Owner: _unassigned_ · Branch: `app/history-sync-fallback`

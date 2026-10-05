@@ -9,11 +9,10 @@ function formatDate(isoString) {
 
 /**
  * Past sessions screen — date and participant count per session, newest
- * first, pulled from local SQLite (`app/history-list`). Tapping a row to see
- * per-participant detail is `app/history-detail`, not built yet, so rows
- * aren't clickable.
+ * first, pulled from local SQLite (`app/history-list`). Tapping a row opens
+ * `HistoryDetail` via `onSelect` (`app/history-detail`).
  */
-export function HistoryList({ onBack }) {
+export function HistoryList({ onBack, onSelect }) {
   const { sessions, loading } = useSessionHistory()
 
   return (
@@ -39,14 +38,17 @@ export function HistoryList({ onBack }) {
         ) : (
           <ul className="space-y-2">
             {sessions.map((s) => (
-              <li
-                key={s.id}
-                className="flex items-center justify-between rounded-lg bg-neutral-900 px-4 py-3"
-              >
-                <span className="text-neutral-100">{formatDate(s.started_at)}</span>
-                <span className="text-sm text-neutral-500">
-                  {s.participant_count} participant{s.participant_count === 1 ? '' : 's'}
-                </span>
+              <li key={s.id}>
+                <button
+                  type="button"
+                  onClick={() => onSelect(s.id)}
+                  className="flex w-full items-center justify-between rounded-lg bg-neutral-900 px-4 py-3 text-left transition hover:bg-neutral-800"
+                >
+                  <span className="text-neutral-100">{formatDate(s.started_at)}</span>
+                  <span className="text-sm text-neutral-500">
+                    {s.participant_count} participant{s.participant_count === 1 ? '' : 's'}
+                  </span>
+                </button>
               </li>
             ))}
           </ul>
