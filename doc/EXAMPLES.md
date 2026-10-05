@@ -71,6 +71,12 @@ function advanceTurn() {
 }
 ```
 
+**Actual implementation note** (`app/turn-manager`, `src/features/session/useTurnManager.js`):
+`logEvent` isn't called directly — the hook takes an optional `onEvent(type, participant)`
+callback instead, so `app/local-event-logging` can wire real persistence in later without
+reshaping this hook. Today nothing is passed, so Pass/Pour events aren't logged anywhere yet;
+the table above still describes the intended end state once logging exists.
+
 ## Local SQLite event row (sample)
 
 ```json

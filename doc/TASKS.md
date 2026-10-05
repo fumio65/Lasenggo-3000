@@ -23,10 +23,17 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
   `localhost` URL in a browser. Browser is sufficient for UI-only work (participant
   list, session screen, styling); Android Studio / a device is only needed once BLE
   is involved, since Bluetooth doesn't work in a desktop browser.
-- Current status: `app/project-scaffold`, `app/participant-list`, and
-  `app/active-session-screen` are done. Pour/Pass are visibly present but disabled —
-  natural next steps are `app/turn-manager` (to make Pass do something) or
-  `app/ble-connect`+`app/ble-commands` (to make Pour do something).
+- Current status: `app/project-scaffold`, `app/participant-list`,
+  `app/active-session-screen`, and `app/turn-manager` are done. Pass fully works
+  end to end (local-only). Natural next steps: `app/local-event-logging` (Pass/Pour
+  currently log nothing) or `app/ble-connect`+`app/ble-commands` (to make Pour do
+  something — note hardware isn't sourced yet per CONTEXT.md, so this may be
+  blocked until that happens).
+- **Process note**: doc updates (this file's checkboxes, and any EXAMPLES.md/
+  ARCHITECTURE.md notes) now go in the same branch/commit as the feature work,
+  before pushing — not as a separate follow-up commit after merge. Matches the
+  "Notes for contributors" rule below; previous tasks were updated after merge
+  as a transition, going forward they're bundled in.
 
 ---
 
@@ -90,9 +97,13 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
     "Not connected"), Pour/Pass rendered disabled with tooltips explaining why.
     Participant state lifted from ParticipantList into App; simple local
     screen-switch state used for navigation (no router added — see EXAMPLES.md).
-- [ ] Turn manager logic: circular order, advance on confirmed POUR or on PASS (PASS is
+- [x] Turn manager logic: circular order, advance on confirmed POUR or on PASS (PASS is
       local-only, no BLE call)
-  - Owner: _unassigned_ · Branch: `app/turn-manager`
+  - Owner: fumio65 · Branch: `app/turn-manager` (merged to `main` via PR #3) ·
+    Done 2026-10-05 — useTurnManager hook, currentIndex wraps modulo participant
+    count. Pass is wired and working in the UI; onPourConfirmed exists but isn't
+    reachable yet (needs app/ble-commands + app/ble-status-subscription to ever
+    call it). Event logging not wired (app/local-event-logging).
 - [ ] Pour volume setting (Light/Standard/Heavy selector)
   - Owner: _unassigned_ · Branch: `app/pour-volume-setting`
 - [ ] NO_CUP handling in UI (alert/snackbar, don't advance turn)
