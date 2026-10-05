@@ -3,16 +3,18 @@ import { ParticipantList } from './features/session/ParticipantList'
 import { ActiveSessionScreen } from './features/session/ActiveSessionScreen'
 import { useParticipants } from './features/session/useParticipants'
 import { initDatabase } from './features/storage/db'
+import { createSession, endSession } from './features/storage/sessionQueries'
 
 function App() {
   const { participants, addParticipant, removeParticipant, moveParticipant } =
     useParticipants()
   const [screen, setScreen] = useState('participants') // 'participants' | 'session'
+  const [sessionId, setSessionId] = useState(null)
+  const [starting, setStarting] = useState(false)
 
-  // Schema setup only (app/sqlite-schema) — nothing reads/writes rows yet,
-  // that's app/local-event-logging. dbStatus is a temporary dev-visible
-  // check that the connection + schema actually came up; remove once real
-  // read/write UI exists to verify it implicitly.
+  // Schema setup (app/sqlite-schema) — dev-visible check that the connection +
+  // schema actually came up; remove once enough real read/write UI exists to
+  // verify it implicitly.
   const [dbStatus, setDbStatus] = useState('loading')
 
   useEffect(() => {
@@ -24,12 +26,38 @@ function App() {
       })
   }, [])
 
+  async function handleStartSession() {
+    setStarting(true)
+    try {
+      const id = await createSession(participants)
+      setSessionId(id)
+      setScreen('session')
+    } catch (err) {
+      console.error('Failed to start session', err)
+    } finally {
+      setStarting(false)
+    }
+  }
+
+  async function handleExitSession() {
+    if (sessionId) {
+      try {
+        await endSession(sessionId)
+      } catch (err) {
+        console.error('Failed to mark session ended', err)
+      }
+    }
+    setSessionId(null)
+    setScreen('participants')
+  }
+
   return (
     <>
       {screen === 'session' ? (
         <ActiveSessionScreen
           participants={participants}
-          onExit={() => setScreen('participants')}
+          sessionId={sessionId}
+          onExit={handleExitSession}
         />
       ) : (
         <ParticipantList
@@ -38,7 +66,8 @@ function App() {
           onRemove={removeParticipant}
           onMoveUp={(id) => moveParticipant(id, -1)}
           onMoveDown={(id) => moveParticipant(id, 1)}
-          onStartSession={() => setScreen('session')}
+          onStartSession={handleStartSession}
+          startingSession={starting}
         />
       )}
       <div

@@ -1,22 +1,37 @@
+import { useEffect, useState } from 'react'
 import { useTurnManager } from './useTurnManager'
 import { usePourVolume } from '../pour/usePourVolume'
 import { PourVolumeSelector } from '../pour/PourVolumeSelector'
+import { logEvent, countEvents } from '../storage/sessionQueries'
 
 /**
  * Active session screen.
  *
- * Pass advances turn order for real (`app/turn-manager`). Pour volume is
- * selectable and defaults to Standard (`app/pour-volume-setting`, this task).
- * Still intentionally stubbed, matching separate TASKS.md items:
+ * Pass advances turn order for real (`app/turn-manager`) and now logs a PASS
+ * event row to local SQLite (`app/local-event-logging`, this task). Still
+ * intentionally stubbed, matching separate TASKS.md items:
  *  - Pour stays disabled — needs an actual BLE connection/command
- *    (`app/ble-connect`, `app/ble-commands`) that reads the selected volume
- *    and a confirmed STATUS reply before `onPourConfirmed` should ever run.
+ *    (`app/ble-connect`, `app/ble-commands`) and a confirmed STATUS reply
+ *    before `onPourConfirmed` should ever run (it will log a POUR event the
+ *    same way once that's wired).
  *  - The status indicator shows a fixed "Not connected" state — real STATUS
  *    values from the ESP32 arrive via `app/ble-status-subscription`.
- *  - Pass/Pour events aren't persisted yet — that's `app/local-event-logging`.
  */
-export function ActiveSessionScreen({ participants, onExit }) {
-  const { current, onPass } = useTurnManager(participants)
+export function ActiveSessionScreen({ participants, sessionId, onExit }) {
+  // Temporary debug readout — remove once app/history-list exists to show
+  // logged events properly.
+  const [eventCount, setEventCount] = useState(0)
+  useEffect(() => {
+    if (sessionId) countEvents(sessionId).then(setEventCount)
+  }, [sessionId])
+
+  const { current, onPass } = useTurnManager(participants, {
+    onEvent: (type, participant) => {
+      logEvent(sessionId, participant.id, type)
+        .then(() => countEvents(sessionId).then(setEventCount))
+        .catch((err) => console.error(`Failed to log ${type} event`, err))
+    },
+  })
   const { volumeId, setVolumeId } = usePourVolume()
 
   return (
@@ -65,7 +80,10 @@ export function ActiveSessionScreen({ participants, onExit }) {
 
         <p className="text-center text-xs text-neutral-600">
           {participants.length} participant{participants.length === 1 ? '' : 's'} in
-          this round · event logging and BLE connection are wired up in later tasks
+          this round · BLE connection wired up in a later task
+        </p>
+        <p className="text-center text-[10px] font-mono text-neutral-700">
+          events logged this session: {eventCount}
         </p>
       </div>
     </div>

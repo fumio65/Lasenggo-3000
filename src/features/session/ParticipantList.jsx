@@ -49,6 +49,7 @@ export function ParticipantList({
   onMoveUp,
   onMoveDown,
   onStartSession,
+  startingSession = false,
 }) {
   const [name, setName] = useState('')
 
@@ -108,10 +109,10 @@ export function ParticipantList({
         <button
           type="button"
           onClick={onStartSession}
-          disabled={participants.length < 2}
+          disabled={participants.length < 2 || startingSession}
           className="w-full rounded-lg bg-neutral-100 px-4 py-3 font-semibold text-neutral-950 disabled:opacity-30"
         >
-          Start Session
+          {startingSession ? 'Starting…' : 'Start Session'}
         </button>
       </div>
     </div>
