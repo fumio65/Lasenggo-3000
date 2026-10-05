@@ -1,17 +1,19 @@
+import { useTurnManager } from './useTurnManager'
+
 /**
- * Active session screen shell.
+ * Active session screen.
  *
- * Scope note: this is deliberately a static shell, not the finished feature.
- * Two things are intentionally stubbed, matching separate TASKS.md items:
- *  - Whose turn it is doesn't advance yet — that's `app/turn-manager`
- *    ("circular order, advance on confirmed POUR or on PASS").
+ * Turn order now advances for real on Pass (`app/turn-manager`, this task).
+ * Two things remain intentionally stubbed, matching separate TASKS.md items:
+ *  - Pour stays disabled — it needs an actual BLE connection/command
+ *    (`app/ble-connect`, `app/ble-commands`) and a confirmed STATUS reply
+ *    before `onPourConfirmed` should ever run.
  *  - The status indicator shows a fixed "Not connected" state — real STATUS
  *    values from the ESP32 arrive via `app/ble-status-subscription`.
- * Pour/Pass are rendered disabled with a note rather than silently doing
- * nothing, so it's obvious in the UI itself that wiring is still pending.
+ *  - Pass/Pour events aren't persisted yet — that's `app/local-event-logging`.
  */
 export function ActiveSessionScreen({ participants, onExit }) {
-  const current = participants[0]
+  const { current, onPass } = useTurnManager(participants)
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 p-6">
@@ -45,9 +47,8 @@ export function ActiveSessionScreen({ participants, onExit }) {
           </button>
           <button
             type="button"
-            disabled
-            title="Turn advancing not wired yet — app/turn-manager"
-            className="rounded-xl bg-neutral-800 px-6 py-5 text-lg font-semibold text-neutral-100 disabled:opacity-30"
+            onClick={onPass}
+            className="rounded-xl bg-neutral-800 px-6 py-5 text-lg font-semibold text-neutral-100 transition hover:bg-neutral-700"
           >
             Pass
           </button>
@@ -55,7 +56,7 @@ export function ActiveSessionScreen({ participants, onExit }) {
 
         <p className="text-center text-xs text-neutral-600">
           {participants.length} participant{participants.length === 1 ? '' : 's'} in
-          this round · turn order and BLE connection are wired up in later tasks
+          this round · event logging and BLE connection are wired up in later tasks
         </p>
       </div>
     </div>
