@@ -128,14 +128,17 @@ src/
     ble/             # BLE connection, scan, characteristic read/write/subscribe
     storage/         # SQLite schema, local read/write, sync queue
     sync/            # Supabase client, anonymous auth, push/pull sync job
+    history/         # past-session browsing (list/detail), added in app/history-list —
+                      # not in the original proposal, reads via storage/sessionQueries.js
   shared/
     components/      # shared UI (buttons, status indicators)
     hooks/
     types/
 ```
 Each feature folder owns its own state/logic; cross-feature calls go through a small
-explicit interface rather than reaching into another feature's internals. Folders are
-currently empty scaffolding (`.gitkeep` only) pending the feature tasks in `TASKS.md`.
+explicit interface rather than reaching into another feature's internals. Scaffolded and
+live as of `app/project-scaffold`; most folders now have real code (see `TASKS.md` for
+per-task status) — `ble/` and `sync/` are still empty, pending their tasks.
 
 ## References
 - Full original decision log/rationale: see `DECISIONS.md`

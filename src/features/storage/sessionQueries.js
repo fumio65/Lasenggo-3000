@@ -60,3 +60,17 @@ export async function countEvents(sessionId) {
   const result = await db.query('SELECT COUNT(*) as count FROM events WHERE session_id = ?', [sessionId])
   return result.values?.[0]?.count ?? 0
 }
+
+/** Past sessions with participant count, newest first. Used by
+ * `app/history-list`. */
+export async function getSessionHistory() {
+  const db = getDatabase()
+  const result = await db.query(`
+    SELECT s.id, s.started_at, s.ended_at, COUNT(p.id) as participant_count
+    FROM sessions s
+    LEFT JOIN participants p ON p.session_id = s.id
+    GROUP BY s.id
+    ORDER BY s.started_at DESC
+  `)
+  return result.values ?? []
+}

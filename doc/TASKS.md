@@ -23,14 +23,15 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
   `localhost` URL in a browser. Browser is sufficient for UI-only work (participant
   list, session screen, styling); Android Studio / a device is only needed once BLE
   is involved, since Bluetooth doesn't work in a desktop browser.
-- Current status: `app/project-scaffold` through `app/offline-verification`
-  are all done (everything in App Frontend + App Local Data except
-  `app/no-cup-alert`, which needs real BLE status to mean anything). Remaining
-  Sprint 1 work either needs real ESP32 hardware (Bluetooth integration tasks —
-  blocked per CONTEXT.md, nothing sourced yet) or a Supabase project (Backend
-  section — nothing set up yet either). `ActiveSessionScreen` has a temporary
-  debug event-count line; whoever builds `app/history-list` should remove it
-  once that screen exists.
+- Current status: `app/project-scaffold` through `app/history-list` are done.
+  `ActiveSessionScreen`'s temporary debug event-count line was intentionally
+  left in place — it was never actually superseded by HistoryList (different
+  screen, different purpose: a live in-session counter vs. a browsable past-
+  sessions list) — fine to remove whenever someone feels it's no longer useful.
+  Natural next step: `app/history-detail` (per-session participant counts) or
+  `app/history-sync-fallback`, both still pure local-data work. Everything
+  else remaining in Sprint 1 needs real ESP32 hardware or a Supabase project,
+  neither set up yet (CONTEXT.md).
 - **Process note**: doc updates (this file's checkboxes, and any EXAMPLES.md/
   ARCHITECTURE.md notes) now go in the same branch/commit as the feature work,
   before pushing — not as a separate follow-up commit after merge. Matches the
@@ -168,9 +169,14 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
   - Owner: _unassigned_ · Branch: `backend/sync-reconnect-test`
 
 ### App — Session history (moved up from backlog — user wants history visible in MVP)
-- [ ] History list screen: past sessions (date, participant count) pulled from local
+- [x] History list screen: past sessions (date, participant count) pulled from local
       SQLite, newest first
-  - Owner: _unassigned_ · Branch: `app/history-list`
+  - Owner: fumio65 · Branch: `app/history-list` · Done 2026-10-05 —
+    getSessionHistory() query (sessions LEFT JOIN participants, grouped,
+    newest first), useSessionHistory hook, HistoryList screen. "View session
+    history" link added to ParticipantList as the entry point. Rows aren't
+    clickable yet — that's app/history-detail. Verified: real past sessions
+    from earlier testing showed up correctly in browser.
 - [ ] Session detail view: per-participant drink/pass counts for a selected past session
   - Owner: _unassigned_ · Branch: `app/history-detail`
 - [ ] History reflects synced Supabase data when available, falls back to local-only
