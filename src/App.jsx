@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ParticipantList } from './features/session/ParticipantList'
 import { ActiveSessionScreen } from './features/session/ActiveSessionScreen'
+import { HistoryList } from './features/history/HistoryList'
 import { useParticipants } from './features/session/useParticipants'
 import { initDatabase } from './features/storage/db'
 import { createSession, endSession } from './features/storage/sessionQueries'
@@ -8,7 +9,7 @@ import { createSession, endSession } from './features/storage/sessionQueries'
 function App() {
   const { participants, addParticipant, removeParticipant, moveParticipant } =
     useParticipants()
-  const [screen, setScreen] = useState('participants') // 'participants' | 'session'
+  const [screen, setScreen] = useState('participants') // 'participants' | 'session' | 'history'
   const [sessionId, setSessionId] = useState(null)
   const [starting, setStarting] = useState(false)
 
@@ -53,13 +54,15 @@ function App() {
 
   return (
     <>
-      {screen === 'session' ? (
+      {screen === 'session' && (
         <ActiveSessionScreen
           participants={participants}
           sessionId={sessionId}
           onExit={handleExitSession}
         />
-      ) : (
+      )}
+      {screen === 'history' && <HistoryList onBack={() => setScreen('participants')} />}
+      {screen === 'participants' && (
         <ParticipantList
           participants={participants}
           onAdd={addParticipant}
@@ -68,6 +71,7 @@ function App() {
           onMoveDown={(id) => moveParticipant(id, 1)}
           onStartSession={handleStartSession}
           startingSession={starting}
+          onViewHistory={() => setScreen('history')}
         />
       )}
       <div

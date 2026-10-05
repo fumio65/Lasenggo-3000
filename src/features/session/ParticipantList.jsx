@@ -50,6 +50,7 @@ export function ParticipantList({
   onMoveDown,
   onStartSession,
   startingSession = false,
+  onViewHistory,
 }) {
   const [name, setName] = useState('')
 
@@ -67,6 +68,13 @@ export function ParticipantList({
           <p className="text-sm text-neutral-400">
             Add everyone joining this round before you start.
           </p>
+          <button
+            type="button"
+            onClick={onViewHistory}
+            className="text-sm text-neutral-500 underline-offset-2 hover:text-neutral-300 hover:underline"
+          >
+            View session history
+          </button>
         </header>
 
         <form onSubmit={handleSubmit} className="flex gap-2">
