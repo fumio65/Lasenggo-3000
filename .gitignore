@@ -32,3 +32,7 @@ android/captures
 android/.idea
 android/*.iml
 android/app/*.iml
+
+# Doc exports (generated from doc/*.md — don't commit stale duplicates)
+doc/*.docx
+doc/*.pdf
