@@ -23,10 +23,10 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
   `localhost` URL in a browser. Browser is sufficient for UI-only work (participant
   list, session screen, styling); Android Studio / a device is only needed once BLE
   is involved, since Bluetooth doesn't work in a desktop browser.
-- Current status: `app/project-scaffold` and `app/participant-list` are done.
-  Natural next step is `app/sqlite-schema` (so participants/events have somewhere to
-  persist to) or `app/active-session-screen` (to give the Start Session button
-  somewhere to navigate).
+- Current status: `app/project-scaffold`, `app/participant-list`, and
+  `app/active-session-screen` are done. Pour/Pass are visibly present but disabled —
+  natural next steps are `app/turn-manager` (to make Pass do something) or
+  `app/ble-connect`+`app/ble-commands` (to make Pour do something).
 
 ---
 
@@ -83,9 +83,13 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
     Done 2026-10-05 — in-memory add/remove/move-up/move-down, empty state, Start
     Session button present but disabled/non-functional (wiring it up is
     app/active-session-screen). No persistence yet (app/sqlite-schema).
-- [ ] Active session screen: current person's name, Pour button, Pass button, status
+- [x] Active session screen: current person's name, Pour button, Pass button, status
       indicator reflecting ESP32 STATUS notifications
-  - Owner: _unassigned_ · Branch: `app/active-session-screen`
+  - Owner: fumio65 · Branch: `app/active-session-screen` (merged to `main` via PR #2) ·
+    Done 2026-10-05 — static shell: current participant name, status pill (fixed
+    "Not connected"), Pour/Pass rendered disabled with tooltips explaining why.
+    Participant state lifted from ParticipantList into App; simple local
+    screen-switch state used for navigation (no router added — see EXAMPLES.md).
 - [ ] Turn manager logic: circular order, advance on confirmed POUR or on PASS (PASS is
       local-only, no BLE call)
   - Owner: _unassigned_ · Branch: `app/turn-manager`

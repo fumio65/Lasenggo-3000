@@ -146,3 +146,23 @@ Participant shape is `{ id, name }` — matches the `participants` table in
 `ARCHITECTURE.md`'s schema (minus `session_id`, which only matters once this list
 is persisted in `app/sqlite-schema`). Keeping the shape aligned now avoids a
 mapping step later.
+
+## Screen navigation: local state in App, not a router (sample)
+
+Established in `app/active-session-screen`. With a small, fixed set of screens
+(participants → active session → history), a router library is unnecessary
+complexity. `App` holds a `screen` string and renders accordingly; participant
+state is lifted into `App` too, so it can be handed to whichever screen needs it.
+
+```jsx
+// src/App.jsx
+const [screen, setScreen] = useState('participants') // 'participants' | 'session'
+
+if (screen === 'session') {
+  return <ActiveSessionScreen participants={participants} onExit={() => setScreen('participants')} />
+}
+return <ParticipantList participants={participants} onStartSession={() => setScreen('session')} />
+```
+
+If the screen set grows enough that this becomes unwieldy, that's a real decision
+to make (and log in `DECISIONS.md`) — don't add a router piecemeal without one.
