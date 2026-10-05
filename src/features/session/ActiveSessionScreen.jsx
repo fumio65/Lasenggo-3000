@@ -1,19 +1,23 @@
 import { useTurnManager } from './useTurnManager'
+import { usePourVolume } from '../pour/usePourVolume'
+import { PourVolumeSelector } from '../pour/PourVolumeSelector'
 
 /**
  * Active session screen.
  *
- * Turn order now advances for real on Pass (`app/turn-manager`, this task).
- * Two things remain intentionally stubbed, matching separate TASKS.md items:
- *  - Pour stays disabled — it needs an actual BLE connection/command
- *    (`app/ble-connect`, `app/ble-commands`) and a confirmed STATUS reply
- *    before `onPourConfirmed` should ever run.
+ * Pass advances turn order for real (`app/turn-manager`). Pour volume is
+ * selectable and defaults to Standard (`app/pour-volume-setting`, this task).
+ * Still intentionally stubbed, matching separate TASKS.md items:
+ *  - Pour stays disabled — needs an actual BLE connection/command
+ *    (`app/ble-connect`, `app/ble-commands`) that reads the selected volume
+ *    and a confirmed STATUS reply before `onPourConfirmed` should ever run.
  *  - The status indicator shows a fixed "Not connected" state — real STATUS
  *    values from the ESP32 arrive via `app/ble-status-subscription`.
  *  - Pass/Pour events aren't persisted yet — that's `app/local-event-logging`.
  */
 export function ActiveSessionScreen({ participants, onExit }) {
   const { current, onPass } = useTurnManager(participants)
+  const { volumeId, setVolumeId } = usePourVolume()
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 p-6">
@@ -34,6 +38,11 @@ export function ActiveSessionScreen({ participants, onExit }) {
         <div className="text-center">
           <p className="text-sm text-neutral-500">Current turn</p>
           <h1 className="text-4xl font-bold tracking-tight">{current?.name ?? '—'}</h1>
+        </div>
+
+        <div className="w-full space-y-2">
+          <p className="text-center text-xs text-neutral-500">Pour volume</p>
+          <PourVolumeSelector volumeId={volumeId} onChange={setVolumeId} />
         </div>
 
         <div className="grid w-full grid-cols-2 gap-4">
