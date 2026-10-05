@@ -167,9 +167,21 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
     to `sessions.device_id` for `participants`/`events` — ready for anonymous auth
     (next task). Verified live via `list_tables` (columns, PKs, FKs, RLS all correct).
     No app code changes in this task — infra only.
-- [ ] Enable anonymous auth (`signInAnonymously`), confirm device identity persists
+- [x] Enable anonymous auth (`signInAnonymously`), confirm device identity persists
       across app restarts
-  - Owner: _unassigned_ · Branch: `backend/anonymous-auth`
+  - Owner: fumio65 · Branch: `backend/anonymous-auth` · Done: 2026-10-05
+  - Notes: Added `@supabase/supabase-js`, `src/features/sync/supabaseClient.js`
+    (client built from `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` env vars,
+    `null` if unset — sync always stays optional), and `src/features/sync/auth.js`
+    (`ensureAnonymousSession()` reuses an existing session via `getSession()` before
+    calling `signInAnonymously()`, so a device keeps the same identity across
+    restarts; `getDeviceId()` for later use by the sync job). Wired into `App.jsx`
+    with a temporary `auth: <status> (<deviceId>)` debug badge alongside the existing
+    `db:` one, same pattern. `.env`/`.env.example` added (`.env` gitignored, holds the
+    real project URL/publishable key; `.env.example` is the committed template).
+    Required enabling "Allow anonymous sign-ins" in the Supabase dashboard
+    (Authentication → Sign In / Providers) — off by default on new projects. Verified
+    manually: same device id persists across page refresh/hard refresh.
 - [ ] Implement sync job: push unsynced local rows to Supabase when online, mark
       `synced_at` locally on success
   - Owner: _unassigned_ · Branch: `backend/sync-job`
