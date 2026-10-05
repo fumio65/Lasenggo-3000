@@ -24,11 +24,13 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
   list, session screen, styling); Android Studio / a device is only needed once BLE
   is involved, since Bluetooth doesn't work in a desktop browser.
 - Current status: `app/project-scaffold`, `app/participant-list`,
-  `app/active-session-screen`, `app/turn-manager`, `app/pour-volume-setting`, and
-  `app/sqlite-schema` are done. Pass works end to end but logs nothing to
-  storage yet. Natural next step: `app/local-event-logging` — wire
-  useTurnManager's `onEvent` callback to actually write session/participant/
-  event rows via `src/features/storage/db.js`.
+  `app/active-session-screen`, `app/turn-manager`, `app/pour-volume-setting`,
+  `app/sqlite-schema`, and `app/local-event-logging` are done. Pass is fully
+  functional end to end, including persistence. Natural next step:
+  `app/offline-verification` (quick manual pass, no new code) or start the
+  Bluetooth track (`app/ble-connect`) — still blocked on hardware per
+  CONTEXT.md. `ActiveSessionScreen` has a temporary debug event-count line;
+  whoever builds `app/history-list` should remove it once that screen exists.
 - **Process note**: doc updates (this file's checkboxes, and any EXAMPLES.md/
   ARCHITECTURE.md notes) now go in the same branch/commit as the feature work,
   before pushing — not as a separate follow-up commit after merge. Matches the
@@ -133,8 +135,15 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
     newer sql.js versions throw a WebAssembly LinkError against jeep-sqlite's
     bundled JS glue, so don't bump this without re-verifying in browser). No
     read/write of actual rows yet (app/local-event-logging).
-- [ ] Write session/participant/event records locally on every Pour/Pass action
-  - Owner: _unassigned_ · Branch: `app/local-event-logging`
+- [x] Write session/participant/event records locally on every Pour/Pass action
+  - Owner: fumio65 · Branch: `app/local-event-logging` · Done 2026-10-05 —
+    Start Session creates a `sessions` row + one `participants` row per
+    person (same ids as UI state); every Pass logs an `events` row via
+    `src/features/storage/sessionQueries.js`. `device_id` left null
+    (anonymous auth isn't built yet — `backend/anonymous-auth`). Pour logging
+    exists in the same code path but is unreachable until BLE confirms a
+    pour. Manually verified via a temporary event-count readout on
+    ActiveSessionScreen (remove once app/history-list exists).
 - [ ] Verify app is fully usable with zero internet (manual offline test pass)
   - Owner: _unassigned_ · Branch: `app/offline-verification`
 
