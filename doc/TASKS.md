@@ -24,11 +24,12 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
   list, session screen, styling); Android Studio / a device is only needed once BLE
   is involved, since Bluetooth doesn't work in a desktop browser.
 - Current status: `app/project-scaffold`, `app/participant-list`,
-  `app/active-session-screen`, and `app/turn-manager` are done. Pass fully works
-  end to end (local-only). Natural next steps: `app/local-event-logging` (Pass/Pour
-  currently log nothing) or `app/ble-connect`+`app/ble-commands` (to make Pour do
-  something — note hardware isn't sourced yet per CONTEXT.md, so this may be
-  blocked until that happens).
+  `app/active-session-screen`, `app/turn-manager`, and `app/pour-volume-setting`
+  are done. Pass fully works end to end (local-only); pour volume is selectable
+  but not yet consumed by anything. Natural next steps: `app/local-event-logging`
+  (Pass/Pour currently log nothing) or `app/ble-connect`+`app/ble-commands` (to
+  make Pour do something and actually use the selected volume — note hardware
+  isn't sourced yet per CONTEXT.md, so this may be blocked until that happens).
 - **Process note**: doc updates (this file's checkboxes, and any EXAMPLES.md/
   ARCHITECTURE.md notes) now go in the same branch/commit as the feature work,
   before pushing — not as a separate follow-up commit after merge. Matches the
@@ -104,8 +105,11 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
     count. Pass is wired and working in the UI; onPourConfirmed exists but isn't
     reachable yet (needs app/ble-commands + app/ble-status-subscription to ever
     call it). Event logging not wired (app/local-event-logging).
-- [ ] Pour volume setting (Light/Standard/Heavy selector)
-  - Owner: _unassigned_ · Branch: `app/pour-volume-setting`
+- [x] Pour volume setting (Light/Standard/Heavy selector)
+  - Owner: fumio65 · Branch: `app/pour-volume-setting` · Done 2026-10-05 —
+    usePourVolume hook (default Standard) + segmented control on
+    ActiveSessionScreen. Selected value isn't sent anywhere yet — reading it
+    into the actual POUR command/duration is app/ble-commands.
 - [ ] NO_CUP handling in UI (alert/snackbar, don't advance turn)
   - Owner: _unassigned_ · Branch: `app/no-cup-alert`
 
