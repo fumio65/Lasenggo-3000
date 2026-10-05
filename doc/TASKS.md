@@ -23,14 +23,14 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
   `localhost` URL in a browser. Browser is sufficient for UI-only work (participant
   list, session screen, styling); Android Studio / a device is only needed once BLE
   is involved, since Bluetooth doesn't work in a desktop browser.
-- Current status: `app/project-scaffold`, `app/participant-list`,
-  `app/active-session-screen`, `app/turn-manager`, `app/pour-volume-setting`,
-  `app/sqlite-schema`, and `app/local-event-logging` are done. Pass is fully
-  functional end to end, including persistence. Natural next step:
-  `app/offline-verification` (quick manual pass, no new code) or start the
-  Bluetooth track (`app/ble-connect`) — still blocked on hardware per
-  CONTEXT.md. `ActiveSessionScreen` has a temporary debug event-count line;
-  whoever builds `app/history-list` should remove it once that screen exists.
+- Current status: `app/project-scaffold` through `app/offline-verification`
+  are all done (everything in App Frontend + App Local Data except
+  `app/no-cup-alert`, which needs real BLE status to mean anything). Remaining
+  Sprint 1 work either needs real ESP32 hardware (Bluetooth integration tasks —
+  blocked per CONTEXT.md, nothing sourced yet) or a Supabase project (Backend
+  section — nothing set up yet either). `ActiveSessionScreen` has a temporary
+  debug event-count line; whoever builds `app/history-list` should remove it
+  once that screen exists.
 - **Process note**: doc updates (this file's checkboxes, and any EXAMPLES.md/
   ARCHITECTURE.md notes) now go in the same branch/commit as the feature work,
   before pushing — not as a separate follow-up commit after merge. Matches the
@@ -144,8 +144,15 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
     exists in the same code path but is unreachable until BLE confirms a
     pour. Manually verified via a temporary event-count readout on
     ActiveSessionScreen (remove once app/history-list exists).
-- [ ] Verify app is fully usable with zero internet (manual offline test pass)
-  - Owner: _unassigned_ · Branch: `app/offline-verification`
+- [x] Verify app is fully usable with zero internet (manual offline test pass)
+  - Owner: fumio65 · Branch: `app/offline-verification` · Done 2026-10-05 — no
+    code change needed (app has zero network calls as of this point). Tested:
+    `npm run build && npm run preview`, disconnected Wi-Fi, reloaded the page,
+    ran the full add/reorder/remove → Start Session → Pass flow, reconnected.
+    Everything worked with no errors. Scope note: this verifies the web/browser
+    layer only — a real airplane-mode test on an installed APK hasn't happened
+    (native Android build still unverified; no Android SDK available to Claude,
+    always been on fumio65's side to confirm in Android Studio).
 
 ### Backend — Supabase
 - [ ] Create Supabase project, apply schema migration (`sessions`, `participants`,
