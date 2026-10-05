@@ -74,3 +74,26 @@ export async function getSessionHistory() {
   `)
   return result.values ?? []
 }
+
+/** One session's participants with their POUR/PASS counts for that session,
+ * in the order they were added (turn order). Used by `app/history-detail`. */
+export async function getSessionDetail(sessionId) {
+  const db = getDatabase()
+  const sessionResult = await db.query('SELECT * FROM sessions WHERE id = ?', [sessionId])
+  const session = sessionResult.values?.[0] ?? null
+
+  const participantsResult = await db.query(
+    `SELECT
+       p.id, p.name,
+       SUM(CASE WHEN e.type = 'POUR' THEN 1 ELSE 0 END) as pour_count,
+       SUM(CASE WHEN e.type = 'PASS' THEN 1 ELSE 0 END) as pass_count
+     FROM participants p
+     LEFT JOIN events e ON e.participant_id = p.id
+     WHERE p.session_id = ?
+     GROUP BY p.id
+     ORDER BY p.rowid`,
+    [sessionId],
+  )
+
+  return { session, participants: participantsResult.values ?? [] }
+}
