@@ -5,6 +5,22 @@ Add new entries at the top (most recent first).
 
 ---
 
+### sql.js pinned to exactly 1.11.0 for web SQLite testing
+**Decision**: `sql.js` is pinned at exactly `1.11.0` (`--save-exact`), not a `^`
+range, and `public/assets/sql-wasm.wasm` is copied from that exact package
+version.
+**Why**: `jeep-sqlite` (the web backing store for `@capacitor-community/sqlite`,
+used so SQLite can be tested in a browser without Android Studio) ships
+precompiled JS glue built against `sql.js@1.11.0`'s wasm ABI. A newer `sql.js`
+(1.14.2, which still satisfies jeep-sqlite's own `^1.11.0` dependency range)
+throws `WebAssembly.instantiate(): LinkError: ... function import requires a
+callable` at runtime — a silent-looking hang, not an obvious error, until you
+check the browser console.
+**Impact**: Don't `npm update sql.js` or let it float to a newer version without
+re-verifying the `db: ready` badge in the browser (see `app/sqlite-schema` in
+`TASKS.md`). This only affects the web dev/test path — native Android builds use
+the platform's real SQLite via the Capacitor plugin, not this wasm build.
+
 ### Project name: "Lasenggo 3000"
 **Decision**: Renamed from working title "TagayBox" to "Lasenggo 3000."
 **Why**: Purely a naming preference — funnier, more memorable. "Lasenggo" (drunkard) +

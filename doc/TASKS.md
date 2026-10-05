@@ -24,12 +24,11 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
   list, session screen, styling); Android Studio / a device is only needed once BLE
   is involved, since Bluetooth doesn't work in a desktop browser.
 - Current status: `app/project-scaffold`, `app/participant-list`,
-  `app/active-session-screen`, `app/turn-manager`, and `app/pour-volume-setting`
-  are done. Pass fully works end to end (local-only); pour volume is selectable
-  but not yet consumed by anything. Natural next steps: `app/local-event-logging`
-  (Pass/Pour currently log nothing) or `app/ble-connect`+`app/ble-commands` (to
-  make Pour do something and actually use the selected volume — note hardware
-  isn't sourced yet per CONTEXT.md, so this may be blocked until that happens).
+  `app/active-session-screen`, `app/turn-manager`, `app/pour-volume-setting`, and
+  `app/sqlite-schema` are done. Pass works end to end but logs nothing to
+  storage yet. Natural next step: `app/local-event-logging` — wire
+  useTurnManager's `onEvent` callback to actually write session/participant/
+  event rows via `src/features/storage/db.js`.
 - **Process note**: doc updates (this file's checkboxes, and any EXAMPLES.md/
   ARCHITECTURE.md notes) now go in the same branch/commit as the feature work,
   before pushing — not as a separate follow-up commit after merge. Matches the
@@ -125,9 +124,15 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
   - Owner: _unassigned_ · Branch: `app/ble-reconnect-handling`
 
 ### App — Local data (SQLite, offline-first)
-- [ ] Set up `@capacitor-community/sqlite`, create local schema: `sessions`,
+- [x] Set up `@capacitor-community/sqlite`, create local schema: `sessions`,
       `participants`, `events` tables (+ `synced` flag per row)
-  - Owner: _unassigned_ · Branch: `app/sqlite-schema`
+  - Owner: fumio65 · Branch: `app/sqlite-schema` · Done 2026-10-05 — connection +
+    CREATE TABLE IF NOT EXISTS for all three tables in
+    `src/features/storage/db.js`, matches ARCHITECTURE.md schema. Web testing
+    needs `jeep-sqlite` + a matching `sql.js` wasm (pinned to exactly 1.11.0 —
+    newer sql.js versions throw a WebAssembly LinkError against jeep-sqlite's
+    bundled JS glue, so don't bump this without re-verifying in browser). No
+    read/write of actual rows yet (app/local-event-logging).
 - [ ] Write session/participant/event records locally on every Pour/Pass action
   - Owner: _unassigned_ · Branch: `app/local-event-logging`
 - [ ] Verify app is fully usable with zero internet (manual offline test pass)
