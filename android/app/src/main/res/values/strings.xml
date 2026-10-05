@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Lasenggo 3000</string>
+    <string name="title_activity_main">Lasenggo 3000</string>
+    <string name="package_name">com.lasenggo3000.app</string>
+    <string name="custom_url_scheme">com.lasenggo3000.app</string>
+</resources>
