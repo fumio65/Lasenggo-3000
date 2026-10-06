@@ -6,6 +6,7 @@ import { useParticipants } from './features/session/useParticipants'
 import { initDatabase } from './features/storage/db'
 import { createSession, endSession } from './features/storage/sessionQueries'
 import { ensureAnonymousSession } from './features/sync/auth'
+import { runSync } from './features/sync/syncJob'
 
 function App() {
   const { participants, addParticipant, removeParticipant, moveParticipant } =
@@ -51,6 +52,31 @@ function App() {
       })
   }, [])
 
+  // Sync job (backend/sync-job) — pushes unsynced local rows to Supabase.
+  // Only meaningful once both the local DB and an anonymous session are
+  // ready; otherwise there's either nothing to read or no device_id to push
+  // under. A failed/offline sync just leaves rows queued, so this never
+  // blocks or breaks the local-first flow above.
+  const [syncStatus, setSyncStatus] = useState('idle')
+
+  async function triggerSync() {
+    setSyncStatus('syncing')
+    const result = await runSync()
+    if (result.ok) {
+      setSyncStatus('done')
+    } else if (result.reason === 'not-configured' || result.reason === 'not-signed-in') {
+      setSyncStatus('offline')
+    } else {
+      setSyncStatus('error')
+    }
+  }
+
+  useEffect(() => {
+    if (dbStatus === 'ready' && authStatus === 'ready') {
+      triggerSync()
+    }
+  }, [dbStatus, authStatus])
+
   async function handleStartSession() {
     setStarting(true)
     try {
@@ -74,6 +100,7 @@ function App() {
     }
     setSessionId(null)
     setScreen('participants')
+    triggerSync() // session just ended — a natural moment to push it (backend/sync-job)
   }
 
   return (
@@ -121,6 +148,17 @@ function App() {
           }`}
         >
           db: {dbStatus}
+        </div>
+        <div
+          className={`rounded px-2 py-1 ${
+            syncStatus === 'done'
+              ? 'bg-emerald-950 text-emerald-400'
+              : syncStatus === 'error'
+                ? 'bg-red-950 text-red-400'
+                : 'bg-neutral-900 text-neutral-500'
+          }`}
+        >
+          sync: {syncStatus}
         </div>
       </div>
     </>

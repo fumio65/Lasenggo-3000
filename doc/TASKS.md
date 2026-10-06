@@ -182,9 +182,23 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
     Required enabling "Allow anonymous sign-ins" in the Supabase dashboard
     (Authentication → Sign In / Providers) — off by default on new projects. Verified
     manually: same device id persists across page refresh/hard refresh.
-- [ ] Implement sync job: push unsynced local rows to Supabase when online, mark
+- [x] Implement sync job: push unsynced local rows to Supabase when online, mark
       `synced_at` locally on success
-  - Owner: _unassigned_ · Branch: `backend/sync-job`
+  - Owner: fumio65 · Branch: `backend/sync-job` · Done: 2026-10-06
+  - Notes: `src/features/sync/syncJob.js` — `runSync()` pushes unsynced sessions,
+    then participants, then events (parents before children, so Supabase FKs are
+    satisfied) via `supabase.from(...).upsert(...)`, and marks each pushed row
+    synced locally only after the push succeeds (`sessions.synced_at`,
+    `participants.synced`/`events.synced` flip in the same pass). A failed/offline
+    sync returns `{ ok: false, reason }` without throwing — unsynced rows just stay
+    queued for the next call, matching the offline-first model. `device_id` is
+    stamped from `getDeviceId()` at push time (not at local row creation), so
+    `backend/anonymous-auth` doesn't need to be ready when a session starts.
+    Wired into `App.jsx`: fires once both `db` and `auth` are ready, and again after
+    a session ends; temporary `sync: <status>` debug badge added alongside the
+    existing `auth:`/`db:` ones. Verified manually: ran a full session, confirmed
+    the session/participants/events rows landed correctly in Supabase (checked via
+    `execute_sql`) with matching ids and foreign keys.
 - [ ] Test offline → online transition (queue builds up offline, flushes on reconnect)
   - Owner: _unassigned_ · Branch: `backend/sync-reconnect-test`
 
