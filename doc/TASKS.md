@@ -292,7 +292,22 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
 - [ ] Battery status reporting (`BATTERY_LOW` notification)
 - [ ] Pace-awareness indicator (soft, non-gatekeeping)
 - [ ] Sound/haptic feedback on pour complete
-- [ ] "Tagay King/Queen" end-of-session leaderboard (cross-session ranking)
+- [ ] "Tagay King/Queen" leaderboard — two halves, designed 2026-10-06, not started:
+      (A) per-session crown: whoever poured the most *in that one session*, shown on
+      HistoryDetail — blocked on app/ble-commands existing for real (there's no
+      meaningful way to test it while Pour stays disabled/stubbed; a "simulate
+      pour (dev)" button was tried and discarded as a workaround, not worth
+      keeping). (B) all-time cross-session leaderboard — needs a recurring
+      "people" roster (new local `people` table + `participants.person_id`
+      linking a session's participant back to a roster person when picked from
+      a reuse list at session start, instead of retyping; new Participants
+      screen to rename/delete roster entries, no "add" button there — adding
+      happens organically by typing a new name at session start), since
+      cross-session aggregation by name alone is unreliable (name collisions/
+      typos). Roster should sync to Supabase like sessions/participants/events
+      already do (user confirmed). Build order: (A) first once Pour is real,
+      then (B)'s roster + all-time board.
+  - Owner: _unassigned_ · Branch: _tbd_
 - [ ] QR code BLE pairing
 - [ ] Spill containment in enclosure design (raised lip / drip tray)
 - [ ] Undo last action (safety net)
