@@ -199,8 +199,21 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
     existing `auth:`/`db:` ones. Verified manually: ran a full session, confirmed
     the session/participants/events rows landed correctly in Supabase (checked via
     `execute_sql`) with matching ids and foreign keys.
-- [ ] Test offline → online transition (queue builds up offline, flushes on reconnect)
-  - Owner: _unassigned_ · Branch: `backend/sync-reconnect-test`
+- [x] Test offline → online transition (queue builds up offline, flushes on reconnect)
+  - Owner: fumio65 · Branch: `backend/sync-reconnect-test` · Done: 2026-10-06
+  - Notes: Added a `window.addEventListener('online', ...)` handler in `App.jsx`
+    that re-runs `triggerSync()` the moment the browser/WebView regains
+    connectivity, instead of only syncing on app load / after a session ends.
+    Also fixed `syncJob.js`'s error classification: a failed push while offline
+    now reports `reason: 'offline'` (checked via `navigator.onLine`, since
+    supabase-js throws different error shapes — plain `TypeError` vs.
+    `AuthRetryableFetchError` — depending on which call failed) instead of a
+    generic `'error'`, so the debug badge reads accurately.
+    Verified manually: went offline (DevTools Network → Offline), ran a full
+    session (badge showed `sync: offline`, rows stayed queued locally), then
+    went back online — `sync` auto-flipped to `syncing` → `done` with no reload,
+    and the session/participants/events rows confirmed landing in Supabase
+    (`execute_sql` row counts increased accordingly).
 
 ### App — Session history (moved up from backlog — user wants history visible in MVP)
 - [x] History list screen: past sessions (date, participant count) pulled from local
