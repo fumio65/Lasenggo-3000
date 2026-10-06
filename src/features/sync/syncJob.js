@@ -31,9 +31,27 @@ export async function runSync() {
       pushed: { sessionsPushed, participantsPushed, eventsPushed },
     }
   } catch (err) {
+    if (isNetworkError(err)) {
+      // Expected whenever there's no connection — not a real failure, just the
+      // normal "offline" case this task tests for. Rows stay queued either way.
+      console.warn('Sync skipped, no connection — unsynced rows stay queued', err)
+      return { ok: false, reason: 'offline', error: err }
+    }
     console.error('Sync failed, unsynced rows stay queued for next attempt', err)
     return { ok: false, reason: 'error', error: err }
   }
+}
+
+// supabase-js wraps a failed fetch in different shapes depending on which
+// call failed (a plain TypeError from the raw fetch, or an
+// AuthRetryableFetchError/AuthUnknownError from the auth client), so matching
+// the error itself is brittle. navigator.onLine is the one signal the
+// browser/WebView gives directly for "no connection" and is reliable enough
+// for this: if we're offline, any failure here is the expected offline case,
+// not a real bug.
+function isNetworkError(err) {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return true
+  return err instanceof TypeError && /fetch|network/i.test(err.message ?? '')
 }
 
 async function syncSessions(db, deviceId) {

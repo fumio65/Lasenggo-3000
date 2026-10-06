@@ -64,7 +64,11 @@ function App() {
     const result = await runSync()
     if (result.ok) {
       setSyncStatus('done')
-    } else if (result.reason === 'not-configured' || result.reason === 'not-signed-in') {
+    } else if (
+      result.reason === 'not-configured' ||
+      result.reason === 'not-signed-in' ||
+      result.reason === 'offline'
+    ) {
       setSyncStatus('offline')
     } else {
       setSyncStatus('error')
@@ -75,6 +79,20 @@ function App() {
     if (dbStatus === 'ready' && authStatus === 'ready') {
       triggerSync()
     }
+  }, [dbStatus, authStatus])
+
+  // Reconnect handling (backend/sync-reconnect-test) — the browser/WebView's
+  // 'online' event fires when connectivity comes back after being offline, which
+  // is exactly the moment a queue of unsynced rows should get flushed without
+  // waiting for the user to end a session or reload the app.
+  useEffect(() => {
+    function handleOnline() {
+      if (dbStatus === 'ready' && authStatus === 'ready') {
+        triggerSync()
+      }
+    }
+    window.addEventListener('online', handleOnline)
+    return () => window.removeEventListener('online', handleOnline)
   }, [dbStatus, authStatus])
 
   async function handleStartSession() {
