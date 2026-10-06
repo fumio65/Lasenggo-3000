@@ -53,7 +53,7 @@ export async function runSync() {
 
 async function syncSessions(db, deviceId) {
   const result = await db.query(
-    'SELECT id, started_at, ended_at FROM sessions WHERE synced_at IS NULL',
+    'SELECT id, name, started_at, ended_at FROM sessions WHERE synced_at IS NULL',
   )
   const rows = result.values ?? []
   if (rows.length === 0) return 0
@@ -61,6 +61,7 @@ async function syncSessions(db, deviceId) {
   const payload = rows.map((r) => ({
     id: r.id,
     device_id: deviceId,
+    name: r.name,
     started_at: r.started_at,
     ended_at: r.ended_at,
   }))

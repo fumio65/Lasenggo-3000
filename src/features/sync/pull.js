@@ -36,7 +36,7 @@ export async function pullSessions() {
   try {
     const { data: remoteSessions, error: sessionsError } = await supabase
       .from('sessions')
-      .select('id, started_at, ended_at')
+      .select('id, name, started_at, ended_at')
       .eq('device_id', deviceId)
     if (sessionsError) throw sessionsError
     if (!remoteSessions || remoteSessions.length === 0) return { ok: true, pulled: 0 }
@@ -63,8 +63,8 @@ export async function pullSessions() {
     const set = [
       ...missingSessions.map((s) => ({
         statement:
-          'INSERT OR IGNORE INTO sessions (id, device_id, started_at, ended_at, synced_at) VALUES (?, ?, ?, ?, ?)',
-        values: [s.id, deviceId, s.started_at, s.ended_at, now],
+          'INSERT OR IGNORE INTO sessions (id, device_id, name, started_at, ended_at, synced_at) VALUES (?, ?, ?, ?, ?, ?)',
+        values: [s.id, deviceId, s.name, s.started_at, s.ended_at, now],
       })),
       ...(remoteParticipants ?? []).map((p) => ({
         statement: 'INSERT OR IGNORE INTO participants (id, session_id, name, synced) VALUES (?, ?, ?, 1)',

@@ -67,6 +67,8 @@ flowchart LR
 sessions (
   id uuid primary key,
   device_id text,            -- anonymous auth user id
+  name text,                 -- optional custom title (app/session-naming);
+                              -- null falls back to showing started_at in the UI
   started_at timestamptz,
   ended_at timestamptz,
   synced_at timestamptz      -- null until successfully pushed to Supabase

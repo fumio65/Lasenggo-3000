@@ -13,6 +13,7 @@ function App() {
     useParticipants()
   const [screen, setScreen] = useState('participants') // 'participants' | 'session' | 'history'
   const [sessionId, setSessionId] = useState(null)
+  const [sessionName, setSessionName] = useState('')
   const [starting, setStarting] = useState(false)
 
   // Schema setup (app/sqlite-schema) — dev-visible check that the connection +
@@ -95,11 +96,12 @@ function App() {
     return () => window.removeEventListener('online', handleOnline)
   }, [dbStatus, authStatus])
 
-  async function handleStartSession() {
+  async function handleStartSession(name) {
     setStarting(true)
     try {
-      const id = await createSession(participants)
+      const id = await createSession(participants, name)
       setSessionId(id)
+      setSessionName(name.trim())
       setScreen('session')
     } catch (err) {
       console.error('Failed to start session', err)
@@ -117,6 +119,7 @@ function App() {
       }
     }
     setSessionId(null)
+    setSessionName('')
     setScreen('participants')
     triggerSync() // session just ended — a natural moment to push it (backend/sync-job)
   }
@@ -127,6 +130,7 @@ function App() {
         <ActiveSessionScreen
           participants={participants}
           sessionId={sessionId}
+          sessionName={sessionName}
           onExit={handleExitSession}
         />
       )}

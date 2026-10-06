@@ -11,16 +11,19 @@ import { getDatabase } from './db'
 
 /** Creates a session row and a participant row per participant, in one
  * transaction. Returns the new session id. Participant ids are kept as-is
- * (from `useParticipants`) so UI state and stored rows share the same id. */
-export async function createSession(participants) {
+ * (from `useParticipants`) so UI state and stored rows share the same id.
+ * `name` is optional (app/session-naming) — a blank/whitespace-only name is
+ * stored as NULL so history can fall back to showing the date instead. */
+export async function createSession(participants, name = '') {
   const db = getDatabase()
   const sessionId = crypto.randomUUID()
   const startedAt = new Date().toISOString()
+  const trimmedName = name.trim() || null
 
   const set = [
     {
-      statement: 'INSERT INTO sessions (id, device_id, started_at, ended_at, synced_at) VALUES (?, NULL, ?, NULL, NULL)',
-      values: [sessionId, startedAt],
+      statement: 'INSERT INTO sessions (id, device_id, name, started_at, ended_at, synced_at) VALUES (?, NULL, ?, ?, NULL, NULL)',
+      values: [sessionId, trimmedName, startedAt],
     },
     ...participants.map((p) => ({
       statement: 'INSERT INTO participants (id, session_id, name, synced) VALUES (?, ?, ?, 0)',
@@ -66,7 +69,7 @@ export async function countEvents(sessionId) {
 export async function getSessionHistory() {
   const db = getDatabase()
   const result = await db.query(`
-    SELECT s.id, s.started_at, s.ended_at, COUNT(p.id) as participant_count
+    SELECT s.id, s.name, s.started_at, s.ended_at, COUNT(p.id) as participant_count
     FROM sessions s
     LEFT JOIN participants p ON p.session_id = s.id
     GROUP BY s.id

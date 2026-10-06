@@ -53,11 +53,16 @@ export function ParticipantList({
   onViewHistory,
 }) {
   const [name, setName] = useState('')
+  const [sessionName, setSessionName] = useState('')
 
   function handleSubmit(e) {
     e.preventDefault()
     onAdd(name)
     setName('')
+  }
+
+  function handleStart() {
+    onStartSession(sessionName)
   }
 
   return (
@@ -114,9 +119,19 @@ export function ParticipantList({
           </ul>
         )}
 
+        {/* app/session-naming: optional — a blank name falls back to showing
+            the date in history (see sessionQueries.js / HistoryList.jsx). */}
+        <input
+          type="text"
+          value={sessionName}
+          onChange={(e) => setSessionName(e.target.value)}
+          placeholder="Session name (optional)"
+          className="w-full rounded-lg bg-neutral-900 px-4 py-2 text-neutral-100 placeholder-neutral-500 outline-none ring-1 ring-neutral-800 focus:ring-2 focus:ring-neutral-500"
+        />
+
         <button
           type="button"
-          onClick={onStartSession}
+          onClick={handleStart}
           disabled={participants.length < 2 || startingSession}
           className="w-full rounded-lg bg-neutral-100 px-4 py-3 font-semibold text-neutral-950 disabled:opacity-30"
         >
