@@ -1,6 +1,7 @@
 import { supabase } from './supabaseClient'
 import { getDeviceId } from './auth'
 import { getDatabase } from '../storage/db'
+import { isNetworkError } from './networkError'
 
 /**
  * Pushes unsynced local rows (sessions -> participants -> events, parents
@@ -16,6 +17,12 @@ import { getDatabase } from '../storage/db'
  */
 export async function runSync() {
   if (!supabase) return { ok: false, reason: 'not-configured' }
+
+  // Skip straight to the offline case instead of letting a fetch hang/time
+  // out when the browser already knows there's no connection.
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return { ok: false, reason: 'offline' }
+  }
 
   const deviceId = await getDeviceId()
   if (!deviceId) return { ok: false, reason: 'not-signed-in' }
@@ -42,17 +49,7 @@ export async function runSync() {
   }
 }
 
-// supabase-js wraps a failed fetch in different shapes depending on which
-// call failed (a plain TypeError from the raw fetch, or an
-// AuthRetryableFetchError/AuthUnknownError from the auth client), so matching
-// the error itself is brittle. navigator.onLine is the one signal the
-// browser/WebView gives directly for "no connection" and is reliable enough
-// for this: if we're offline, any failure here is the expected offline case,
-// not a real bug.
-function isNetworkError(err) {
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) return true
-  return err instanceof TypeError && /fetch|network/i.test(err.message ?? '')
-}
+
 
 async function syncSessions(db, deviceId) {
   const result = await db.query(
