@@ -17,7 +17,7 @@ import { logEvent, countEvents } from '../storage/sessionQueries'
  *  - The status indicator shows a fixed "Not connected" state — real STATUS
  *    values from the ESP32 arrive via `app/ble-status-subscription`.
  */
-export function ActiveSessionScreen({ participants, sessionId, onExit }) {
+export function ActiveSessionScreen({ participants, sessionId, sessionName, onExit }) {
   // Temporary debug readout — remove once app/history-list exists to show
   // logged events properly.
   const [eventCount, setEventCount] = useState(0)
@@ -44,6 +44,12 @@ export function ActiveSessionScreen({ participants, sessionId, onExit }) {
         >
           ← Back to participants
         </button>
+
+        {/* app/session-naming: only rendered when a name was given at
+            Start Session — a blank name stays date-only everywhere else too */}
+        {sessionName && (
+          <h2 className="text-lg font-semibold text-neutral-300">{sessionName}</h2>
+        )}
 
         <div className="flex items-center gap-2 rounded-full bg-neutral-900 px-4 py-1.5 text-xs font-medium uppercase tracking-wide text-neutral-400">
           <span className="h-2 w-2 rounded-full bg-neutral-600" />

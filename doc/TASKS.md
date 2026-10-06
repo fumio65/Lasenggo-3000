@@ -254,6 +254,24 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
     DevTools blocks the dev server too" (a testing artifact — not an issue in the
     built APK, which bundles its own assets) vs. "page already loaded, then went
     offline" (the real-world case, which works correctly).
+- [x] Session naming (pulled up from backlog, user-requested)
+  - Owner: fumio65 · Branch: `app/session-naming` · Done: 2026-10-06
+  - Notes: Added optional `sessions.name text` (local SQLite via a
+    `migrateAddSessionName()` `ALTER TABLE` step in `db.js`, since `CREATE TABLE
+    IF NOT EXISTS` doesn't add columns to an already-existing table; matching
+    Supabase migration `add_session_name`, applied and verified via
+    `information_schema.columns`). `createSession(participants, name)` trims and
+    stores `NULL` for a blank name so history/detail/active-session all fall back
+    to the formatted date exactly as before. New "Session name (optional)" input
+    on `ParticipantList`; name shown (with date as a subline) in `HistoryList`,
+    `HistoryDetail`, and now `ActiveSessionScreen` during the live session too.
+    `syncJob.js`/`pull.js` updated to push/pull the column. Schema documented in
+    `ARCHITECTURE.md`.
+    Verified manually: named and unnamed sessions both behave correctly end to
+    end (local SQLite + Supabase, history list/detail, live session header).
+    Noted during testing (not part of this task, added to Backlog instead):
+    the browser's native back button doesn't map to in-app screens, since
+    screen switching is local React state only, not router-backed.
 
 ### Integration & QA
 - [ ] Full end-to-end test: app + firmware + hardware, multiple participants, multiple
@@ -275,13 +293,16 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
 - [ ] Pace-awareness indicator (soft, non-gatekeeping)
 - [ ] Sound/haptic feedback on pour complete
 - [ ] "Tagay King/Queen" end-of-session leaderboard (cross-session ranking)
-- [ ] Session naming (custom titles like "Jojo's Birthday" — basic history list/detail
-      is now in Sprint 1, naming is the deferred part)
 - [ ] QR code BLE pairing
 - [ ] Spill containment in enclosure design (raised lip / drip tray)
 - [ ] Undo last action (safety net)
 - [ ] Pass limit house rule (optional toggle)
 - [ ] Multiple pour stations (v2 scalability — architecture TBD, see `tagaybox_spec.md`)
+- [ ] Real browser back/forward support for in-app screens (participants/session/
+      history currently switch via local React state only, per EXAMPLES.md's
+      documented pattern — the browser's native back button just navigates away
+      from the page instead of going to the previous screen; noted during
+      app/session-naming testing. Needs a routing solution, not a quick fix)
 
 ---
 

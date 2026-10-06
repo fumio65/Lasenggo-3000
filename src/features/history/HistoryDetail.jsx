@@ -28,8 +28,15 @@ export function HistoryDetail({ sessionId, onBack }) {
             ← Back to history
           </button>
           <h1 className="text-2xl font-bold tracking-tight">
-            {loading || !detail?.session ? 'Session' : formatDate(detail.session.started_at)}
+            {loading || !detail?.session
+              ? 'Session'
+              : detail.session.name || formatDate(detail.session.started_at)}
           </h1>
+          {/* app/session-naming: show the date as a subline too once a session
+              has a custom name, so it's not lost from view */}
+          {!loading && detail?.session?.name && (
+            <p className="text-sm text-neutral-500">{formatDate(detail.session.started_at)}</p>
+          )}
         </header>
 
         {loading ? (

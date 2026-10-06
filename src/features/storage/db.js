@@ -18,6 +18,7 @@ const SCHEMA = `
   CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
     device_id TEXT,
+    name TEXT,
     started_at TEXT,
     ended_at TEXT,
     synced_at TEXT
@@ -62,7 +63,23 @@ export async function initDatabase() {
 
   await db.open()
   await db.execute(SCHEMA)
+  await migrateAddSessionName()
   return db
+}
+
+/**
+ * app/session-naming: adds `sessions.name` for installs that already created
+ * the table before this column existed (the SCHEMA's `CREATE TABLE IF NOT
+ * EXISTS` above only applies to brand-new tables). Safe to call every start
+ * — SQLite has no `ADD COLUMN IF NOT EXISTS`, so a "duplicate column" error
+ * means it's already there and is swallowed; any other error rethrows.
+ */
+async function migrateAddSessionName() {
+  try {
+    await db.execute('ALTER TABLE sessions ADD COLUMN name TEXT')
+  } catch (err) {
+    if (!/duplicate column/i.test(err.message ?? '')) throw err
+  }
 }
 
 /** Returns the open connection. Throws if `initDatabase()` hasn't run yet. */

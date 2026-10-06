@@ -53,8 +53,19 @@ export function HistoryList({ onBack, onSelect }) {
                   onClick={() => onSelect(s.id)}
                   className="flex w-full items-center justify-between rounded-lg bg-neutral-900 px-4 py-3 text-left transition hover:bg-neutral-800"
                 >
-                  <span className="text-neutral-100">{formatDate(s.started_at)}</span>
-                  <span className="text-sm text-neutral-500">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-neutral-100">
+                      {s.name || formatDate(s.started_at)}
+                    </span>
+                    {/* app/session-naming: show the date as a subline too once a
+                        session has a custom name, so it's not lost from view */}
+                    {s.name && (
+                      <span className="block text-xs text-neutral-500">
+                        {formatDate(s.started_at)}
+                      </span>
+                    )}
+                  </span>
+                  <span className="shrink-0 pl-3 text-sm text-neutral-500">
                     {s.participant_count} participant{s.participant_count === 1 ? '' : 's'}
                   </span>
                 </button>
