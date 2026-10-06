@@ -232,9 +232,28 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
     local-state convention as App.jsx, see EXAMPLES.md). History rows are now
     clickable. Verified: real pour/pass counts from a tested session displayed
     correctly.
-- [ ] History reflects synced Supabase data when available, falls back to local-only
+- [x] History reflects synced Supabase data when available, falls back to local-only
       sessions when offline/unsynced (no broken state either way)
-  - Owner: _unassigned_ · Branch: `app/history-sync-fallback`
+  - Owner: fumio65 · Branch: `app/history-sync-fallback` · Done: 2026-10-06
+  - Notes: History still reads from local SQLite only (unchanged — stays the single
+    source of truth per ARCHITECTURE.md), but `useSessionHistory` now calls a new
+    `pullSessions()` (`src/features/sync/pull.js`) before that read: pulls this
+    device's sessions/participants/events from Supabase and inserts any missing
+    locally (covers reinstall / cleared local DB), marking pulled rows already
+    synced. A skipped/failed pull (offline, not configured, not signed in) just
+    means the local read proceeds with whatever's already there — that omission
+    *is* the fallback, no separate error state needed. `HistoryList` shows a quiet
+    `synced` / `local only` indicator reflecting whether the last pull succeeded.
+    Extracted the online/offline detection both `pull.js` and `syncJob.js` share
+    into `src/features/sync/networkError.js`; also added an early
+    `navigator.onLine` check to both so an offline call reports immediately
+    instead of waiting on a fetch to time out.
+    Verified manually: history loads fine fully offline (local-only, labeled
+    correctly); going offline mid-session and reopening history does not hang or
+    break; confirmed the behavior difference between "page never loaded because
+    DevTools blocks the dev server too" (a testing artifact — not an issue in the
+    built APK, which bundles its own assets) vs. "page already loaded, then went
+    offline" (the real-world case, which works correctly).
 
 ### Integration & QA
 - [ ] Full end-to-end test: app + firmware + hardware, multiple participants, multiple

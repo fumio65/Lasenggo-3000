@@ -13,7 +13,7 @@ function formatDate(isoString) {
  * `HistoryDetail` via `onSelect` (`app/history-detail`).
  */
 export function HistoryList({ onBack, onSelect }) {
-  const { sessions, loading } = useSessionHistory()
+  const { sessions, loading, syncedFromCloud } = useSessionHistory()
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 p-6">
@@ -26,7 +26,16 @@ export function HistoryList({ onBack, onSelect }) {
           >
             ← Back
           </button>
-          <h1 className="text-2xl font-bold tracking-tight">Session History</h1>
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-bold tracking-tight">Session History</h1>
+            {/* app/history-sync-fallback: lets offline/local-only mode be eyeballed
+                during testing; harmless to leave as a quiet status indicator. */}
+            {!loading && (
+              <span className="text-[10px] font-mono text-neutral-600">
+                {syncedFromCloud ? 'synced' : 'local only'}
+              </span>
+            )}
+          </div>
         </header>
 
         {loading ? (
