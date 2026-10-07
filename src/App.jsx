@@ -14,6 +14,7 @@ function App() {
   const [screen, setScreen] = useState('participants') // 'participants' | 'session' | 'history'
   const [sessionId, setSessionId] = useState(null)
   const [sessionName, setSessionName] = useState('')
+  const [passLimit, setPassLimit] = useState(null)
   const [starting, setStarting] = useState(false)
 
   // Schema setup (app/sqlite-schema) — dev-visible check that the connection +
@@ -96,12 +97,13 @@ function App() {
     return () => window.removeEventListener('online', handleOnline)
   }, [dbStatus, authStatus])
 
-  async function handleStartSession(name) {
+  async function handleStartSession(name, sessionPassLimit) {
     setStarting(true)
     try {
       const id = await createSession(participants, name)
       setSessionId(id)
       setSessionName(name.trim())
+      setPassLimit(sessionPassLimit)
       setScreen('session')
     } catch (err) {
       console.error('Failed to start session', err)
@@ -120,6 +122,7 @@ function App() {
     }
     setSessionId(null)
     setSessionName('')
+    setPassLimit(null)
     setScreen('participants')
     triggerSync() // session just ended — a natural moment to push it (backend/sync-job)
   }
@@ -131,6 +134,7 @@ function App() {
           participants={participants}
           sessionId={sessionId}
           sessionName={sessionName}
+          passLimit={passLimit}
           onExit={handleExitSession}
         />
       )}

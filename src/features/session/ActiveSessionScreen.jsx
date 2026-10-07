@@ -17,7 +17,7 @@ import { logEvent, countEvents } from '../storage/sessionQueries'
  *  - The status indicator shows a fixed "Not connected" state — real STATUS
  *    values from the ESP32 arrive via `app/ble-status-subscription`.
  */
-export function ActiveSessionScreen({ participants, sessionId, sessionName, onExit }) {
+export function ActiveSessionScreen({ participants, sessionId, sessionName, passLimit, onExit }) {
   // Temporary debug readout — remove once app/history-list exists to show
   // logged events properly.
   const [eventCount, setEventCount] = useState(0)
@@ -25,7 +25,8 @@ export function ActiveSessionScreen({ participants, sessionId, sessionName, onEx
     if (sessionId) countEvents(sessionId).then(setEventCount)
   }, [sessionId])
 
-  const { current, onPass } = useTurnManager(participants, {
+  const { current, onPass, currentPassStreak, isOverPassLimit } = useTurnManager(participants, {
+    passLimit,
     onEvent: (type, participant) => {
       logEvent(sessionId, participant.id, type)
         .then(() => countEvents(sessionId).then(setEventCount))
@@ -60,6 +61,14 @@ export function ActiveSessionScreen({ participants, sessionId, sessionName, onEx
           <p className="text-sm text-neutral-500">Current turn</p>
           <h1 className="text-4xl font-bold tracking-tight">{current?.name ?? '—'}</h1>
         </div>
+
+        {/* app/pass-limit-house-rule: soft warning only — Pass stays enabled.
+            Pour would be the "real" next step once it works for real. */}
+        {isOverPassLimit && (
+          <p className="rounded-lg bg-amber-950/40 px-4 py-2 text-center text-sm text-amber-400 ring-1 ring-amber-700/50">
+            House rule: {current?.name} has passed {currentPassStreak}x in a row
+          </p>
+        )}
 
         <div className="w-full space-y-2">
           <p className="text-center text-xs text-neutral-500">Pour volume</p>
