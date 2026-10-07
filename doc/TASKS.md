@@ -311,7 +311,24 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
 - [ ] QR code BLE pairing
 - [ ] Spill containment in enclosure design (raised lip / drip tray)
 - [ ] Undo last action (safety net)
-- [ ] Pass limit house rule (optional toggle)
+- [x] Pass limit house rule (optional toggle) — Owner: fumio65 · Branch:
+      `app/pass-limit-house-rule` · Done: 2026-10-07
+  - Notes: `useTurnManager` now tracks each participant's *consecutive* pass
+    streak (resets to 0 on their Pour), and takes an optional `passLimit`
+    integer; `isOverPassLimit` is true once the current participant's streak
+    reaches it. Deliberately a **soft** warning only — Pass is never disabled.
+    A hard block was considered and rejected for now: Pour is still disabled
+    (no BLE/app/ble-commands), so forcing someone past the limit would leave
+    them with no valid action and the session would just get stuck. Once Pour
+    is real, `isOverPassLimit` already has everything needed to make it a real
+    forced-pour rule if wanted — no rework, just a caller-side decision.
+    New optional "Pass limit" number input on `ParticipantList` (blank/0/
+    invalid = disabled, same convention as session naming). `ActiveSessionScreen`
+    shows a yellow warning banner ("House rule: `<name>` has passed Nx in a
+    row") once hit.
+    Verified manually: warning appears exactly on the configured count and
+    stays visible without blocking Pass; leaving the field blank produces no
+    warning at all, confirming it's fully optional.
 - [ ] Multiple pour stations (v2 scalability — architecture TBD, see `tagaybox_spec.md`)
 - [ ] Real browser back/forward support for in-app screens (participants/session/
       history currently switch via local React state only, per EXAMPLES.md's

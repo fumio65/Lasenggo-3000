@@ -54,6 +54,7 @@ export function ParticipantList({
 }) {
   const [name, setName] = useState('')
   const [sessionName, setSessionName] = useState('')
+  const [passLimitInput, setPassLimitInput] = useState('')
 
   function handleSubmit(e) {
     e.preventDefault()
@@ -62,7 +63,11 @@ export function ParticipantList({
   }
 
   function handleStart() {
-    onStartSession(sessionName)
+    // app/pass-limit-house-rule: blank/invalid/non-positive stays disabled
+    // (null), matching useTurnManager's `passLimit` contract.
+    const parsedLimit = parseInt(passLimitInput, 10)
+    const passLimit = Number.isInteger(parsedLimit) && parsedLimit > 0 ? parsedLimit : null
+    onStartSession(sessionName, passLimit)
   }
 
   return (
@@ -128,6 +133,20 @@ export function ParticipantList({
           placeholder="Session name (optional)"
           className="w-full rounded-lg bg-neutral-900 px-4 py-2 text-neutral-100 placeholder-neutral-500 outline-none ring-1 ring-neutral-800 focus:ring-2 focus:ring-neutral-500"
         />
+
+        {/* app/pass-limit-house-rule: optional — a blank/0 value disables it.
+            Soft rule only for now (see useTurnManager) — shows a warning once
+            someone's hit it, doesn't block Pass. */}
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            min="1"
+            value={passLimitInput}
+            onChange={(e) => setPassLimitInput(e.target.value)}
+            placeholder="Pass limit (optional)"
+            className="w-full rounded-lg bg-neutral-900 px-4 py-2 text-neutral-100 placeholder-neutral-500 outline-none ring-1 ring-neutral-800 focus:ring-2 focus:ring-neutral-500"
+          />
+        </div>
 
         <button
           type="button"
