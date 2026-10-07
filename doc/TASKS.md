@@ -310,7 +310,25 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
   - Owner: _unassigned_ · Branch: _tbd_
 - [ ] QR code BLE pairing
 - [ ] Spill containment in enclosure design (raised lip / drip tray)
-- [ ] Undo last action (safety net)
+- [x] Undo last action (safety net) — Owner: fumio65 · Branch:
+      `app/undo-last-action` · Done: 2026-10-07
+  - Notes: One level of undo only (not a history stack). `logEvent` now
+    returns the new row's id; `useTurnManager` snapshots `currentIndex` +
+    `passStreaks` right before each Pass/Pour (`undoSnapshot`, cleared to null
+    on undo or replaced on the next action) and exposes `canUndo`/`undoTurn()`
+    to restore it. `ActiveSessionScreen` pairs that with its own `lastEvent`
+    state (set once `logEvent` resolves) so `handleUndo` can call `undoTurn()`
+    (rewinds turn order + pass streak) and `deleteEvent(lastEvent.id)`
+    (removes exactly that row, not just "the newest row by time") together.
+    New `deleteEvent(eventId)` in `sessionQueries.js`.
+    Known limitation (accepted, not fixed here): if the event already synced
+    to Supabase before undo (rare — sync mainly runs at session end/reconnect,
+    not after every single event), the local delete doesn't reach the
+    Supabase copy too. Fine for a casual safety-net feature; flagged here in
+    case it matters later.
+    Verified manually: Undo correctly reverses the most recent Pass only
+    (turn order, pass-limit streak, and the event count all rewind together);
+    doing several Passes then one Undo only undoes the last one.
 - [x] Pass limit house rule (optional toggle) — Owner: fumio65 · Branch:
       `app/pass-limit-house-rule` · Done: 2026-10-07
   - Notes: `useTurnManager` now tracks each participant's *consecutive* pass

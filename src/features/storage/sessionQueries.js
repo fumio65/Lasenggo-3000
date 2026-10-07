@@ -35,14 +35,27 @@ export async function createSession(participants, name = '') {
   return sessionId
 }
 
-/** Logs one POUR/PASS event row for the given session + participant. */
+/** Logs one POUR/PASS event row for the given session + participant.
+ * Returns the new row's id so a caller can later target it precisely
+ * (app/undo-last-action uses this to undo exactly the event it logged, not
+ * just "the most recent row" by time, which could race). */
 export async function logEvent(sessionId, participantId, type) {
   const db = getDatabase()
+  const id = crypto.randomUUID()
   await db.run(
     'INSERT INTO events (id, session_id, participant_id, type, timestamp, synced) VALUES (?, ?, ?, ?, ?, 0)',
-    [crypto.randomUUID(), sessionId, participantId, type, new Date().toISOString()],
+    [id, sessionId, participantId, type, new Date().toISOString()],
     false,
   )
+  return id
+}
+
+/** Deletes one event row by id (app/undo-last-action). Only ever called for
+ * an event this device just logged a moment ago in the current session — see
+ * that task's notes for the known limitation if it already synced. */
+export async function deleteEvent(eventId) {
+  const db = getDatabase()
+  await db.run('DELETE FROM events WHERE id = ?', [eventId], false)
 }
 
 /** Marks a session as ended (used when exiting back to the participant list). */
