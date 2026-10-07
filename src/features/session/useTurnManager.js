@@ -21,10 +21,20 @@ import { useCallback, useState } from 'react'
  * Once Pour is real, the caller can choose to disable Pass on
  * `isOverPassLimit` for an actual forced-pour house rule — this hook
  * already has everything that decision needs.
+ *
+ * app/undo-last-action: before each Pass/Pour mutates `currentIndex`/
+ * `passStreaks`, a snapshot of both goes into `undoSnapshot` — one level
+ * only (undoing replaces it with null, so a second undo in a row has
+ * nothing to do). `undoTurn()` restores that snapshot. This hook only owns
+ * turn order/streaks; it doesn't know about the logged SQLite event row at
+ * all — the caller (ActiveSessionScreen) pairs a call to `undoTurn()` with
+ * deleting the right event itself, since this hook has no event ids to
+ * work with.
  */
 export function useTurnManager(participants, { onEvent, passLimit = null } = {}) {
   const [currentIndex, setCurrentIndex] = useState(0)
   const [passStreaks, setPassStreaks] = useState({})
+  const [undoSnapshot, setUndoSnapshot] = useState(null)
 
   const advanceTurn = useCallback(() => {
     setCurrentIndex((prev) =>
@@ -36,10 +46,11 @@ export function useTurnManager(participants, { onEvent, passLimit = null } = {})
     const current = participants[currentIndex]
     if (current) {
       onEvent?.('PASS', current)
+      setUndoSnapshot({ currentIndex, passStreaks })
       setPassStreaks((prev) => ({ ...prev, [current.id]: (prev[current.id] ?? 0) + 1 }))
     }
     advanceTurn()
-  }, [participants, currentIndex, onEvent, advanceTurn])
+  }, [participants, currentIndex, passStreaks, onEvent, advanceTurn])
 
   // Called once a POUR is confirmed by hardware (STATUS: POURED/HAS_DRINK).
   // Not reachable from the UI yet — app/ble-commands + app/ble-status-subscription
@@ -48,10 +59,18 @@ export function useTurnManager(participants, { onEvent, passLimit = null } = {})
     const current = participants[currentIndex]
     if (current) {
       onEvent?.('POUR', current)
+      setUndoSnapshot({ currentIndex, passStreaks })
       setPassStreaks((prev) => ({ ...prev, [current.id]: 0 }))
     }
     advanceTurn()
-  }, [participants, currentIndex, onEvent, advanceTurn])
+  }, [participants, currentIndex, passStreaks, onEvent, advanceTurn])
+
+  const undoTurn = useCallback(() => {
+    if (!undoSnapshot) return
+    setCurrentIndex(undoSnapshot.currentIndex)
+    setPassStreaks(undoSnapshot.passStreaks)
+    setUndoSnapshot(null)
+  }, [undoSnapshot])
 
   const safeIndex = currentIndex % Math.max(participants.length, 1)
   const current = participants[safeIndex]
@@ -65,5 +84,7 @@ export function useTurnManager(participants, { onEvent, passLimit = null } = {})
     onPourConfirmed,
     currentPassStreak,
     isOverPassLimit,
+    canUndo: undoSnapshot !== null,
+    undoTurn,
   }
 }

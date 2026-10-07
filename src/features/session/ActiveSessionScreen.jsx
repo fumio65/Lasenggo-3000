@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTurnManager } from './useTurnManager'
 import { usePourVolume } from '../pour/usePourVolume'
 import { PourVolumeSelector } from '../pour/PourVolumeSelector'
-import { logEvent, countEvents } from '../storage/sessionQueries'
+import { logEvent, deleteEvent, countEvents } from '../storage/sessionQueries'
 
 /**
  * Active session screen.
@@ -25,15 +25,33 @@ export function ActiveSessionScreen({ participants, sessionId, sessionName, pass
     if (sessionId) countEvents(sessionId).then(setEventCount)
   }, [sessionId])
 
-  const { current, onPass, currentPassStreak, isOverPassLimit } = useTurnManager(participants, {
-    passLimit,
-    onEvent: (type, participant) => {
-      logEvent(sessionId, participant.id, type)
-        .then(() => countEvents(sessionId).then(setEventCount))
-        .catch((err) => console.error(`Failed to log ${type} event`, err))
-    },
-  })
+  // app/undo-last-action: the event this device most recently logged, kept
+  // just long enough to undo it (one level only — cleared once undone or
+  // once the next action happens, since the snapshot below is one-level too).
+  const [lastEvent, setLastEvent] = useState(null)
+
+  const { current, onPass, currentPassStreak, isOverPassLimit, canUndo, undoTurn } =
+    useTurnManager(participants, {
+      passLimit,
+      onEvent: (type, participant) => {
+        logEvent(sessionId, participant.id, type)
+          .then((eventId) => {
+            setLastEvent({ id: eventId, type, participant })
+            return countEvents(sessionId).then(setEventCount)
+          })
+          .catch((err) => console.error(`Failed to log ${type} event`, err))
+      },
+    })
   const { volumeId, setVolumeId } = usePourVolume()
+
+  function handleUndo() {
+    if (!canUndo || !lastEvent) return
+    undoTurn()
+    deleteEvent(lastEvent.id)
+      .then(() => countEvents(sessionId).then(setEventCount))
+      .catch((err) => console.error('Failed to delete undone event', err))
+    setLastEvent(null)
+  }
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 p-6">
@@ -92,6 +110,18 @@ export function ActiveSessionScreen({ participants, sessionId, sessionName, pass
             Pass
           </button>
         </div>
+
+        {/* app/undo-last-action: only one level deep, and only for the
+            event this device itself just logged — not a history stack. */}
+        {canUndo && lastEvent && (
+          <button
+            type="button"
+            onClick={handleUndo}
+            className="text-xs text-neutral-500 underline-offset-2 hover:text-neutral-300 hover:underline"
+          >
+            Undo: {lastEvent.type === 'POUR' ? 'Pour' : 'Pass'} by {lastEvent.participant.name}
+          </button>
+        )}
 
         <p className="text-center text-xs text-neutral-600">
           {participants.length} participant{participants.length === 1 ? '' : 's'} in
