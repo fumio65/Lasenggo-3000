@@ -85,6 +85,7 @@ export async function initDatabase() {
   await migrateAddEventNote()
   await migrateAddParticipantPersonId()
   await migrateAddPersonDeviceId()
+  await migrateAddPersonNameParts()
   return db
 }
 
@@ -150,6 +151,24 @@ async function migrateAddParticipantPersonId() {
 async function migrateAddPersonDeviceId() {
   if (await columnExists('people', 'device_id')) return
   await db.execute('ALTER TABLE people ADD COLUMN device_id TEXT')
+}
+
+/** app/participant-first-last-name: adds `people.first_name`/`last_name` so
+ * the roster can store a split name instead of one opaque string. Existing
+ * rows that predate this (first_name still NULL) are backfilled by treating
+ * the whole existing `name` as the first name, last name left blank — see
+ * DECISIONS.md. `name` itself is kept as a derived "First Last" cache,
+ * recomputed by findOrCreatePerson/renamePerson, so every other read site
+ * (sync, autocomplete, display) that already expects a single `name` string
+ * keeps working unchanged. */
+async function migrateAddPersonNameParts() {
+  if (!(await columnExists('people', 'first_name'))) {
+    await db.execute('ALTER TABLE people ADD COLUMN first_name TEXT')
+  }
+  if (!(await columnExists('people', 'last_name'))) {
+    await db.execute('ALTER TABLE people ADD COLUMN last_name TEXT')
+  }
+  await db.execute('UPDATE people SET first_name = name WHERE first_name IS NULL')
 }
 
 /** Returns the open connection. Throws if `initDatabase()` hasn't run yet. */

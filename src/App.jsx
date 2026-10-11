@@ -132,7 +132,7 @@ function App() {
         participants.map(async (p) => {
           if (p.personId) return p
           try {
-            const personId = await findOrCreatePerson(p.name)
+            const personId = await findOrCreatePerson(p.firstName || p.name, p.lastName || '')
             return { ...p, personId }
           } catch (err) {
             console.error('Failed to resolve roster person, starting without one', err)
@@ -210,6 +210,7 @@ function App() {
         <ParticipantList
           participants={participants}
           onAdd={addParticipant}
+          onRename={renameParticipant}
           dbReady={dbStatus === 'ready'}
           onRemove={removeParticipant}
           onMoveUp={(id) => moveParticipant(id, -1)}

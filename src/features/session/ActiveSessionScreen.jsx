@@ -139,7 +139,7 @@ export function ActiveSessionScreen({
     if (!trimmed) return
     let personId = null
     try {
-      personId = await findOrCreatePerson(trimmed)
+      personId = await findOrCreatePerson(trimmed, '')
     } catch (err) {
       console.error('Failed to resolve roster person, adding without one', err)
     }
