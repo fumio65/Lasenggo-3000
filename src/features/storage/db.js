@@ -31,6 +31,21 @@ const SCHEMA = `
     synced INTEGER NOT NULL DEFAULT 0
   );
 
+  -- app/people-roster: a recurring "who comes to tagayan" roster, separate
+  -- from participants. A participants row is still this *session's* own
+  -- name copy (so an old session reads correctly even if someone's roster
+  -- name later changes) — person_id (added via migration below, since this
+  -- table predates it) is just a forward-looking link for autocomplete and
+  -- a future cross-session leaderboard (TASKS.md's Tagay King/Queen, part B).
+  CREATE TABLE IF NOT EXISTS people (
+    id TEXT PRIMARY KEY,
+    device_id TEXT,
+    name TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    last_used_at TEXT NOT NULL,
+    synced INTEGER NOT NULL DEFAULT 0
+  );
+
   CREATE TABLE IF NOT EXISTS events (
     id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL REFERENCES sessions(id),
@@ -68,22 +83,35 @@ export async function initDatabase() {
   await migrateAddSessionName()
   await migrateAddEventVolume()
   await migrateAddEventNote()
+  await migrateAddParticipantPersonId()
+  await migrateAddPersonDeviceId()
   return db
+}
+
+/** True if `table` already has a column named `column`, via SQLite's
+ * `PRAGMA table_info`. Used so the migrations below check first and only
+ * `ALTER TABLE` when the column is actually missing, instead of firing the
+ * ALTER unconditionally and swallowing a "duplicate column" error — on web,
+ * jeep-sqlite's rejection for that error landed as an unhandled promise
+ * rejection in the console even though it was caught, which made every
+ * dev-mode remount (React StrictMode re-running initDatabase) log a wall of
+ * scary-looking errors for a no-op. Checking first means the ALTER is only
+ * ever run once, so there's nothing to swallow. */
+async function columnExists(table, column) {
+  const result = await db.query(`PRAGMA table_info(${table})`)
+  const rows = result.values ?? []
+  return rows.some((row) => row.name === column)
 }
 
 /**
  * app/session-naming: adds `sessions.name` for installs that already created
  * the table before this column existed (the SCHEMA's `CREATE TABLE IF NOT
  * EXISTS` above only applies to brand-new tables). Safe to call every start
- * — SQLite has no `ADD COLUMN IF NOT EXISTS`, so a "duplicate column" error
- * means it's already there and is swallowed; any other error rethrows.
+ * — checks via `columnExists` first, so the `ALTER TABLE` only runs once.
  */
 async function migrateAddSessionName() {
-  try {
-    await db.execute('ALTER TABLE sessions ADD COLUMN name TEXT')
-  } catch (err) {
-    if (!/duplicate column/i.test(err.message ?? '')) throw err
-  }
+  if (await columnExists('sessions', 'name')) return
+  await db.execute('ALTER TABLE sessions ADD COLUMN name TEXT')
 }
 
 /** Session log / pour-volume breakdown: adds `events.volume` (one of
@@ -91,24 +119,37 @@ async function migrateAddSessionName() {
  * whose `events` table predates this column. Same idempotent pattern as
  * migrateAddSessionName above. */
 async function migrateAddEventVolume() {
-  try {
-    await db.execute('ALTER TABLE events ADD COLUMN volume TEXT')
-  } catch (err) {
-    if (!/duplicate column/i.test(err.message ?? '')) throw err
-  }
+  if (await columnExists('events', 'volume')) return
+  await db.execute('ALTER TABLE events ADD COLUMN volume TEXT')
 }
 
 /** app/pause-reason-tag: adds `events.note` — a free-ish text slot, used
  * right now for the reason tag on a PAUSE event (e.g. "Drunk", "Takas")
  * so it survives in the DB even if the person is never Resumed before the
- * session ends. Same idempotent ALTER-and-swallow pattern as the other
- * migrations above. */
+ * session ends. Same idempotent pattern as the other migrations above. */
 async function migrateAddEventNote() {
-  try {
-    await db.execute('ALTER TABLE events ADD COLUMN note TEXT')
-  } catch (err) {
-    if (!/duplicate column/i.test(err.message ?? '')) throw err
-  }
+  if (await columnExists('events', 'note')) return
+  await db.execute('ALTER TABLE events ADD COLUMN note TEXT')
+}
+
+/** app/people-roster: adds `participants.person_id` — nullable, no FK
+ * enforcement needed (SQLite doesn't enforce FKs by default here, and a
+ * dangling reference after a person is deleted from the roster is harmless,
+ * see peopleQueries.deletePerson). Same idempotent pattern as the other
+ * migrations above. */
+async function migrateAddParticipantPersonId() {
+  if (await columnExists('participants', 'person_id')) return
+  await db.execute('ALTER TABLE participants ADD COLUMN person_id TEXT')
+}
+
+/** backend/people-sync: adds `people.device_id` — stamped at push time
+ * (same convention as `sessions.device_id`: left null until a row actually
+ * syncs, so this column needs to exist for installs that created `people`
+ * before this one did, i.e. anyone who used the roster before Supabase sync
+ * was wired up for it). Same idempotent pattern as the other migrations. */
+async function migrateAddPersonDeviceId() {
+  if (await columnExists('people', 'device_id')) return
+  await db.execute('ALTER TABLE people ADD COLUMN device_id TEXT')
 }
 
 /** Returns the open connection. Throws if `initDatabase()` hasn't run yet. */

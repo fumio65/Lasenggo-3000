@@ -1,5 +1,7 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { HistoryIcon } from '../../shared/components/HistoryIcon'
+import { PeopleIcon } from '../../shared/components/PeopleIcon'
+import { getPeople } from '../storage/peopleQueries'
 
 function ParticipantRow({
   participant,
@@ -107,10 +109,73 @@ export function ParticipantList({
   onStartSession,
   startingSession = false,
   onViewHistory,
+  onViewPeople,
+  dbReady = true,
 }) {
   const [name, setName] = useState('')
   const [sessionName, setSessionName] = useState('')
   const [passLimitInput, setPassLimitInput] = useState('')
+
+  // app/people-roster: the name field's autocomplete options, sourced from
+  // the recurring "people" roster (most-recently-used first - see
+  // peopleQueries.getPeople) rather than this session's own participant
+  // list. Loaded on mount, and re-loaded whenever this screen re-mounts
+  // (e.g. coming back from the roster screen), so a rename/delete made
+  // there is reflected without needing a full page reload.
+  const [peopleOptions, setPeopleOptions] = useState([])
+
+  // Waits on `dbReady` (App.jsx's dbStatus === 'ready') rather than firing
+  // unconditionally on mount: this screen renders immediately on page load,
+  // before `initDatabase()` necessarily resolves, so querying right away
+  // raced the DB connection and could silently leave the suggestion list
+  // empty for the rest of the session (no retry) if it lost that race.
+  useEffect(() => {
+    if (!dbReady) return
+    getPeople()
+      .then(setPeopleOptions)
+      .catch((err) => console.error('Failed to load people roster', err))
+  }, [dbReady])
+
+  // app/people-roster (design pass): custom-styled suggestion list replacing
+  // the native <datalist>. The native one worked, but its dropdown arrow and
+  // the browser-chrome suggestion popup it opens don't match this app's own
+  // dark theme at all and can't be restyled — this gives the same
+  // "suggest whoever I've tagayed with before" behavior with the app's own
+  // colors/rounding, while keeping the full peopleOptions list (not just a
+  // filtered one) for the aria-expanded check below.
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [highlightIndex, setHighlightIndex] = useState(-1)
+
+  const filteredPeople = (() => {
+    const query = name.trim().toLowerCase()
+    const matches = query
+      ? peopleOptions.filter((person) => person.name.toLowerCase().includes(query))
+      : peopleOptions
+    return matches.slice(0, 6)
+  })()
+
+  function pickSuggestion(personName) {
+    setName(personName)
+    setShowSuggestions(false)
+    setHighlightIndex(-1)
+  }
+
+  function handleNameKeyDown(e) {
+    if (!showSuggestions || filteredPeople.length === 0) return
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setHighlightIndex((i) => (i + 1) % filteredPeople.length)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setHighlightIndex((i) => (i <= 0 ? filteredPeople.length - 1 : i - 1))
+    } else if (e.key === 'Enter' && highlightIndex >= 0) {
+      e.preventDefault()
+      pickSuggestion(filteredPeople[highlightIndex].name)
+    } else if (e.key === 'Escape') {
+      setShowSuggestions(false)
+      setHighlightIndex(-1)
+    }
+  }
 
   // --- Drag-to-reorder + FLIP animation ---------------------------------
   const rowRefs = useRef(new Map())
@@ -196,9 +261,18 @@ export function ParticipantList({
   }
   // -----------------------------------------------------------------------
 
+  // app/people-roster: deliberately does NOT touch the `people` roster here.
+  // Adding someone to "Who's joining" is provisional — they can still be
+  // removed before Start session, or the screen abandoned entirely — so
+  // resolving/creating a roster entry at this point would write someone to
+  // the roster who never actually joined a session. Roster resolution
+  // happens once, for the whole list, at the moment Start session is
+  // actually clicked (see App.jsx's `handleStartSession`).
   function handleSubmit(e) {
     e.preventDefault()
-    onAdd(name)
+    const trimmed = name.trim()
+    if (!trimmed) return
+    onAdd(trimmed)
     setName('')
   }
 
@@ -220,14 +294,27 @@ export function ParticipantList({
           <p className="text-sm text-paper-dim">
             Add everyone joining this round before you start.
           </p>
-          <button
-            type="button"
-            onClick={onViewHistory}
-            className="mx-auto mt-3 flex items-center gap-1.5 rounded-lg bg-smoke px-3 py-1.5 text-sm text-paper-dim ring-1 ring-smoke-light transition hover:bg-smoke-light hover:text-paper active:scale-95"
-          >
-            <HistoryIcon />
-            Session history
-          </button>
+          <div className="mt-3 flex items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={onViewHistory}
+              className="flex items-center gap-1.5 rounded-lg bg-smoke px-3 py-1.5 text-sm text-paper-dim ring-1 ring-smoke-light transition hover:bg-smoke-light hover:text-paper active:scale-95"
+            >
+              <HistoryIcon />
+              Session history
+            </button>
+            {/* app/people-roster: the roster screen (rename/delete) - new
+                entries aren't added here, they're added organically by
+                typing a new name in "Who's joining" below. */}
+            <button
+              type="button"
+              onClick={onViewPeople}
+              className="flex items-center gap-1.5 rounded-lg bg-smoke px-3 py-1.5 text-sm text-paper-dim ring-1 ring-smoke-light transition hover:bg-smoke-light hover:text-paper active:scale-95"
+            >
+              <PeopleIcon />
+              People
+            </button>
+          </div>
         </header>
 
         <section className="space-y-3 rounded-2xl bg-smoke/60 p-4 ring-1 ring-smoke-light">
@@ -239,14 +326,59 @@ export function ParticipantList({
           </div>
 
           <form onSubmit={handleSubmit} className="flex gap-2">
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Participant name"
-              aria-label="Participant name"
-              className="flex-1 rounded-xl bg-ink px-4 py-2 text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
-            />
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value)
+                  setShowSuggestions(true)
+                  setHighlightIndex(-1)
+                }}
+                onFocus={() => setShowSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 100)}
+                onKeyDown={handleNameKeyDown}
+                placeholder="Participant name"
+                aria-label="Participant name"
+                autoComplete="off"
+                role="combobox"
+                aria-expanded={showSuggestions && filteredPeople.length > 0}
+                aria-controls="people-roster-options"
+                aria-autocomplete="list"
+                className="w-full rounded-xl bg-ink px-4 py-2 text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
+              />
+              {/* app/people-roster (design pass): custom suggestion list,
+                  styled to this app's own dark theme, in place of the native
+                  <datalist> popup (browser chrome, couldn't be restyled, and
+                  its dropdown arrow read as dated against the rest of this
+                  screen). Suggestions are whoever's been tagayed with
+                  before, most-recently-used first, filtered as you type;
+                  arrow keys + Enter pick one, same as the native version did. */}
+              {showSuggestions && filteredPeople.length > 0 && (
+                <ul
+                  id="people-roster-options"
+                  role="listbox"
+                  className="absolute inset-x-0 top-full z-10 mt-1.5 overflow-hidden rounded-xl bg-smoke-light shadow-lg shadow-ink/50 ring-1 ring-smoke-light"
+                >
+                  {filteredPeople.map((person, i) => (
+                    <li key={person.id} role="option" aria-selected={i === highlightIndex}>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => pickSuggestion(person.name)}
+                        className={`block w-full px-4 py-2 text-left text-sm transition ${
+                          i === highlightIndex
+                            ? 'bg-ember/20 text-paper'
+                            : 'text-paper-dim hover:bg-ink/40 hover:text-paper'
+                        }`}
+                      >
+                        {person.name}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
             <button
               type="submit"
               disabled={!name.trim()}

@@ -13,7 +13,11 @@ import { getDatabase } from './db'
  * transaction. Returns the new session id. Participant ids are kept as-is
  * (from `useParticipants`) so UI state and stored rows share the same id.
  * `name` is optional (app/session-naming) — a blank/whitespace-only name is
- * stored as NULL so history can fall back to showing the date instead. */
+ * stored as NULL so history can fall back to showing the date instead.
+ * app/people-roster: each participant's `person_id` (resolved up front by
+ * the caller via `findOrCreatePerson`, since that needs its own query per
+ * name) rides along in the same INSERT — nullable, so this still works for
+ * any participant object that doesn't carry one. */
 export async function createSession(participants, name = '') {
   const db = getDatabase()
   const sessionId = crypto.randomUUID()
@@ -26,8 +30,8 @@ export async function createSession(participants, name = '') {
       values: [sessionId, trimmedName, startedAt],
     },
     ...participants.map((p) => ({
-      statement: 'INSERT INTO participants (id, session_id, name, synced) VALUES (?, ?, ?, 0)',
-      values: [p.id, sessionId, p.name],
+      statement: 'INSERT INTO participants (id, session_id, name, person_id, synced) VALUES (?, ?, ?, ?, 0)',
+      values: [p.id, sessionId, p.name, p.personId ?? null],
     })),
   ]
 
@@ -64,12 +68,13 @@ export async function deleteEvent(eventId) {
 /** Inserts a participant row for someone who joins an already-running
  * session (app/add-participant-mid-session) — the same shape createSession
  * inserts per-participant, just one row at a time instead of a whole set,
- * since the session already exists. */
-export async function addSessionParticipant(sessionId, participantId, name) {
+ * since the session already exists. `personId` (app/people-roster) is
+ * optional, same as createSession above. */
+export async function addSessionParticipant(sessionId, participantId, name, personId = null) {
   const db = getDatabase()
   await db.run(
-    'INSERT INTO participants (id, session_id, name, synced) VALUES (?, ?, ?, 0)',
-    [participantId, sessionId, name],
+    'INSERT INTO participants (id, session_id, name, person_id, synced) VALUES (?, ?, ?, ?, 0)',
+    [participantId, sessionId, name, personId],
     false,
   )
 }
