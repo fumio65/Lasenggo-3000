@@ -5,6 +5,50 @@ Add new entries at the top (most recent first).
 
 ---
 
+### Hardware component sourcing: specific product picks (Shopee)
+**Decision**: Locked in exact product/variant picks for the remaining hardware on the
+`PRD.md` components table:
+- **Pump**: INTLLAB 12V 5W Peristaltic Liquid Pump (silicone tubing, 19-100 mL/min)
+- **Relay module**: "5V, 1 Channel" variant of a multi-channel relay listing — NOT the
+  12V-rated variant
+- **Load cell + HX711**: "HX711 & 1kg" bundle variant — NOT 3kg/5kg/10kg/20kg
+- **LED ring**: "8 Bit (Circle)" variant of a WS2812B breakout listing
+- **Battery**: 18650 Li-ion pack with BMS, 12V (11.1-12.6V, 3S), 4500mAh variant
+- **Jumper wires**: Female-Female, 20cm
+
+**Why these specific variants** (not just "a relay module" or "a load cell"):
+- **Relay 5V vs 12V**: both variants switch the 12V pump fine on their output contacts
+  (COM/NO/NC), but their *trigger/coil* side differs — the 12V variant's input
+  optocoupler is sized for a ~12V trigger signal, and ESP32's GPIO only outputs 3.3V.
+  The 5V variant's input is sized for 3.3V-5V logic, which is the standard
+  ESP32/Arduino/Raspberry Pi pairing (the listing itself calls this out). The 12V
+  variant would likely fail to switch reliably off ESP32 GPIO.
+- **Load cell 1kg vs higher capacities**: actual measured weights here are small (empty
+  cup ~20-50g, +15-50g of liquid per pour, so well under 150g total on the platform). A
+  load cell's resolution scales with its rated range, so a 1kg cell gives much finer
+  sensitivity to these small deltas than a 10kg/20kg cell would — this matters directly
+  for the NO_CUP/CUP_DETECTED/HAS_DRINK/EMPTY state thresholds in `ARCHITECTURE.md`.
+- **LED ring 8-bit vs 12/16-bit**: more pixels generally means a physically larger ring;
+  8-bit keeps it compact enough to fit around a small cup/shot-glass base while still
+  giving enough individually addressable pixels for a glow + optional fill animation.
+- **Battery 4500mAh vs 6800mAh**: the pump only runs in short bursts per pour (low duty
+  cycle), so 4500mAh comfortably covers a full session with margin; 6800mAh only buys
+  longer time between recharges, not a functional requirement.
+- **Jumper wires F-F, not M-M/M-F**: ESP32, the HX711 module, the relay module, and the
+  WS2812 ring all ship with male pin headers already soldered on. Connecting two
+  male-header devices directly (no breadboard in this build) requires Female-Female
+  jumpers on both ends.
+
+**Impact**: `PRD.md`'s hardware table now carries a "Sourced Pick" column with these
+exact variants and their Shopee links. Full purchase tracking (cost, have-it/need-to-buy
+status) lives in the `Lasenggo3000_Components.xlsx` spreadsheet, not in these docs — this
+entry exists so the *why* behind each variant choice isn't lost or re-debated later.
+**Also confirmed**: the battery pack outputs 11.1-12.6V only — it does not power the
+ESP32 or LED ring directly. Those still need a separate 5V source (USB for ESP32, as
+already planned) or a 12V-to-5V buck converter if consolidating onto one battery later.
+
+---
+
 ### sql.js pinned to exactly 1.11.0 for web SQLite testing
 **Decision**: `sql.js` is pinned at exactly `1.11.0` (`--save-exact`), not a `^`
 range, and `public/assets/sql-wasm.wasm` is copied from that exact package
@@ -144,3 +188,103 @@ set). Multi-station support is documented as a roadmap item, not built now.
 **Why**: Avoids scope creep on MVP; the single-station architecture needs to be proven
 reliable before adding the complexity of either multi-channel firmware or multi-peripheral
 BLE connection management in the app.
+
+---
+
+### UI theme: "Night Market Circuit"
+**Decision**: Redesigned the app's visual identity around the sensory world of an
+actual tagayan night — warm lamplight, charcoal-dark surroundings, a drink passed hand
+to hand — rather than a generic dark-mode SaaS look. Palette: near-black warm ink
+background (`#191310`), ember-orange accent (`#e98a2e`) for the active/primary action,
+warm paper off-white for text, with bamboo-green and maroon as earned status colors
+(success/sync, warning/over-limit) rather than default red/green. Typography: Space
+Grotesk for display/headings (geometric, a little mechanical — nods to the ESP32/BLE
+hardware side), Plus Jakarta Sans for body text. The one deliberate animated moment is
+the `TurnRing` on the active session screen: participants arranged in a literal circle,
+the current turn rendered as a glowing dot that hands off to the next position with a
+500ms ease-out transition when the turn advances — the ring *is* the turn order, not
+decorative chrome, echoing the physical act of passing a drink around a circle.
+Everything else (buttons, lists, badges) gets calm, functional feedback only (tap-scale,
+color change) — no scattered hover/reveal animation.
+**Why**: The user asked for a "modern" UI with animation; a generic dark-mode palette
+with a stock accent color would have looked like any other app and ignored the app's
+actual subject matter (a Filipino drinking-circle ritual). Grounding the palette and the
+one signature animation in that subject gives the redesign a point of view instead of
+template chrome, per the house design process (plan reviewed against generic-AI-design
+tells before building).
+
+---
+
+### Pour simulated ahead of real BLE hardware
+**Decision**: `ActiveSessionScreen`'s Pour button is enabled now, backed by a fixed
+~900ms simulated delay (`handlePour` → `setTimeout` → `onPourConfirmed()`) instead of
+staying disabled until `app/ble-commands`/`app/ble-status-subscription` exist. The
+status pill reads "Simulated — no hardware connected" rather than faking a connection.
+**Why**: None of Sprint 1's hardware/firmware/BLE tasks have started (TASKS.md), and
+leaving Pour disabled meant the turn-manager → event-logging → undo → session-log →
+history path for POUR — otherwise complete — had never been exercised end to end.
+Simulating the confirmation is a stopgap that calls the exact same `onPourConfirmed()`
+real hardware will call later; nothing downstream needs to change when the real BLE
+round-trip replaces the `setTimeout`. A prior attempt at this same problem (a separate
+"simulate pour (dev)" button, noted in TASKS.md's Tagay King/Queen backlog entry) was
+tried and discarded as not worth keeping as a standalone dev-only control — enabling
+Pour itself, honestly labeled as simulated, was preferred over a second parallel button.
+
+---
+
+### Volume breakdown shown as colored dots, not spelled-out labels
+**Decision**: Each participant's Light/Standard/Heavy pour composition is shown as
+small colored-dot + count chips (e.g. a pale-gold dot + "1", an ember dot + "1", a
+deep-orange dot + "1"), reusing the same `VOLUME_COLOR`s as the stacked bar and the
+shared `VolumeLegend`, instead of spelling the volume names out in text.
+**Why**: A first pass wrote it out in words ("1 Light · 1 Standard · 1 Heavy poured")
+and it read poorly — a dense sentence that wrapped awkwardly in the 280px session-log
+panel and just repeated in words what the colored bar directly below it already showed.
+Color already carries this information once (the bar, the legend); adding word labels
+on top was redundant rather than clarifying. The full label stays one hover/tap away
+via each chip's `title`, same as the bar segments always had.
+
+---
+
+### Exit confirm: staged overlay, not a native dialog
+**Decision**: Leaving an in-progress session (the "Back" button) goes through two
+confirm stages — Back expands in place into "Keep going" (auto-focused, the safe
+default) vs. a plain-link "⚠ End session" warning, then a second "End for good?" stage
+before the session actually ends — all as an animated absolute-overlay expansion, never
+a native `confirm()` dialog. A separate "view Session History without ending" path was
+added alongside it.
+**Why**: Back used to end the session immediately on a single tap — an easy accidental
+tap mid-round with no way back into that session afterward. A native dialog would have
+stopped the accident but broken the app's visual language (per the Night Market theme
+decision above) and didn't address the second real need surfaced during testing:
+checking Session History mid-round without wanting to end the round at all.
+
+---
+
+### Pausing a participant requires a reason; resuming doesn't
+**Decision**: Pausing someone mid-session (drunk, went home, snuck off — "Run away" —
+or an emergency) requires picking a reason chip before it takes effect. Resuming needs
+no reason. Both are persisted as real `PAUSE`/`RESUME` rows in `events` (not just an
+in-memory flag), carrying the reason in a new `events.note` column.
+**Why**: In the realistic case, a paused participant never comes back — someone who
+went home or snuck off isn't returning to tap "Resume" — so if the reason only lived in
+memory it would vanish the moment the session ends, right when it's most useful (in
+History, explaining a flat line in someone's stats). Requiring the reason at pause time,
+not after, means it's captured even if this is the last anyone hears from them tonight.
+Resuming is the "they're back, nothing more to say" case and doesn't need the same
+friction.
+
+---
+
+### Participant roster clears after a session ends
+**Decision**: Ending a session clears the "Who's joining" roster completely
+(`clearParticipants()`), rather than keeping the names in place for a quick restart.
+**Why**: `participants.id` is a SQLite primary key, and the in-memory roster reused the
+same client-generated ids across session start/end cycles. Starting a second session
+without retyping names reused those ids for a fresh `participants` INSERT and threw
+`UNIQUE constraint failed: participants.id`, reproduced and confirmed live before
+fixing. Keeping the names but minting fresh ids on restart was considered (lets people
+re-run a session with the same group without retyping); clearing outright was chosen
+instead as the simpler, safer default — picking the group back up each time also
+matches how a tagayan actually restarts (people come and go between rounds).
+

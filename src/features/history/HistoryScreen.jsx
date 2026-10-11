@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { HistoryList } from './HistoryList'
 import { HistoryDetail } from './HistoryDetail'
 
@@ -9,6 +9,13 @@ import { HistoryDetail } from './HistoryDetail'
  */
 export function HistoryScreen({ onExit }) {
   const [selectedSessionId, setSelectedSessionId] = useState(null)
+
+  // UX fix: same root cause as App.jsx's top-level scroll reset — switching
+  // to the detail view while scrolled down the list left the detail screen
+  // scrolled to that same offset, since there's no real page nav to reset it.
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [selectedSessionId])
 
   if (selectedSessionId) {
     return (

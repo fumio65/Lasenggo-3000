@@ -36,6 +36,8 @@ const SCHEMA = `
     session_id TEXT NOT NULL REFERENCES sessions(id),
     participant_id TEXT NOT NULL REFERENCES participants(id),
     type TEXT NOT NULL,
+    volume TEXT,
+    note TEXT,
     timestamp TEXT NOT NULL,
     synced INTEGER NOT NULL DEFAULT 0
   );
@@ -64,6 +66,8 @@ export async function initDatabase() {
   await db.open()
   await db.execute(SCHEMA)
   await migrateAddSessionName()
+  await migrateAddEventVolume()
+  await migrateAddEventNote()
   return db
 }
 
@@ -77,6 +81,31 @@ export async function initDatabase() {
 async function migrateAddSessionName() {
   try {
     await db.execute('ALTER TABLE sessions ADD COLUMN name TEXT')
+  } catch (err) {
+    if (!/duplicate column/i.test(err.message ?? '')) throw err
+  }
+}
+
+/** Session log / pour-volume breakdown: adds `events.volume` (one of
+ * usePourVolume.js's POUR_VOLUMES ids, or NULL for a PASS row) for installs
+ * whose `events` table predates this column. Same idempotent pattern as
+ * migrateAddSessionName above. */
+async function migrateAddEventVolume() {
+  try {
+    await db.execute('ALTER TABLE events ADD COLUMN volume TEXT')
+  } catch (err) {
+    if (!/duplicate column/i.test(err.message ?? '')) throw err
+  }
+}
+
+/** app/pause-reason-tag: adds `events.note` — a free-ish text slot, used
+ * right now for the reason tag on a PAUSE event (e.g. "Drunk", "Takas")
+ * so it survives in the DB even if the person is never Resumed before the
+ * session ends. Same idempotent ALTER-and-swallow pattern as the other
+ * migrations above. */
+async function migrateAddEventNote() {
+  try {
+    await db.execute('ALTER TABLE events ADD COLUMN note TEXT')
   } catch (err) {
     if (!/duplicate column/i.test(err.message ?? '')) throw err
   }

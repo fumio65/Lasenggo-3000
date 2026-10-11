@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 /**
  * Circular turn order over a participant list.
@@ -31,16 +31,48 @@ import { useCallback, useState } from 'react'
  * deleting the right event itself, since this hook has no event ids to
  * work with.
  */
-export function useTurnManager(participants, { onEvent, passLimit = null } = {}) {
+const EMPTY_SET = new Set()
+
+export function useTurnManager(participants, { onEvent, passLimit = null, pausedIds = EMPTY_SET } = {}) {
   const [currentIndex, setCurrentIndex] = useState(0)
   const [passStreaks, setPassStreaks] = useState({})
   const [undoSnapshot, setUndoSnapshot] = useState(null)
 
+  // app/pause-participant: a paused person is skipped when the turn
+  // reaches them — stepping forward (not just +1) until it lands on
+  // someone not in `pausedIds`, or giving up after a full lap if
+  // everyone's paused (nothing valid to land on, so stay put rather than
+  // spin forever).
+  const nextActiveIndex = useCallback(
+    (fromIndex) => {
+      const total = participants.length
+      if (total === 0) return 0
+      let idx = fromIndex
+      for (let step = 0; step < total; step += 1) {
+        idx = (idx + 1) % total
+        const candidate = participants[idx]
+        if (candidate && !pausedIds.has(candidate.id)) return idx
+      }
+      return fromIndex % total // everyone's paused — nowhere valid to go
+    },
+    [participants, pausedIds],
+  )
+
   const advanceTurn = useCallback(() => {
-    setCurrentIndex((prev) =>
-      participants.length === 0 ? 0 : (prev + 1) % participants.length
-    )
-  }, [participants.length])
+    setCurrentIndex((prev) => nextActiveIndex(prev))
+  }, [nextActiveIndex])
+
+  // Pausing someone mid-turn (the "emergency, has to step out right now"
+  // case) shouldn't wait for a Pass/Pour to move on from them — jump to
+  // the next active participant as soon as the pause takes effect.
+  useEffect(() => {
+    const safe = participants.length === 0 ? 0 : currentIndex % participants.length
+    const activeCurrent = participants[safe]
+    if (activeCurrent && pausedIds.has(activeCurrent.id)) {
+      setCurrentIndex(nextActiveIndex(safe))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pausedIds, participants])
 
   const onPass = useCallback(() => {
     const current = participants[currentIndex]

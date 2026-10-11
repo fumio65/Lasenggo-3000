@@ -1,4 +1,9 @@
 import { useSessionDetail } from './useSessionDetail'
+import { BackIcon } from '../../shared/components/BackIcon'
+import { HistoryIcon } from '../../shared/components/HistoryIcon'
+import { ParticipantStatBar, VolumeLegend, VOLUME_BY_ID } from '../../shared/components/ParticipantStatBar'
+import { ScrollFadeBox } from '../../shared/components/ScrollFadeBox'
+import { ActivityFeed } from '../../shared/components/ActivityFeed'
 
 function formatDate(isoString) {
   return new Date(isoString).toLocaleString(undefined, {
@@ -7,27 +12,80 @@ function formatDate(isoString) {
   })
 }
 
+/** Reshapes one SQL row from getSessionDetail (flat *_count columns) into
+ * the { name, pass, totalMl, byVolume } shape ParticipantStatBar expects —
+ * the same shape ActiveSessionScreen's SessionLog builds from raw events,
+ * just aggregated server-side here instead of client-side from a live
+ * event list, since a past session's data never changes under us. */
+function toStat(row) {
+  const byVolume = {
+    light: row.light_count ?? 0,
+    standard: row.standard_count ?? 0,
+    heavy: row.heavy_count ?? 0,
+  }
+  const totalMl = Object.entries(byVolume).reduce(
+    (sum, [volumeId, count]) => sum + count * (VOLUME_BY_ID[volumeId]?.approxMl ?? 0),
+    0,
+  )
+  return { id: row.id, name: row.name, pass: row.pass_count ?? 0, totalMl, byVolume }
+}
+
+/** app/pause-reason-tag: whether each participant was still paused when
+ * this session ended, and why — derived from the same PAUSE/RESUME events
+ * the Activity log already shows, not a separate stored flag. `events` is
+ * newest-first (getSessionEvents' own order), so the first PAUSE/RESUME
+ * row found per participant while scanning it is their *last* one — if
+ * that's a PAUSE, they never got a matching Resume before the session
+ * ended (the "went home" / "ran away" case this was built for). */
+function buildPausedAtEnd(events) {
+  const result = {}
+  const seen = new Set()
+  for (const event of events) {
+    if (event.type !== 'PAUSE' && event.type !== 'RESUME') continue
+    if (seen.has(event.participant_id)) continue
+    seen.add(event.participant_id)
+    if (event.type === 'PAUSE') result[event.participant_id] = event.note || null
+  }
+  return result
+}
+
 /**
- * Per-participant drink/pass counts for one past session (`app/history-detail`).
- * Counts come straight from the local `events` table — no separate aggregate
- * is stored anywhere (per ARCHITECTURE.md's "event log, not aggregate-only"
- * design pattern).
+ * Per-participant pour/pass breakdown for one past session (`app/history-
+ * detail`), using the same `ParticipantStatBar` visualization as the live
+ * session's "Session log" panel — so a session reads the same way whether
+ * it's happening right now or being looked back on. Counts come straight
+ * from the local `events` table — no separate aggregate is stored anywhere
+ * (per ARCHITECTURE.md's "event log, not aggregate-only" design pattern).
+ *
+ * Also shows how many people were in the round and the full chronological
+ * activity log (shared `ActivityFeed`, same visualization as the live
+ * session's "Activity log" — just the complete history instead of a
+ * capped recent slice, since there's nothing new to scroll to here).
  */
 export function HistoryDetail({ sessionId, onBack }) {
-  const { detail, loading } = useSessionDetail(sessionId)
+  const { detail, events, loading } = useSessionDetail(sessionId)
+
+  const pausedAtEnd = buildPausedAtEnd(events)
+  const stats = detail?.participants.map(toStat) ?? []
+  const maxActions = Math.max(
+    1,
+    ...stats.map((s) => s.byVolume.light + s.byVolume.standard + s.byVolume.heavy + s.pass),
+  )
+  const participantCount = detail?.participants.length ?? 0
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 p-6">
+    <div className="min-h-screen bg-ink text-paper p-6">
       <div className="mx-auto max-w-md space-y-6">
-        <header className="space-y-1">
+        <header className="space-y-3">
           <button
             type="button"
             onClick={onBack}
-            className="text-sm text-neutral-500 hover:text-neutral-300"
+            aria-label="Back to history"
+            className="flex items-center gap-1.5 rounded-full bg-smoke px-3 py-1.5 text-sm text-paper-dim ring-1 ring-smoke-light transition hover:bg-smoke-light hover:text-paper active:scale-95"
           >
-            ← Back to history
+            <BackIcon /> Back
           </button>
-          <h1 className="text-2xl font-bold tracking-tight">
+          <h1 className="font-display text-2xl font-semibold tracking-tight">
             {loading || !detail?.session
               ? 'Session'
               : detail.session.name || formatDate(detail.session.started_at)}
@@ -35,31 +93,57 @@ export function HistoryDetail({ sessionId, onBack }) {
           {/* app/session-naming: show the date as a subline too once a session
               has a custom name, so it's not lost from view */}
           {!loading && detail?.session?.name && (
-            <p className="text-sm text-neutral-500">{formatDate(detail.session.started_at)}</p>
+            <p className="text-sm text-paper-dim">{formatDate(detail.session.started_at)}</p>
+          )}
+          {!loading && participantCount > 0 && (
+            <p className="text-sm text-paper-dim">
+              {participantCount} {participantCount === 1 ? 'participant' : 'participants'}
+            </p>
           )}
         </header>
 
         {loading ? (
-          <p className="text-center text-sm text-neutral-500">Loading…</p>
-        ) : !detail?.participants.length ? (
-          <p className="rounded-lg border border-dashed border-neutral-800 px-4 py-8 text-center text-sm text-neutral-500">
-            No participants recorded for this session.
-          </p>
-        ) : (
-          <ul className="space-y-2">
-            {detail.participants.map((p) => (
-              <li
-                key={p.id}
-                className="flex items-center justify-between rounded-lg bg-neutral-900 px-4 py-3"
-              >
-                <span className="text-neutral-100">{p.name}</span>
-                <span className="flex gap-3 text-sm text-neutral-500">
-                  <span>{p.pour_count} poured</span>
-                  <span>{p.pass_count} passed</span>
-                </span>
+          <ul className="space-y-3" aria-hidden="true">
+            {[0, 1, 2].map((i) => (
+              <li key={i} className="space-y-1.5">
+                <div className="h-3.5 w-24 animate-pulse rounded bg-smoke" />
+                <div className="h-2.5 w-full animate-pulse rounded-full bg-smoke" />
               </li>
             ))}
           </ul>
+        ) : !detail?.participants.length ? (
+          <div className="rounded-xl border border-dashed border-smoke-light px-4 py-8 text-center text-sm text-paper-dim">
+            <HistoryIcon className="mx-auto mb-2 h-5 w-5 opacity-40" />
+            No participants recorded for this session.
+          </div>
+        ) : (
+          <>
+            <section className="space-y-3 rounded-2xl bg-smoke/60 p-4 ring-1 ring-smoke-light">
+              <ScrollFadeBox maxHeightClassName="max-h-[28rem]" watch={stats.length}>
+                <ul className="space-y-4">
+                  {stats.map((stat) => (
+                    <ParticipantStatBar
+                      key={stat.id ?? stat.name}
+                      stat={stat}
+                      maxActions={maxActions}
+                      isPaused={stat.id in pausedAtEnd}
+                      pauseReason={pausedAtEnd[stat.id]}
+                    />
+                  ))}
+                </ul>
+              </ScrollFadeBox>
+              <VolumeLegend />
+            </section>
+
+            <section className="rounded-2xl bg-smoke/60 p-4 ring-1 ring-smoke-light">
+              <h2 className="font-display text-xs font-semibold text-paper-dim">Activity log</h2>
+              <ActivityFeed
+                events={events}
+                emptyMessage="No pours or passes were logged for this session."
+                maxHeightClassName="max-h-80"
+              />
+            </section>
+          </>
         )}
       </div>
     </div>

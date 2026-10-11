@@ -1,0 +1,155 @@
+import { POUR_VOLUMES } from '../../features/pour/usePourVolume'
+
+export const VOLUME_BY_ID = Object.fromEntries(POUR_VOLUMES.map((v) => [v.id, v]))
+// Bar segment colors, in the same light→heavy order as POUR_VOLUMES, plus
+// a neutral tone for passes. Deliberately 3 distinct solid colors (pale
+// gold → ember → deep red-orange) rather than 3 opacities of the same
+// orange — opacity steps on a dark background read as "faded", not as a
+// different amount, and were too hard to tell apart at a glance.
+export const VOLUME_COLOR = { light: 'bg-pour-light', standard: 'bg-ember', heavy: 'bg-pour-heavy' }
+export const PASS_COLOR = 'bg-smoke-light'
+
+/**
+ * One participant's pour/pass composition as a stacked bar — how many
+ * Light/Standard/Heavy pours vs. passes, plus a ~mL estimate — with the
+ * bar's overall width relative to whoever did the most in the group, so it
+ * doubles as an at-a-glance "who's drinking fastest" comparison. Shared by
+ * ActiveSessionScreen's live SessionLog panel and HistoryDetail's past-
+ * session view, so a session reads the same way whether it's happening
+ * right now or being looked back on.
+ *
+ * `isCurrent` (live sessions only — HistoryDetail never passes it, since a
+ * past session has no current turn) marks whoever the TurnRing's center
+ * label is currently naming: a small pulsing ember dot plus a bolded name,
+ * rather than a text label repeating "Current turn" — the row is already
+ * moved to the top of the list for this person (see SessionLog), so the
+ * marker only needs to carry attention, not re-explain itself. The dot
+ * still carries an accessible name/hover tooltip for anyone who needs the
+ * word spelled out.
+ */
+export function ParticipantStatBar({ stat, maxActions, isCurrent = false, isPaused = false, pauseReason }) {
+  const pourTotal = stat.byVolume.light + stat.byVolume.standard + stat.byVolume.heavy
+  const actionTotal = pourTotal + stat.pass
+  const widthPct =
+    maxActions > 0 ? Math.max((actionTotal / maxActions) * 100, actionTotal > 0 ? 6 : 0) : 0
+
+  // Which volumes this participant actually poured, in the same
+  // light→heavy order as the bar segments below and the shared legend.
+  const pouredVolumes = POUR_VOLUMES.filter((v) => stat.byVolume[v.id] > 0)
+
+  return (
+    <li className={isPaused ? 'opacity-50' : ''}>
+      {/* UX fix (app/volume-breakdown-stat): the name and stat line used to
+          share one row (`justify-between`, stat side `shrink-0`) — fine
+          when the stat text was short ("2 poured · 1 passed"), but a full
+          Light/Standard/Heavy breakdown routinely runs longer than that and
+          was pushing the name span to zero width in the narrow session-log
+          panel (280px), hiding the participant's name entirely and still
+          clipping the stat text itself against the panel edge. Stacked
+          instead: name (with its own truncate) on its own line, stats
+          below as ordinary wrapping text — both can now run to whatever
+          length they need without starving each other. UX pass (round 3):
+          the name/stat/bar stack was packed edge to edge with only a 4px
+          gap before the bar and none between name and stat — tightened a
+          little more room between each (`space-y-1.5` wrapper, `mt-2` on
+          the bar) so the row doesn't read as cramped. */}
+      <div className="space-y-1.5">
+      <div className="flex items-center gap-1.5">
+        {isCurrent && (
+          <span
+            role="img"
+            aria-label="Current turn"
+            title="Current turn"
+            className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-ember"
+          />
+        )}
+        <span className={`min-w-0 truncate text-sm text-paper ${isCurrent ? 'font-semibold' : ''}`}>
+          {stat.name}
+        </span>
+        {isPaused && (
+          <span
+            title={pauseReason}
+            className="shrink-0 rounded-full bg-smoke px-1.5 py-0.5 text-[10px] font-medium text-paper-dim ring-1 ring-smoke-light"
+          >
+            Paused{pauseReason ? ` · ${pauseReason}` : ''}
+          </span>
+        )}
+      </div>
+      {/* UX pass (round 2, app/volume-breakdown-stat): spelling out "1
+          Light · 1 Standard · 1 Heavy poured" read as a dense sentence that
+          wrapped awkwardly and duplicated the colored bar directly below
+          it in words. Replaced with small colored-dot + count chips using
+          the bar's own colors (same ones the shared legend already keys),
+          so composition reads at a glance as color instead of as prose —
+          the full word is still one hover/tap away via each chip's title,
+          same as the bar segments always had. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-paper-dim">
+        {pouredVolumes.length > 0 && (
+          <span className="flex items-center gap-2.5">
+            {pouredVolumes.map((v) => (
+              <span
+                key={v.id}
+                title={`${v.label}: ${stat.byVolume[v.id]}`}
+                className="flex items-center gap-1.5 tabular-nums"
+              >
+                <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${VOLUME_COLOR[v.id]}`} />
+                {stat.byVolume[v.id]}
+              </span>
+            ))}
+          </span>
+        )}
+        <span>
+          {pourTotal} poured · {stat.pass} passed
+          {stat.totalMl > 0 && <span className="text-paper-dim/70"> · ~{stat.totalMl}mL</span>}
+        </span>
+      </div>
+      <div className="h-2.5 w-full overflow-hidden rounded-full bg-ink">
+        <div
+          className="flex h-full gap-px transition-[width] duration-500 ease-out"
+          style={{ width: `${widthPct}%` }}
+        >
+          {POUR_VOLUMES.map((v) =>
+            stat.byVolume[v.id] > 0 ? (
+              <div
+                key={v.id}
+                className={`h-full ${VOLUME_COLOR[v.id]}`}
+                style={{ width: `${(stat.byVolume[v.id] / actionTotal) * 100}%` }}
+                title={`${v.label}: ${stat.byVolume[v.id]}`}
+              />
+            ) : null,
+          )}
+          {stat.pass > 0 && (
+            <div
+              className={`h-full ${PASS_COLOR}`}
+              style={{ width: `${(stat.pass / actionTotal) * 100}%` }}
+              title={`Passed: ${stat.pass}`}
+            />
+          )}
+        </div>
+      </div>
+      </div>
+    </li>
+  )
+}
+
+/** Shared legend for the Light/Standard/Heavy/Pass colors above — used
+ * anywhere a ParticipantStatBar list is shown, so the color key is never
+ * duplicated or allowed to drift out of sync with the bar colors. */
+export function VolumeLegend() {
+  return (
+    <div className="flex items-center gap-3 text-[11px] text-paper-dim/70">
+      <span className="flex items-center gap-1">
+        <span className="h-1.5 w-1.5 rounded-full bg-pour-heavy" /> Heavy
+      </span>
+      <span className="flex items-center gap-1">
+        <span className="h-1.5 w-1.5 rounded-full bg-ember" /> Standard
+      </span>
+      <span className="flex items-center gap-1">
+        <span className="h-1.5 w-1.5 rounded-full bg-pour-light" /> Light
+      </span>
+      <span className="flex items-center gap-1">
+        <span className="h-1.5 w-1.5 rounded-full bg-smoke-light" /> Pass
+      </span>
+    </div>
+  )
+}

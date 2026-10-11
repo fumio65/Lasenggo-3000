@@ -1,4 +1,6 @@
 import { useSessionHistory } from './useSessionHistory'
+import { BackIcon } from '../../shared/components/BackIcon'
+import { HistoryIcon } from '../../shared/components/HistoryIcon'
 
 function formatDate(isoString) {
   return new Date(isoString).toLocaleString(undefined, {
@@ -16,22 +18,25 @@ export function HistoryList({ onBack, onSelect }) {
   const { sessions, loading, syncedFromCloud } = useSessionHistory()
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 p-6">
+    <div className="min-h-screen bg-ink text-paper p-6">
       <div className="mx-auto max-w-md space-y-6">
-        <header className="space-y-1">
+        <header className="space-y-3">
           <button
             type="button"
             onClick={onBack}
-            className="text-sm text-neutral-500 hover:text-neutral-300"
+            aria-label="Back"
+            className="flex items-center gap-1.5 rounded-full bg-smoke px-3 py-1.5 text-sm text-paper-dim ring-1 ring-smoke-light transition hover:bg-smoke-light hover:text-paper active:scale-95"
           >
-            ← Back
+            <BackIcon /> Back
           </button>
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold tracking-tight">Session History</h1>
+            <h1 className="font-display text-2xl font-semibold tracking-tight">
+              Session history
+            </h1>
             {/* app/history-sync-fallback: lets offline/local-only mode be eyeballed
                 during testing; harmless to leave as a quiet status indicator. */}
             {!loading && (
-              <span className="text-[10px] font-mono text-neutral-600">
+              <span className="rounded-full bg-smoke px-2 py-0.5 text-[10px] text-paper-dim">
                 {syncedFromCloud ? 'synced' : 'local only'}
               </span>
             )}
@@ -39,11 +44,16 @@ export function HistoryList({ onBack, onSelect }) {
         </header>
 
         {loading ? (
-          <p className="text-center text-sm text-neutral-500">Loading…</p>
+          <ul className="space-y-2" aria-hidden="true">
+            {[0, 1, 2].map((i) => (
+              <li key={i} className="h-14 animate-pulse rounded-xl bg-smoke" />
+            ))}
+          </ul>
         ) : sessions.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-neutral-800 px-4 py-8 text-center text-sm text-neutral-500">
+          <div className="rounded-xl border border-dashed border-smoke-light px-4 py-8 text-center text-sm text-paper-dim">
+            <HistoryIcon className="mx-auto mb-2 h-5 w-5 opacity-40" />
             No sessions yet. Start one to see it here.
-          </p>
+          </div>
         ) : (
           <ul className="space-y-2">
             {sessions.map((s) => (
@@ -51,21 +61,21 @@ export function HistoryList({ onBack, onSelect }) {
                 <button
                   type="button"
                   onClick={() => onSelect(s.id)}
-                  className="flex w-full items-center justify-between rounded-lg bg-neutral-900 px-4 py-3 text-left transition hover:bg-neutral-800"
+                  className="flex w-full items-center justify-between rounded-xl bg-smoke px-4 py-3 text-left transition hover:bg-smoke-light active:scale-[0.99]"
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-neutral-100">
+                    <span className="block truncate text-paper">
                       {s.name || formatDate(s.started_at)}
                     </span>
                     {/* app/session-naming: show the date as a subline too once a
                         session has a custom name, so it's not lost from view */}
                     {s.name && (
-                      <span className="block text-xs text-neutral-500">
+                      <span className="block text-xs text-paper-dim">
                         {formatDate(s.started_at)}
                       </span>
                     )}
                   </span>
-                  <span className="shrink-0 pl-3 text-sm text-neutral-500">
+                  <span className="shrink-0 pl-3 text-sm text-paper-dim">
                     {s.participant_count} participant{s.participant_count === 1 ? '' : 's'}
                   </span>
                 </button>

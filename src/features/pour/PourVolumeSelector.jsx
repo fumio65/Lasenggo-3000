@@ -17,14 +17,14 @@ export function PourVolumeSelector({ volumeId, onChange }) {
             type="button"
             onClick={() => onChange(v.id)}
             aria-pressed={active}
-            className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${
+            className={`flex-1 rounded-xl px-3 py-2 text-sm font-medium transition active:scale-95 ${
               active
-                ? 'bg-neutral-100 text-neutral-950'
-                : 'bg-neutral-900 text-neutral-400 hover:text-neutral-100'
+                ? 'bg-ember text-ink'
+                : 'bg-smoke text-paper-dim hover:text-paper'
             }`}
           >
             {v.label}
-            <span className="block text-xs opacity-60">~{v.approxMl}mL</span>
+            <span className="block text-xs opacity-70">~{v.approxMl}mL</span>
           </button>
         )
       })}

@@ -35,16 +35,19 @@ export async function createSession(participants, name = '') {
   return sessionId
 }
 
-/** Logs one POUR/PASS event row for the given session + participant.
- * Returns the new row's id so a caller can later target it precisely
- * (app/undo-last-action uses this to undo exactly the event it logged, not
- * just "the most recent row" by time, which could race). */
-export async function logEvent(sessionId, participantId, type) {
+/** Logs one event row for the given session + participant — POUR/PASS
+ * (app/local-event-logging), or PAUSE/RESUME (app/pause-reason-tag).
+ * `note` is the pause reason tag ("Drunk", "Takas", ...) for a PAUSE row;
+ * NULL for everything else. Returns the new row's id so a caller can later
+ * target it precisely (app/undo-last-action uses this to undo exactly the
+ * event it logged, not just "the most recent row" by time, which could
+ * race). */
+export async function logEvent(sessionId, participantId, type, volume = null, note = null) {
   const db = getDatabase()
   const id = crypto.randomUUID()
   await db.run(
-    'INSERT INTO events (id, session_id, participant_id, type, timestamp, synced) VALUES (?, ?, ?, ?, ?, 0)',
-    [id, sessionId, participantId, type, new Date().toISOString()],
+    'INSERT INTO events (id, session_id, participant_id, type, volume, note, timestamp, synced) VALUES (?, ?, ?, ?, ?, ?, ?, 0)',
+    [id, sessionId, participantId, type, volume, note, new Date().toISOString()],
     false,
   )
   return id
@@ -58,6 +61,29 @@ export async function deleteEvent(eventId) {
   await db.run('DELETE FROM events WHERE id = ?', [eventId], false)
 }
 
+/** Inserts a participant row for someone who joins an already-running
+ * session (app/add-participant-mid-session) — the same shape createSession
+ * inserts per-participant, just one row at a time instead of a whole set,
+ * since the session already exists. */
+export async function addSessionParticipant(sessionId, participantId, name) {
+  const db = getDatabase()
+  await db.run(
+    'INSERT INTO participants (id, session_id, name, synced) VALUES (?, ?, ?, 0)',
+    [participantId, sessionId, name],
+    false,
+  )
+}
+
+/** Renames a participant row (app/edit-participant-name) — a straight
+ * UPDATE by id, which is already the single row for this person (the
+ * `participants` table has one row per id, inserted once in createSession),
+ * so there's nothing to fan out: fixing it here is already fixing it
+ * everywhere that id is looked up. */
+export async function renameParticipant(participantId, name) {
+  const db = getDatabase()
+  await db.run('UPDATE participants SET name = ? WHERE id = ?', [name, participantId], false)
+}
+
 /** Marks a session as ended (used when exiting back to the participant list). */
 export async function endSession(sessionId) {
   const db = getDatabase()
@@ -68,13 +94,24 @@ export async function endSession(sessionId) {
   )
 }
 
-/** Temporary debug helper (see ActiveSessionScreen) — counts events logged
- * for a session so persistence can be eyeballed before app/history-list
- * exists to show it properly. Safe to delete once that task lands. */
-export async function countEvents(sessionId) {
+/** Every event for the *current* session, newest first, with the
+ * participant's name and the pour volume (for POUR rows; NULL for PASS)
+ * joined in — backs the "session log" panel on ActiveSessionScreen: both
+ * its per-participant Light/Standard/Heavy/mL breakdown and the recent
+ * activity list. Not capped — a casual session's event count is small
+ * enough that aggregating client-side from the full list is simpler (and
+ * more honest) than maintaining a second, separately-capped query. */
+export async function getSessionEvents(sessionId) {
   const db = getDatabase()
-  const result = await db.query('SELECT COUNT(*) as count FROM events WHERE session_id = ?', [sessionId])
-  return result.values?.[0]?.count ?? 0
+  const result = await db.query(
+    `SELECT e.id, e.type, e.volume, e.note, e.timestamp, e.participant_id, p.name as participant_name
+     FROM events e
+     JOIN participants p ON p.id = e.participant_id
+     WHERE e.session_id = ?
+     ORDER BY e.timestamp DESC`,
+    [sessionId],
+  )
+  return result.values ?? []
 }
 
 /** Past sessions with participant count, newest first. Used by
@@ -91,8 +128,12 @@ export async function getSessionHistory() {
   return result.values ?? []
 }
 
-/** One session's participants with their POUR/PASS counts for that session,
- * in the order they were added (turn order). Used by `app/history-detail`. */
+/** One session's participants with their POUR/PASS counts for that session
+ * — including the Light/Standard/Heavy breakdown of their pours, not just
+ * the total — in the order they were added (turn order). Used by
+ * `app/history-detail`; the volume breakdown backs the same ParticipantStatBar
+ * visualization ActiveSessionScreen's live SessionLog uses, so a past
+ * session reads the same way a live one does. */
 export async function getSessionDetail(sessionId) {
   const db = getDatabase()
   const sessionResult = await db.query('SELECT * FROM sessions WHERE id = ?', [sessionId])
@@ -102,7 +143,10 @@ export async function getSessionDetail(sessionId) {
     `SELECT
        p.id, p.name,
        SUM(CASE WHEN e.type = 'POUR' THEN 1 ELSE 0 END) as pour_count,
-       SUM(CASE WHEN e.type = 'PASS' THEN 1 ELSE 0 END) as pass_count
+       SUM(CASE WHEN e.type = 'PASS' THEN 1 ELSE 0 END) as pass_count,
+       SUM(CASE WHEN e.type = 'POUR' AND e.volume = 'light' THEN 1 ELSE 0 END) as light_count,
+       SUM(CASE WHEN e.type = 'POUR' AND e.volume = 'standard' THEN 1 ELSE 0 END) as standard_count,
+       SUM(CASE WHEN e.type = 'POUR' AND e.volume = 'heavy' THEN 1 ELSE 0 END) as heavy_count
      FROM participants p
      LEFT JOIN events e ON e.participant_id = p.id
      WHERE p.session_id = ?

@@ -81,17 +81,22 @@ participants (
   name text
 )
 
--- One row per pour/pass event
+-- One row per pour/pass/pause/resume event
 events (
   id uuid primary key,
   session_id uuid references sessions(id),
   participant_id uuid references participants(id),
-  type text,                 -- 'POUR' | 'PASS'
+  type text,                 -- 'POUR' | 'PASS' | 'PAUSE' | 'RESUME'
+  volume text,                -- 'light' | 'standard' | 'heavy', POUR only, else null
+  note text,                  -- pause reason (Drunk/Went home/Run away/Emergency/
+                               -- Other), PAUSE only, else null
   timestamp timestamptz
 )
 ```
 Local SQLite mirrors this exactly, plus a `synced boolean` flag per row used by the sync
-job to find unsynced records.
+job to find unsynced records. `volume` and `note` were both added after this table's
+initial creation via idempotent `ALTER TABLE ... ADD COLUMN` migrations in `db.js`
+(`migrateAddEventVolume`, `migrateAddEventNote`), same pattern as `sessions.name`.
 
 ## BLE API (App ↔ ESP32)
 
