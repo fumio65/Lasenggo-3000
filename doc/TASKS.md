@@ -266,6 +266,46 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
     layer only — a real airplane-mode test on an installed APK hasn't happened
     (native Android build still unverified; no Android SDK available to Claude,
     always been on fumio65's side to confirm in Android Studio).
+- [x] Fix: web SQLite writes never actually persisted to IndexedDB
+  - Owner: fumio65 · Branch: `design/night-market-theme` · Done: 2026-10-11
+  - Notes: Found via user report ("when I refresh all data is cleared"). Root
+    cause: the web-only backing store (`jeep-sqlite`, IndexedDB + a wasm sqlite
+    engine) has an `autoSave` flag controlling whether writes flush to
+    IndexedDB — it defaults to `false`, and `src/main.jsx` created the
+    `<jeep-sqlite>` element without ever setting it (nor did anything call the
+    matching `saveToStore()` manually). Every write landed in the in-memory
+    wasm database only; a page refresh reloaded `jeep-sqlite` from whatever was
+    last in IndexedDB (nothing), silently dropping everything written since.
+    This had gone undetected through `app/offline-verification` above, since
+    that test reloaded the page mid-flow but never checked that *previously
+    created* data survived a reload — it tested the offline network path, not
+    the browser-persistence path. Fixed with one line:
+    `jeepSqliteEl.autoSave = true` in `main.jsx`, set before `appendChild` (the
+    element reads it once in `connectedCallback`). Native Android builds are
+    unaffected — they use the platform's real SQLite, not jeep-sqlite, and
+    always persisted correctly.
+    Verified manually: added participants, ran a full session with a pour,
+    ended it, hard-reloaded the page, confirmed the session/participant/event
+    data was all still there in History afterward.
+- [x] Fix: Session history waited on a Supabase pull before showing local data
+  - Owner: fumio65 · Branch: `design/night-market-theme` · Done: 2026-10-11
+  - Notes: Found via user report ("I'm offline and when I check the history it
+    loads first... I think it's syncing before it displays the offline
+    data"). Root cause: `useSessionHistory`'s `refresh()` did
+    `await pullSessions()` *then* `await getSessionHistory()` — the loading
+    skeleton stayed up for the full duration of the (best-effort, optional)
+    Supabase pull before the local read even started, backwards from the
+    "local-first, never blocks on network" rule the rest of the app follows
+    (ARCHITECTURE.md). `pullSessions()`'s own `navigator.onLine` early-exit
+    doesn't fully cover this either — a device can report online with no real
+    connectivity. Fixed by reordering: local SQLite is read and rendered
+    first, unconditionally; the Supabase pull then runs in the background and
+    only triggers a second render if it actually finds sessions missing
+    locally (reinstall, cleared local DB) to merge in. `HistoryDetail`'s own
+    hook (`useSessionDetail`) was checked too — it never pulled from Supabase
+    at all, so it wasn't affected.
+    Verified manually: Session history shows local rows immediately on open,
+    no visible wait on the network call either way.
 
 ### Backend — Supabase
 - [x] Create Supabase project, apply schema migration (`sessions`, `participants`,

@@ -288,3 +288,34 @@ re-run a session with the same group without retyping); clearing outright was ch
 instead as the simpler, safer default — picking the group back up each time also
 matches how a tagayan actually restarts (people come and go between rounds).
 
+---
+
+### Web SQLite: autoSave enabled on the jeep-sqlite store
+**Decision**: `jeepSqliteEl.autoSave = true` is set in `main.jsx` before the
+`<jeep-sqlite>` element connects.
+**Why**: `jeep-sqlite` (the IndexedDB-backed wasm sqlite engine used only on web —
+native Android uses the real platform SQLite) defaults `autoSave` to `false`. With it
+off, every write lands in the in-memory wasm database and nothing is ever flushed to
+IndexedDB unless `saveToStore()` is called manually, which nothing in this app did. The
+app appeared offline-first within a single page load (every write "succeeded"
+instantly) but a browser refresh silently lost everything, since there was never
+anything in IndexedDB to reload from. Caught via a user report, reproduced, and
+root-caused by reading jeep-sqlite's own source rather than guessing. `autoSave: true`
+was chosen over manually calling `saveToStore()` after every write site, since it's a
+one-line fix at the single point the store is created, instead of touching every
+write call in `sessionQueries.js`.
+
+---
+
+### Session history reads local SQLite before attempting a Supabase pull
+**Decision**: `useSessionHistory` now reads and renders local SQLite rows first,
+unconditionally, and only runs the Supabase background pull (`app/history-sync-fallback`)
+afterward — a second render happens only if that pull actually finds sessions missing
+locally.
+**Why**: The previous order awaited the pull before the local read, so the loading
+skeleton stayed up for however long that (optional, best-effort) network call took —
+visibly "syncing" before showing data that was already sitting on the device the whole
+time, reported directly by the user while offline. `navigator.onLine` being true doesn't
+guarantee real connectivity, so the early-exit in `pullSessions()` isn't a complete fix
+for this on its own; the fix belongs in the read order, not the network check.
+
