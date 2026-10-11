@@ -34,26 +34,35 @@ export async function pullSessions() {
   const db = getDatabase()
 
   try {
+    // app/people-roster-sync: pulled independently of the sessions below —
+    // the roster isn't scoped to any one session, so "this device has all
+    // its sessions already" doesn't mean it has every roster entry (e.g.
+    // someone was renamed/added from a different device, or this is a
+    // reinstall). Cheap either way: one query, insert whatever's missing.
+    const peoplePulled = await pullPeople(db, deviceId)
+
     const { data: remoteSessions, error: sessionsError } = await supabase
       .from('sessions')
       .select('id, name, started_at, ended_at')
       .eq('device_id', deviceId)
     if (sessionsError) throw sessionsError
-    if (!remoteSessions || remoteSessions.length === 0) return { ok: true, pulled: 0 }
+    if (!remoteSessions || remoteSessions.length === 0) {
+      return { ok: true, pulled: 0, peoplePulled }
+    }
 
     const localIdsResult = await db.query('SELECT id FROM sessions')
     const localIds = new Set((localIdsResult.values ?? []).map((row) => row.id))
     const missingSessions = remoteSessions.filter((s) => !localIds.has(s.id))
-    if (missingSessions.length === 0) return { ok: true, pulled: 0 }
+    if (missingSessions.length === 0) return { ok: true, pulled: 0, peoplePulled }
 
     const missingIds = missingSessions.map((s) => s.id)
 
     const [{ data: remoteParticipants, error: participantsError }, { data: remoteEvents, error: eventsError }] =
       await Promise.all([
-        supabase.from('participants').select('id, session_id, name').in('session_id', missingIds),
+        supabase.from('participants').select('id, session_id, name, person_id').in('session_id', missingIds),
         supabase
           .from('events')
-          .select('id, session_id, participant_id, type, timestamp')
+          .select('id, session_id, participant_id, type, volume, note, timestamp')
           .in('session_id', missingIds),
       ])
     if (participantsError) throw participantsError
@@ -67,18 +76,19 @@ export async function pullSessions() {
         values: [s.id, deviceId, s.name, s.started_at, s.ended_at, now],
       })),
       ...(remoteParticipants ?? []).map((p) => ({
-        statement: 'INSERT OR IGNORE INTO participants (id, session_id, name, synced) VALUES (?, ?, ?, 1)',
-        values: [p.id, p.session_id, p.name],
+        statement:
+          'INSERT OR IGNORE INTO participants (id, session_id, name, person_id, synced) VALUES (?, ?, ?, ?, 1)',
+        values: [p.id, p.session_id, p.name, p.person_id],
       })),
       ...(remoteEvents ?? []).map((e) => ({
         statement:
-          'INSERT OR IGNORE INTO events (id, session_id, participant_id, type, timestamp, synced) VALUES (?, ?, ?, ?, ?, 1)',
-        values: [e.id, e.session_id, e.participant_id, e.type, e.timestamp],
+          'INSERT OR IGNORE INTO events (id, session_id, participant_id, type, volume, note, timestamp, synced) VALUES (?, ?, ?, ?, ?, ?, ?, 1)',
+        values: [e.id, e.session_id, e.participant_id, e.type, e.volume, e.note, e.timestamp],
       })),
     ]
     await db.executeSet(set, false)
 
-    return { ok: true, pulled: missingSessions.length }
+    return { ok: true, pulled: missingSessions.length, peoplePulled }
   } catch (err) {
     if (isNetworkError(err)) {
       console.warn('Pull skipped, no connection — showing local-only history', err)
@@ -87,4 +97,35 @@ export async function pullSessions() {
     console.error('Pull failed — showing local-only history', err)
     return { ok: false, reason: 'error', error: err }
   }
+}
+
+
+/** app/people-roster-sync: inserts any remote `people` rows for this device
+ * that aren't already present locally, keyed by id (same `INSERT OR IGNORE`
+ * convention as the rest of this file — local wins if a row somehow exists
+ * both places already). Pulled rows are marked already-synced, matching
+ * `pullSessions`'s own rows. Returns the count inserted; never throws (the
+ * caller's try/catch covers it, same as everything else in here). */
+async function pullPeople(db, deviceId) {
+  const { data: remotePeople, error } = await supabase
+    .from('people')
+    .select('id, name, created_at, last_used_at')
+    .eq('device_id', deviceId)
+  if (error) throw error
+  if (!remotePeople || remotePeople.length === 0) return 0
+
+  const localIdsResult = await db.query('SELECT id FROM people')
+  const localIds = new Set((localIdsResult.values ?? []).map((row) => row.id))
+  const missing = remotePeople.filter((p) => !localIds.has(p.id))
+  if (missing.length === 0) return 0
+
+  await db.executeSet(
+    missing.map((p) => ({
+      statement:
+        'INSERT OR IGNORE INTO people (id, device_id, name, created_at, last_used_at, synced) VALUES (?, ?, ?, ?, ?, 1)',
+      values: [p.id, deviceId, p.name, p.created_at, p.last_used_at],
+    })),
+    false,
+  )
+  return missing.length
 }

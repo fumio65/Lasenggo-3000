@@ -226,6 +226,81 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
     Verified manually in both the live Session log and HistoryDetail with a
     participant hitting all three volumes (worst-case density) — single line,
     no wrapping, no clipping, name always visible.
+- [x] Participant name autocomplete + a people roster to rename/delete saved names
+  - Owner: fumio65 · Branch: `app/people-roster` · Done: 2026-10-11
+  - Notes: User-requested: typing a previously-used name at session start should
+    suggest it instead of retyping, plus a screen to fix a typo or remove someone
+    who isn't coming around — this is the roster half of the Tagay King/Queen
+    backlog design (part B's prerequisite), pulled forward on its own since it's
+    useful immediately, independent of the leaderboard itself.
+    New `people` table (id, name, created_at, last_used_at) plus
+    `participants.person_id` (nullable FK, added via the same idempotent
+    migration pattern as `sessions.name`/`events.volume`/`events.note` — see
+    `migrateAddParticipantPersonId` in `db.js`). A `participants` row keeps its
+    own independent name copy regardless of `person_id` — renaming someone in
+    the roster later never rewrites a past session's record; `person_id` is
+    purely a forward-looking link for autocomplete and the future leaderboard.
+    `src/features/storage/peopleQueries.js`: `getPeople()` (most-recently-used
+    first), `findOrCreatePerson(name)` (case-insensitive exact match reuses and
+    bumps `last_used_at`, otherwise creates — the *only* way a new roster entry
+    is created, matching the original design note that there's no separate "add"
+    control), `renamePerson`, `deletePerson`.
+    Caught during testing (user-reported): the first pass resolved/created the
+    roster person the moment a name was added to "Who's joining", which meant
+    someone added and then removed again before Start session — or the screen
+    abandoned entirely — still got written to the roster. Fixed by moving that
+    resolution to the one moment the list is actually committed to:
+    `ParticipantList.jsx`'s Add button now just adds the name in-memory with no
+    roster call at all, and `App.jsx`'s `handleStartSession` resolves the whole
+    list against the roster in one pass, right before `createSession`.
+    `ActiveSessionScreen.jsx`'s mid-session "add someone who just joined" is
+    different on purpose and was left as-is: that add *is* the commit (it
+    inserts a real `participants` row for the running session immediately, no
+    separate "start" step exists for it), so resolving the roster person right
+    there is correct.
+    Autocomplete first shipped as a native `<datalist>` on the existing name
+    input for the zero-dependency keyboard/screen-reader/touch support it gives
+    for free — reversed after the user flagged it live: the dropdown arrow and
+    the suggestion popup are browser chrome that can't be restyled, and looked
+    completely out of place against this app's own dark theme. Replaced with a
+    small hand-built combobox (filtered `<ul>`/`<button>` list positioned under
+    the input, arrow keys + Enter to pick, click/tap too) styled with the same
+    ink/smoke/ember tokens as the rest of the screen. While wiring it up, also
+    found and fixed a real race underneath both versions: this screen renders
+    immediately on page load, before `initDatabase()` necessarily resolves, so
+    its one-time `getPeople()` call on mount could silently lose that race and
+    leave the suggestion list empty for the rest of the session (no retry).
+    Fixed with a new `dbReady` prop (`App.jsx`'s `dbStatus === 'ready'`) that
+    the roster-loading effect now waits on.
+    New "People" button + `PeopleScreen.jsx`: a flat list with inline
+    tap-to-rename and a delete (✕) button, no add control (same reasoning as
+    above — adding only happens by typing a name at session start).
+    Deleting a roster entry leaves any past `participants.person_id` referencing
+    it as a harmless orphaned link (SQLite doesn't enforce the FK here) rather
+    than cascading — nothing currently joins back through a deleted person except
+    future suggestions/leaderboard aggregation, which naturally stop surfacing
+    them going forward.
+    While testing this, also found and fixed a real (pre-existing, not introduced
+    by this task) console-noise bug shared by all four `db.js` migrations: each
+    fired its `ALTER TABLE` unconditionally and swallowed the resulting
+    "duplicate column" error on every re-run — correct in principle, but on web
+    (`jeep-sqlite`) that swallowed rejection still surfaced as an "Uncaught (in
+    promise)" console error on every dev-mode remount (React StrictMode re-runs
+    `initDatabase()`). Switched all four migrations to check `PRAGMA
+    table_info(table)` first and only `ALTER TABLE` when the column is actually
+    missing, so there's nothing left to throw or swallow. Harmless either way in
+    production (runs once per real install), but the console is clean now.
+    Shipped local-only at first, since the `lasenggo-3000` Supabase project was
+    paused at the time — now synced too, see `backend/supabase-resume-catchup`
+    below (the user resumed the project partway through this task).
+    Verified manually end to end in-browser: typed and submitted two names,
+    confirmed both appear as `<datalist>` autocomplete options; opened People,
+    renamed one entry and deleted the other, confirmed the autocomplete list
+    updated to match; retyped the renamed name and confirmed it resolved to the
+    same roster person (no duplicate created) when starting a session; ran a full
+    session (pour + end) with both participants with no console errors from the
+    current module version.
+
 
 ### App — Bluetooth integration
 - [ ] Integrate `@capacitor-community/bluetooth-le`: scan for "Lasenggo3000", connect,
@@ -267,7 +342,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
     (native Android build still unverified; no Android SDK available to Claude,
     always been on fumio65's side to confirm in Android Studio).
 - [x] Fix: web SQLite writes never actually persisted to IndexedDB
-  - Owner: fumio65 · Branch: `design/night-market-theme` · Done: 2026-10-11
+  - Owner: fumio65 · Branch: `app/web-sqlite-persistence` · Done: 2026-10-11
   - Notes: Found via user report ("when I refresh all data is cleared"). Root
     cause: the web-only backing store (`jeep-sqlite`, IndexedDB + a wasm sqlite
     engine) has an `autoSave` flag controlling whether writes flush to
@@ -288,7 +363,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
     ended it, hard-reloaded the page, confirmed the session/participant/event
     data was all still there in History afterward.
 - [x] Fix: Session history waited on a Supabase pull before showing local data
-  - Owner: fumio65 · Branch: `design/night-market-theme` · Done: 2026-10-11
+  - Owner: fumio65 · Branch: `app/web-sqlite-persistence` · Done: 2026-10-11
   - Notes: Found via user report ("I'm offline and when I check the history it
     loads first... I think it's syncing before it displays the offline
     data"). Root cause: `useSessionHistory`'s `refresh()` did
@@ -367,6 +442,48 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
     went back online — `sync` auto-flipped to `syncing` → `done` with no reload,
     and the session/participants/events rows confirmed landing in Supabase
     (`execute_sql` row counts increased accordingly).
+- [x] Catch up Supabase schema + sync after resuming the paused project
+  - Owner: fumio65 · Branch: `backend/supabase-resume-catchup` · Done: 2026-10-11
+  - Notes: User resumed the paused `lasenggo-3000` Supabase project mid-session.
+    Checking it before syncing anything turned up a real, pre-existing gap: three
+    local features shipped while the project was paused (`app/pause-reason-tag`,
+    the pour-volume breakdown, and this session's `app/people-roster`) had never
+    reached Supabase at all — not just unsynced rows, but columns and a CHECK
+    constraint that didn't exist yet. Had sync ever actually run against the
+    live project before now, every `PAUSE`/`RESUME` event would have been
+    silently and permanently rejected by `events`' old
+    `type = ANY (ARRAY['POUR','PASS'])` constraint (caught, logged, rows stay
+    queued forever — "fails safe" by design, but silently wrong).
+    Migration `catch_up_pause_volume_and_people_roster` applied directly via
+    Supabase MCP: `events.volume`/`events.note` added; `events_type_check`
+    widened to include `PAUSE`/`RESUME`; new `people` table (device-scoped via
+    `device_id`, same RLS pattern as `sessions` — `USING (device_id =
+    auth.uid())`, since a person isn't tied to one session the way
+    participants/events are); `participants.person_id` added with its FK into
+    `people`.
+    `syncJob.js`: new `syncPeople()` (same shape as `syncSessions` — device_id
+    stamped at push time, not creation time), run *before* `syncSessions`/
+    `syncParticipants` since `participants.person_id` is a foreign key into
+    `people` on Supabase. `syncParticipants` now pushes `person_id`;
+    `syncEvents` now pushes `volume`/`note`.
+    `pull.js`: new `pullPeople()`, pulling this device's whole roster
+    independently of which sessions are missing locally (unlike
+    session-scoped data, a roster gap isn't implied by "this device already
+    has all its sessions" — e.g. a rename from another device, or a reinstall).
+    `pullSessions`'s participant/event pulls now carry `person_id`/
+    `volume`+`note` too.
+    Local SQLite: `people` gained a `device_id TEXT` column (new
+    `migrateAddPersonDeviceId`, same idempotent `PRAGMA table_info` pattern as
+    the other four migrations) — needed so `syncPeople` has somewhere to stamp
+    it, matching how `sessions.device_id` already worked.
+    Verified end to end: added two participants, poured once (volume) and
+    paused one with a reason tag (note) through a real session, ended it, and
+    confirmed via `execute_sql` that the session, both participants
+    (`person_id` populated), the `POUR` event (`volume: "standard"`), the
+    `PAUSE` event (`note: "Went home"` — the exact row shape the old
+    constraint would have rejected), and both `people` rows (`device_id`
+    stamped) all landed correctly in Supabase.
+
 
 ### App — Session history (moved up from backlog — user wants history visible in MVP)
 - [x] History list screen: past sessions (date, participant count) pulled from local
@@ -447,19 +564,19 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
 - [ ] Sound/haptic feedback on pour complete
 - [ ] "Tagay King/Queen" leaderboard — two halves, designed 2026-10-06, not started:
       (A) per-session crown: whoever poured the most *in that one session*, shown on
-      HistoryDetail — blocked on app/ble-commands existing for real (there's no
-      meaningful way to test it while Pour stays disabled/stubbed; a "simulate
-      pour (dev)" button was tried and discarded as a workaround, not worth
-      keeping). (B) all-time cross-session leaderboard — needs a recurring
-      "people" roster (new local `people` table + `participants.person_id`
-      linking a session's participant back to a roster person when picked from
-      a reuse list at session start, instead of retyping; new Participants
-      screen to rename/delete roster entries, no "add" button there — adding
-      happens organically by typing a new name at session start), since
-      cross-session aggregation by name alone is unreliable (name collisions/
-      typos). Roster should sync to Supabase like sessions/participants/events
-      already do (user confirmed). Build order: (A) first once Pour is real,
-      then (B)'s roster + all-time board.
+      HistoryDetail — no longer blocked on real hardware: `app/people-roster`'s
+      Simulate Pour already exercises the full pour → event-logging path end to
+      end, so this can be built and tested now. (B) all-time cross-session
+      leaderboard — its roster prerequisite is **done**
+      (`app/people-roster`: `people` table + `participants.person_id`, plus the
+      rename/delete screen), since cross-session aggregation by name alone was
+      unreliable (name collisions/typos). What's left for (B) is just the
+      aggregation query + leaderboard UI itself. `people` isn't synced to
+      Supabase yet (local-only for now, the Supabase project is currently
+      paused) — needed before an all-time board means anything across devices,
+      not just one phone's local history. Build order: (A) first (quick now that
+      Pour is simulated), then `people` → Supabase sync, then (B)'s aggregation +
+      board.
   - Owner: _unassigned_ · Branch: _tbd_
 - [ ] QR code BLE pairing
 - [ ] Spill containment in enclosure design (raised lip / drip tray)

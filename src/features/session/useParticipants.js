@@ -16,12 +16,16 @@ export function useParticipants(initial = []) {
   // callback) specifically so it can be returned synchronously — a caller
   // adding someone mid-session (app/add-participant-mid-session) needs
   // that id right away to also insert the matching DB row for the
-  // current session.
-  const addParticipant = useCallback((name) => {
+  // current session. `personId` (app/people-roster, optional) is resolved
+  // by the caller beforehand (via `findOrCreatePerson`, an async DB call
+  // that doesn't belong inside this otherwise-synchronous hook) and just
+  // carried along on the in-memory participant object so it can ride into
+  // that same DB insert.
+  const addParticipant = useCallback((name, personId = null) => {
     const trimmed = name.trim()
     if (!trimmed) return null
     const id = crypto.randomUUID()
-    setParticipants((prev) => [...prev, { id, name: trimmed }])
+    setParticipants((prev) => [...prev, { id, name: trimmed, personId }])
     return id
   }, [])
 

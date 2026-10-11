@@ -8,6 +8,7 @@ import { BackIcon } from '../../shared/components/BackIcon'
 import { HistoryIcon } from '../../shared/components/HistoryIcon'
 import { PourVolumeSelector } from '../pour/PourVolumeSelector'
 import { logEvent, deleteEvent, getSessionEvents, renameParticipant, addSessionParticipant } from '../storage/sessionQueries'
+import { findOrCreatePerson } from '../storage/peopleQueries'
 
 /**
  * Active session screen.
@@ -125,14 +126,26 @@ export function ActiveSessionScreen({
   }
 
   // app/add-participant-mid-session: someone joins the table after the
-  // round's already started — adds them to the live roster (so the ring/
-  // log pick them up right away, same as if they'd been in the original
-  // list) and inserts their DB row for *this* session, same shape
+  // round's already started — adds them to the live participant list (so
+  // the ring/log pick them up right away, same as if they'd been in the
+  // original list) and inserts their DB row for *this* session, same shape
   // createSession would have inserted had they been there from the start.
-  function handleAddParticipant(name) {
-    const id = onAddParticipant?.(name)
+  // app/people-roster: also resolves/creates their roster entry first
+  // (same as ParticipantList's own add), so someone added mid-session
+  // shows up in autocomplete next time too, not just people added at
+  // Start Session.
+  async function handleAddParticipant(name) {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    let personId = null
+    try {
+      personId = await findOrCreatePerson(trimmed)
+    } catch (err) {
+      console.error('Failed to resolve roster person, adding without one', err)
+    }
+    const id = onAddParticipant?.(trimmed, personId)
     if (id && sessionId) {
-      addSessionParticipant(sessionId, id, name.trim()).catch((err) =>
+      addSessionParticipant(sessionId, id, trimmed, personId).catch((err) =>
         console.error('Failed to add participant to session', err),
       )
     }

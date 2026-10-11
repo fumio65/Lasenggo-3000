@@ -319,3 +319,119 @@ time, reported directly by the user while offline. `navigator.onLine` being true
 guarantee real connectivity, so the early-exit in `pullSessions()` isn't a complete fix
 for this on its own; the fix belongs in the read order, not the network check.
 
+---
+
+### `people` scoped on Supabase directly by `device_id`, like `sessions` — not via `participants`
+**Decision**: The Supabase `people` table has its own `device_id` column and RLS policy
+(`device_id = auth.uid()`), the same shape as `sessions`, rather than being scoped
+indirectly the way `participants`/`events` are (an `EXISTS` subquery joining back to
+`sessions.device_id`).
+**Why**: A roster person isn't owned by any one session the way a participant or event
+row is — the whole point of the roster is that it outlives any single session. Scoping
+it through a session would make no sense structurally (which session would own it?) and
+would break the moment the roster is useful across sessions, which is its entire reason
+for existing.
+
+---
+
+### Supabase catch-up applied directly as one migration, not re-run from scratch
+**Decision**: When the paused `lasenggo-3000` Supabase project came back, the missing
+`events.volume`/`events.note`, the widened `events.type` CHECK, the new `people` table,
+and `participants.person_id` were applied as a single new migration
+(`catch_up_pause_volume_and_people_roster`) against the live schema, rather than trying
+to replay each local migration's history as separate Supabase migrations in order.
+**Why**: Local SQLite's migration history (one `ALTER TABLE` per feature, applied over
+several days) is a record of *how the local schema got here*, not a script that needs
+replaying verbatim elsewhere — Supabase only needs to end up at the same *shape*. A
+single catch-up migration gets there in one step and is easier to review as "what
+changed" than several migrations whose original dates no longer mean anything once
+applied together, in one sitting, after the fact.
+
+---
+
+### Participant name autocomplete: hand-built combobox, not native `<datalist>`
+**Decision**: Reversed the earlier native-`<datalist>` decision below. The name input's
+suggestions are now a small custom `<ul>`/`<button>` dropdown, styled with the app's own
+`ink`/`smoke`/`ember` tokens, positioned under the input with CSS instead of opened by
+the browser.
+**Why**: User caught this live — the native version's dropdown arrow and its suggestion
+popup are browser chrome and can't be restyled, and looked dated against the rest of
+this screen the moment real data was in it. The zero-dependency argument for `<datalist>`
+stands on its own, but a visibly out-of-place control fails the brief worse than a few
+dozen lines of hand-built markup costs. Kept the behavior equivalent: filtered as you
+type, arrow keys + Enter to pick, click/tap too, same most-recently-used ordering.
+While rebuilding it, also found the `getPeople()` load could silently lose a startup
+race against `initDatabase()` and leave the list empty for the rest of the session
+(no retry) — fixed with a `dbReady` prop gating that effect, independent of which
+dropdown implementation sits on top of it.
+
+---
+
+### People roster entries are resolved at Start session, not when added to the list
+**Decision**: Adding a name to "Who's joining" no longer touches the `people` table at
+all. Roster resolution (`findOrCreatePerson` for every participant) happens once, in
+`App.jsx`'s `handleStartSession`, right before `createSession` — the one point the list
+is actually committed to.
+**Why**: User caught this live — typing a name into "Who's joining" wrote it to the
+roster immediately, before Start session was ever clicked. Someone added by mistake and
+then removed again, or a screen abandoned without starting, still left a roster entry
+behind. The list on `ParticipantList` is provisional until Start session; the roster
+write should be too. Mid-session "add someone who just joined" (`ActiveSessionScreen`)
+was deliberately left resolving immediately, since that add has no separate "start"
+step of its own — it already inserts a real `participants` row the moment it happens.
+
+---
+
+### People roster: a separate recurring table, not reuse of `participants`
+**Decision**: New `people` table (id, name, created_at, last_used_at), linked from
+`participants.person_id` (nullable). A `participants` row keeps its own independent
+`name` copy regardless of `person_id`.
+**Why**: `participants` rows are scoped to one session and already get fresh ids every
+time (see the roster-clearing decision above) — reusing them as the cross-session
+identity would mean either resurrecting old rows or losing the "every session starts
+clean" property that fix just established. A separate table also means renaming or
+deleting someone in the roster later never rewrites a past session's record, since
+`participants.name` is its own copy — `person_id` is purely a forward-looking link for
+autocomplete and the future Tagay King/Queen all-time leaderboard (TASKS.md backlog).
+
+---
+
+### People roster entries are created implicitly, never through an explicit "add"
+**Decision**: The only way a `people` row is created is `findOrCreatePerson(name)`,
+called when a name is typed and submitted at session start (or added mid-session). The
+People management screen has rename and delete, but no "add" control.
+**Why**: Matches the original backlog design note and keeps the roster from ever
+drifting out of sync with who's actually been typed in — there's no second path that
+could create a roster entry nobody's actually tagayed with. `findOrCreatePerson` matches
+case-insensitively so "teng" and "Teng" resolve to the same person rather than forking
+into two roster entries.
+
+---
+
+### Participant name autocomplete uses a native `<datalist>`, not a custom dropdown
+**Decision**: The existing participant-name `<input>` gets a `list` attribute pointing
+at a `<datalist>` populated from `getPeople()`, instead of a hand-built suggestion
+dropdown component.
+**Why**: Zero new dependencies, and the browser/WebView handles keyboard navigation,
+touch, and screen-reader semantics for free — matches this app's general "simple, works
+everywhere" bias (see e.g. local React state over a router in EXAMPLES.md). A custom
+dropdown would need all of that re-implemented for a feature that's genuinely just
+"suggest a previously-typed string."
+
+---
+
+### SQLite migrations check `PRAGMA table_info` before altering, instead of swallowing errors
+**Decision**: All four `db.js` column migrations (`migrateAddSessionName`,
+`migrateAddEventVolume`, `migrateAddEventNote`, `migrateAddParticipantPersonId`) now
+call a shared `columnExists(table, column)` helper (`PRAGMA table_info`) and skip the
+`ALTER TABLE` entirely when the column's already there, rather than firing it
+unconditionally and catching/swallowing the resulting "duplicate column" error.
+**Why**: Found while testing `app/people-roster`: the swallow-based version worked
+correctly (the error was genuinely caught), but on web `jeep-sqlite`'s rejection for
+that same error still surfaced in the browser console as an "Uncaught (in promise)"
+error on every dev-mode remount (React StrictMode re-runs `initDatabase()` on mount),
+which looked alarming and made real errors harder to spot in the noise. Checking first
+means the `ALTER TABLE` only ever actually runs once per install, so there's nothing
+left to throw or swallow. Purely a dev-console clarity fix — behavior was already
+correct either way, including on native Android (which never hit this at all, since it
+uses the platform's real SQLite, not jeep-sqlite).

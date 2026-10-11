@@ -78,7 +78,28 @@ sessions (
 participants (
   id uuid primary key,
   session_id uuid references sessions(id),
-  name text
+  name text,
+  person_id uuid references people(id)  -- nullable; links forward to a roster
+                                          -- entry (app/people-roster). This row
+                                          -- keeps its own independent `name` copy
+                                          -- regardless, so an old session never
+                                          -- changes if a roster name is renamed
+                                          -- or the roster entry is deleted later.
+)
+
+-- A recurring "who comes to tagayan" roster, separate from any one session's
+-- participants rows. Powers name-autocomplete at session start and is the
+-- forward-looking anchor for a future cross-session leaderboard (Tagay
+-- King/Queen, part B — see TASKS.md backlog). Entries are created implicitly
+-- the first time a name is typed at session start (findOrCreatePerson,
+-- case-insensitive match) — there's no separate "add to roster" control.
+people (
+  id uuid primary key,
+  name text,
+  created_at timestamptz,
+  last_used_at timestamptz   -- bumped on every reuse; drives
+                              -- most-recently-used ordering in the
+                              -- autocomplete list
 )
 
 -- One row per pour/pass/pause/resume event
@@ -94,9 +115,23 @@ events (
 )
 ```
 Local SQLite mirrors this exactly, plus a `synced boolean` flag per row used by the sync
-job to find unsynced records. `volume` and `note` were both added after this table's
-initial creation via idempotent `ALTER TABLE ... ADD COLUMN` migrations in `db.js`
-(`migrateAddEventVolume`, `migrateAddEventNote`), same pattern as `sessions.name`.
+job to find unsynced records. `volume`, `note`, and `participants.person_id` were all
+added after their tables' initial creation via idempotent `ALTER TABLE ... ADD COLUMN`
+migrations in `db.js` (`migrateAddEventVolume`, `migrateAddEventNote`,
+`migrateAddParticipantPersonId`), same pattern as `sessions.name`. Each migration checks
+`PRAGMA table_info` first and only runs the `ALTER TABLE` if the column is actually
+missing, rather than firing it unconditionally and swallowing a "duplicate column"
+error — the swallow-based version worked, but on web (`jeep-sqlite`) the swallowed
+rejection still surfaced as a confusing "Uncaught (in promise)" console error on every
+dev-mode remount. `people` syncs to Supabase too (`backend/supabase-resume-catchup`),
+device-scoped the same way `sessions` is (a `device_id` column + an
+`device_id = auth.uid()` RLS policy, since a person isn't tied to one session the
+way participants/events are) rather than through the EXISTS-subquery pattern
+`participants`/`events` use. Supabase's `events.type` CHECK constraint, and
+`events.volume`/`events.note`, both lagged behind local SQLite for a while — added
+locally for `app/pause-reason-tag`/the pour-volume breakdown while the Supabase
+project was paused, and only caught up once it was resumed. See TASKS.md for the
+full catch-up notes if a future schema change needs this history.
 
 ## BLE API (App ↔ ESP32)
 

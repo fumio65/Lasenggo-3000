@@ -30,12 +30,18 @@ export async function runSync() {
   const db = getDatabase()
 
   try {
+    // app/people-roster-sync: `people` pushes first — `participants.person_id`
+    // is a foreign key into it on Supabase, so a person has to exist there
+    // before a participant row referencing it can. `sessions` has no such
+    // dependency either way, but is kept next since `participants` also
+    // depends on it (session_id).
+    const peoplePushed = await syncPeople(db, deviceId)
     const sessionsPushed = await syncSessions(db, deviceId)
     const participantsPushed = await syncParticipants(db)
     const eventsPushed = await syncEvents(db)
     return {
       ok: true,
-      pushed: { sessionsPushed, participantsPushed, eventsPushed },
+      pushed: { peoplePushed, sessionsPushed, participantsPushed, eventsPushed },
     }
   } catch (err) {
     if (isNetworkError(err)) {
@@ -50,6 +56,38 @@ export async function runSync() {
 }
 
 
+
+/** backend/people-sync: pushes unsynced `people` rows, same shape/pattern
+ * as `syncSessions` below (device_id stamped at push time, not creation
+ * time — a person can be created offline long before this device ever
+ * signs in). */
+async function syncPeople(db, deviceId) {
+  const result = await db.query(
+    'SELECT id, name, created_at, last_used_at FROM people WHERE synced = 0',
+  )
+  const rows = result.values ?? []
+  if (rows.length === 0) return 0
+
+  const payload = rows.map((r) => ({
+    id: r.id,
+    device_id: deviceId,
+    name: r.name,
+    created_at: r.created_at,
+    last_used_at: r.last_used_at,
+  }))
+
+  const { error } = await supabase.from('people').upsert(payload)
+  if (error) throw error
+
+  await db.executeSet(
+    rows.map((r) => ({
+      statement: 'UPDATE people SET device_id = ?, synced = 1 WHERE id = ?',
+      values: [deviceId, r.id],
+    })),
+    false,
+  )
+  return rows.length
+}
 
 async function syncSessions(db, deviceId) {
   const result = await db.query(
@@ -82,12 +120,20 @@ async function syncSessions(db, deviceId) {
 
 async function syncParticipants(db) {
   const result = await db.query(
-    'SELECT id, session_id, name FROM participants WHERE synced = 0',
+    'SELECT id, session_id, name, person_id FROM participants WHERE synced = 0',
   )
   const rows = result.values ?? []
   if (rows.length === 0) return 0
 
-  const payload = rows.map((r) => ({ id: r.id, session_id: r.session_id, name: r.name }))
+  // app/people-roster-sync: `person_id` rides along verbatim — it's already
+  // either null or a `people.id` that `syncPeople` above just pushed (or
+  // pushed in an earlier call), so there's nothing to resolve here.
+  const payload = rows.map((r) => ({
+    id: r.id,
+    session_id: r.session_id,
+    name: r.name,
+    person_id: r.person_id,
+  }))
   const { error } = await supabase.from('participants').upsert(payload)
   if (error) throw error
 
@@ -103,16 +149,22 @@ async function syncParticipants(db) {
 
 async function syncEvents(db) {
   const result = await db.query(
-    'SELECT id, session_id, participant_id, type, timestamp FROM events WHERE synced = 0',
+    'SELECT id, session_id, participant_id, type, volume, note, timestamp FROM events WHERE synced = 0',
   )
   const rows = result.values ?? []
   if (rows.length === 0) return 0
 
+  // app/pause-reason-tag, app/pour-volume-setting: `volume`/`note` were
+  // being logged locally and silently never pushed — Supabase's `events`
+  // table (and its `type` CHECK) predated both features. Caught and fixed
+  // alongside restoring the paused Supabase project; see DECISIONS.md.
   const payload = rows.map((r) => ({
     id: r.id,
     session_id: r.session_id,
     participant_id: r.participant_id,
     type: r.type,
+    volume: r.volume,
+    note: r.note,
     timestamp: r.timestamp,
   }))
   const { error } = await supabase.from('events').upsert(payload)

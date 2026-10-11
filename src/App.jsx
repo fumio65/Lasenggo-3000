@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react'
 import { ParticipantList } from './features/session/ParticipantList'
 import { ActiveSessionScreen } from './features/session/ActiveSessionScreen'
 import { HistoryScreen } from './features/history/HistoryScreen'
+import { PeopleScreen } from './features/session/PeopleScreen'
 import { useParticipants } from './features/session/useParticipants'
 import { initDatabase } from './features/storage/db'
 import { createSession, endSession } from './features/storage/sessionQueries'
+import { findOrCreatePerson } from './features/storage/peopleQueries'
 import { ensureAnonymousSession } from './features/sync/auth'
 import { runSync } from './features/sync/syncJob'
 
@@ -18,7 +20,7 @@ function App() {
     moveParticipant,
     reorderParticipants,
   } = useParticipants()
-  const [screen, setScreen] = useState('participants') // 'participants' | 'session' | 'history'
+  const [screen, setScreen] = useState('participants') // 'participants' | 'session' | 'history' | 'people'
 
   // UX fix: screen switches are local-state only (no router/page nav — see
   // doc/TASKS.md's Backlog "Real browser back/forward support" for the
@@ -115,10 +117,30 @@ function App() {
     return () => window.removeEventListener('online', handleOnline)
   }, [dbStatus, authStatus])
 
+  // app/people-roster: resolving each participant to a roster person
+  // (reusing an existing one on an exact case-insensitive match, or
+  // creating a new entry) happens right here, once, for the whole list —
+  // not back when each name was typed/added to "Who's joining". Someone
+  // added and then removed before Start session is clicked should never
+  // have touched the roster at all; this is the one point where the list
+  // is actually committed to, so it's the right point to commit to the
+  // roster too.
   async function handleStartSession(name, sessionPassLimit) {
     setStarting(true)
     try {
-      const id = await createSession(participants, name)
+      const resolvedParticipants = await Promise.all(
+        participants.map(async (p) => {
+          if (p.personId) return p
+          try {
+            const personId = await findOrCreatePerson(p.name)
+            return { ...p, personId }
+          } catch (err) {
+            console.error('Failed to resolve roster person, starting without one', err)
+            return p
+          }
+        }),
+      )
+      const id = await createSession(resolvedParticipants, name)
       setSessionId(id)
       setSessionName(name.trim())
       setPassLimit(sessionPassLimit)
@@ -178,10 +200,17 @@ function App() {
       {screen === 'history' && (
         <HistoryScreen onExit={() => setScreen(sessionId ? 'session' : 'participants')} />
       )}
+      {/* app/people-roster: only reachable from the participants screen (not
+          mid-session, unlike History) - there's no in-session reason to
+          browse the whole roster, and ActiveSessionScreen's own "Manage
+          participants" sheet already covers renaming *this session's*
+          people. */}
+      {screen === 'people' && <PeopleScreen onBack={() => setScreen('participants')} />}
       {!sessionId && screen === 'participants' && (
         <ParticipantList
           participants={participants}
           onAdd={addParticipant}
+          dbReady={dbStatus === 'ready'}
           onRemove={removeParticipant}
           onMoveUp={(id) => moveParticipant(id, -1)}
           onMoveDown={(id) => moveParticipant(id, 1)}
@@ -189,6 +218,7 @@ function App() {
           onStartSession={handleStartSession}
           startingSession={starting}
           onViewHistory={() => setScreen('history')}
+          onViewPeople={() => setScreen('people')}
         />
       )}
       <div className="fixed bottom-2 right-2 flex flex-col items-end gap-1 text-[10px]">
