@@ -14,7 +14,9 @@ import { getDatabase } from './db'
  * you've tagayed with most recently, not alphabetical order. */
 export async function getPeople() {
   const db = getDatabase()
-  const result = await db.query('SELECT id, name, last_used_at FROM people ORDER BY last_used_at DESC')
+  const result = await db.query(
+    'SELECT id, name, first_name, last_name, last_used_at FROM people ORDER BY last_used_at DESC',
+  )
   return result.values ?? []
 }
 
@@ -24,14 +26,16 @@ export async function getPeople() {
  * person id — this is the one place new roster entries come from, matching
  * the design note that there's no separate "add to roster" button; adding
  * happens organically by typing a name at session start. */
-export async function findOrCreatePerson(name) {
+export async function findOrCreatePerson(firstName, lastName = '') {
   const db = getDatabase()
-  const trimmed = name.trim()
+  const first = firstName.trim()
+  const last = (lastName || '').trim()
+  const fullName = last ? `${first} ${last}` : first
   const now = new Date().toISOString()
 
   const existing = await db.query(
     'SELECT id FROM people WHERE name = ? COLLATE NOCASE LIMIT 1',
-    [trimmed],
+    [fullName],
   )
   const match = existing.values?.[0]
   if (match) {
@@ -41,8 +45,8 @@ export async function findOrCreatePerson(name) {
 
   const id = crypto.randomUUID()
   await db.run(
-    'INSERT INTO people (id, name, created_at, last_used_at, synced) VALUES (?, ?, ?, ?, 0)',
-    [id, trimmed, now, now],
+    'INSERT INTO people (id, name, first_name, last_name, created_at, last_used_at, synced) VALUES (?, ?, ?, ?, ?, ?, 0)',
+    [id, fullName, first, last || null, now, now],
     false,
   )
   return id
@@ -50,9 +54,16 @@ export async function findOrCreatePerson(name) {
 
 /** Renames a roster entry (the master name — a participant row from a past
  * session keeps its own separate copy, so this never rewrites history). */
-export async function renamePerson(personId, name) {
+export async function renamePerson(personId, firstName, lastName = '') {
   const db = getDatabase()
-  await db.run('UPDATE people SET name = ? WHERE id = ?', [name.trim(), personId], false)
+  const first = firstName.trim()
+  const last = (lastName || '').trim()
+  const fullName = last ? `${first} ${last}` : first
+  await db.run(
+    'UPDATE people SET name = ?, first_name = ?, last_name = ? WHERE id = ?',
+    [fullName, first, last || null, personId],
+    false,
+  )
 }
 
 /** Removes someone from the roster. Past `participants` rows that reference

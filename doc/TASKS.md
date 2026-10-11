@@ -300,6 +300,56 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
     same roster person (no duplicate created) when starting a session; ran a full
     session (pour + end) with both participants with no console errors from the
     current module version.
+- [x] Split roster names into first/last, block duplicate participants, allow
+      editing a name on "Who's joining" before Start session
+  - Owner: fumio65 · Branch: `app/participant-first-last-name` · Done: 2026-10-12
+  - Notes: User-requested. `people` gained `first_name`/`last_name` columns
+    (same idempotent-migration pattern as every other column added after this
+    table's original `CREATE TABLE` — see `migrateAddPersonNameParts` in
+    `db.js`); existing rows are backfilled by treating the whole existing
+    `name` as the first name, last name left blank (decided with the user
+    rather than guessing at a space-split, which breaks on anyone whose
+    existing single name already has a space in it). `people.name` is kept as
+    a derived "First Last" cache, recomputed by `findOrCreatePerson`/
+    `renamePerson` — every other read site (sync, autocomplete, display)
+    keeps reading one `name` string unchanged, so this stayed local-only:
+    no Supabase schema or `syncJob.js`/`pull.js` changes needed.
+    Decided with the user up front: the app always *displays* "First Last"
+    combined (turn order, session log, history) — first/last is only how a
+    name is entered and stored, never a second display mode — and last name
+    is optional everywhere (someone can be added/saved with just a first
+    name).
+    "Who's joining" is now two fields (First name, Last name) instead of one;
+    picking an autocomplete suggestion fills both from the roster's own
+    split. The mid-session "add someone who just joined" sheet
+    (`ParticipantManagerSheet`) deliberately stays a single quick field —
+    resolves with last name blank, matching the "optional" decision, since
+    forcing two fields on a fast on-the-fly add isn't worth it.
+    Duplicate prevention: `useParticipants.addParticipant` rejects a
+    case-insensitive name match already on the current session's list
+    (returns `null`, the same signal a blank submission already used, so
+    every existing caller's `if (id && ...)` guard already handles it with
+    no further changes needed). "Who's joining" surfaces this as an inline
+    message under the Add button and leaves the typed name in place rather
+    than silently doing nothing; the mid-session sheet gets the same
+    protection but no dedicated message yet.
+    Editing on "Who's joining": tapping a name now opens inline First/Last
+    fields (same pattern as the People screen's own rename), saved on
+    Enter/blur-away, cancelled on Escape — previously the only way to fix a
+    typo before Start session was removing and re-adding. Blur-to-save is
+    wired at the two-input *container* level (checked via
+    `relatedTarget`), not each input — the single-field version of this same
+    pattern (People screen) would otherwise close editing the moment focus
+    tabs from First into Last.
+    Verified live end to end: added "Juan Dela Cruz" and confirmed the
+    roster split to first "Juan" / last "Dela Cruz"; confirmed every
+    pre-existing single-name roster entry (added before this task) backfilled
+    correctly with last name blank; picked an existing "Jovan Ramones"
+    suggestion and confirmed both fields filled correctly; added "Jovan"
+    again (and lowercase "jovan") and confirmed both were rejected with the
+    inline message, count unchanged; edited "Carlo" to "Carlo Dizon" on
+    "Who's joining" and confirmed it saved. All test rows cleaned up
+    afterward (local and the copies that had already synced to Supabase).
 
 
 ### App — Bluetooth integration

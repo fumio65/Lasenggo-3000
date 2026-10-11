@@ -21,13 +21,23 @@ export function useParticipants(initial = []) {
   // that doesn't belong inside this otherwise-synchronous hook) and just
   // carried along on the in-memory participant object so it can ride into
   // that same DB insert.
-  const addParticipant = useCallback((name, personId = null) => {
+  // app/no-duplicate-participants: rejects a name that's already on this
+  // session's list (case-insensitive, matching the roster's own dedup
+  // rule in peopleQueries.findOrCreatePerson) by returning null instead of
+  // an id - every caller already treats a null id as "nothing to add" (a
+  // blank submission did the same before this), so this piggybacks on
+  // that existing contract rather than needing a new one.
+  const addParticipant = useCallback((name, personId = null, firstName = null, lastName = null) => {
     const trimmed = name.trim()
     if (!trimmed) return null
+    const isDuplicate = participants.some(
+      (p) => p.name.trim().toLowerCase() === trimmed.toLowerCase(),
+    )
+    if (isDuplicate) return null
     const id = crypto.randomUUID()
-    setParticipants((prev) => [...prev, { id, name: trimmed, personId }])
+    setParticipants((prev) => [...prev, { id, name: trimmed, personId, firstName, lastName }])
     return id
-  }, [])
+  }, [participants])
 
   const removeParticipant = useCallback((id) => {
     setParticipants((prev) => prev.filter((p) => p.id !== id))
@@ -49,10 +59,12 @@ export function useParticipants(initial = []) {
   // the same id is used for the DB row that's already been inserted for
   // the current session (see sessionQueries.renameParticipant), so this is
   // the in-memory half of that edit; the caller pairs the two.
-  const renameParticipant = useCallback((id, name) => {
+  const renameParticipant = useCallback((id, name, firstName = null, lastName = null) => {
     const trimmed = name.trim()
     if (!trimmed) return
-    setParticipants((prev) => prev.map((p) => (p.id === id ? { ...p, name: trimmed } : p)))
+    setParticipants((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, name: trimmed, firstName, lastName } : p)),
+    )
   }, [])
 
   const moveParticipant = useCallback((id, direction) => {

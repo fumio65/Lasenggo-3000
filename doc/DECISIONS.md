@@ -435,3 +435,47 @@ means the `ALTER TABLE` only ever actually runs once per install, so there's not
 left to throw or swallow. Purely a dev-console clarity fix — behavior was already
 correct either way, including on native Android (which never hit this at all, since it
 uses the platform's real SQLite, not jeep-sqlite).
+
+---
+
+### Existing roster names are backfilled as first-name-only, not split on space
+**Decision**: `migrateAddPersonNameParts`'s backfill sets `first_name = name`,
+`last_name` left `NULL`, for every `people` row that predates the first/last split —
+never attempts to split an existing single `name` string on its first space.
+**Why**: Decided with the user rather than guessed. A space-split looks appealing
+("Juan Dela Cruz" → first "Juan", last "Dela Cruz") but silently mis-splits any
+existing name that happens to contain a space without being a first+last pair (a
+nickname with a space, a name typed with a middle name, etc.), and there's no way to
+tell those apart automatically. Leaving last name blank is always correct — it's
+exactly what "this person was only ever given one name" already meant before this
+task — and the person can fill in a last name later from the People screen if they
+want to, with full control over where the split actually falls.
+
+---
+
+### A person's name is always displayed as "First Last" combined, never shown split
+**Decision**: Turn order, the session log, and history all keep reading and showing
+a single `name` string (now a derived "First Last" cache on `people`, computed by
+`findOrCreatePerson`/`renamePerson`) — first/last is only how a name is entered and
+stored, never a second display mode anywhere else in the app.
+**Why**: Decided with the user up front, before writing any code. Keeping `name` as
+the one thing every other read site already expects meant this stayed a pure
+data-entry improvement — zero changes needed to `ActiveSessionScreen`, `SessionLog`,
+`HistoryList`/`HistoryDetail`, `useTurnManager`, or the Supabase schema/sync code,
+all of which just keep seeing a (possibly longer) string exactly as before.
+
+---
+
+### Last name is optional everywhere; duplicate participants are blocked by case-insensitive name match
+**Decision**: First name is the only required field when adding or renaming someone
+(roster or a session's own list) — last name can be left blank and filled in later.
+Adding someone already on the current session's "Who's joining"/participant list
+(same full name, case-insensitive) is rejected rather than silently allowed.
+**Why**: Both decided with the user. Optional last name matches how the roster
+already worked before this task (a single name was always enough) and avoids forcing
+two fields for a fast mid-session add. The duplicate check piggybacks on the existing
+"`null` return means nothing was added" contract (`useParticipants.addParticipant`
+already returned `null` for a blank name) so every caller's existing `if (id && ...)`
+guard handles it with no further plumbing — "Who's joining" additionally surfaces an
+inline message, since silently doing nothing there would look like a bug rather than
+a rejection.

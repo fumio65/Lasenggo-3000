@@ -21,7 +21,8 @@ export function PeopleScreen({ onBack }) {
   const [people, setPeople] = useState([])
   const [loading, setLoading] = useState(true)
   const [editingId, setEditingId] = useState(null)
-  const [editValue, setEditValue] = useState('')
+  const [editFirst, setEditFirst] = useState('')
+  const [editLast, setEditLast] = useState('')
   const editInputRef = useRef(null)
 
   useEffect(() => {
@@ -33,17 +34,26 @@ export function PeopleScreen({ onBack }) {
 
   function startEdit(person) {
     setEditingId(person.id)
-    setEditValue(person.name)
+    setEditFirst(person.first_name || person.name)
+    setEditLast(person.last_name || '')
   }
 
   async function saveEdit() {
     const id = editingId
-    const trimmed = editValue.trim()
+    const trimmedFirst = editFirst.trim()
+    const trimmedLast = editLast.trim()
     setEditingId(null)
-    if (!id || !trimmed) return
+    if (!id || !trimmedFirst) return
+    const fullName = trimmedLast ? `${trimmedFirst} ${trimmedLast}` : trimmedFirst
     try {
-      await renamePerson(id, trimmed)
-      setPeople((prev) => prev.map((p) => (p.id === id ? { ...p, name: trimmed } : p)))
+      await renamePerson(id, trimmedFirst, trimmedLast)
+      setPeople((prev) =>
+        prev.map((p) =>
+          p.id === id
+            ? { ...p, name: fullName, first_name: trimmedFirst, last_name: trimmedLast || null }
+            : p,
+        ),
+      )
     } catch (err) {
       console.error('Failed to rename person', err)
     }
@@ -98,18 +108,45 @@ export function PeopleScreen({ onBack }) {
                   className="flex items-center gap-2 rounded-xl bg-smoke px-3 py-2.5 ring-1 ring-smoke-light"
                 >
                   {isEditing ? (
-                    <input
-                      ref={editInputRef}
-                      autoFocus
-                      value={editValue}
-                      onChange={(e) => setEditValue(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') saveEdit()
-                        if (e.key === 'Escape') setEditingId(null)
+                    // app/participant-first-last-name: saves on blur at the
+                    // *container* level, checked via relatedTarget - tabbing
+                    // from First to Last moves focus to a sibling still
+                    // inside this div, so that doesn't commit/close the
+                    // edit; only focus actually leaving both fields does.
+                    // A single input's onBlur (the old, one-field version
+                    // of this) would've closed editing the moment someone
+                    // tabbed from First into Last.
+                    <div
+                      className="flex min-w-0 flex-1 gap-1.5"
+                      onBlur={(e) => {
+                        if (!e.currentTarget.contains(e.relatedTarget)) saveEdit()
                       }}
-                      onBlur={saveEdit}
-                      className="min-w-0 flex-1 rounded-lg bg-ink px-2 py-1 text-sm text-paper outline-none ring-1 ring-ember"
-                    />
+                    >
+                      <input
+                        ref={editInputRef}
+                        autoFocus
+                        value={editFirst}
+                        onChange={(e) => setEditFirst(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') saveEdit()
+                          if (e.key === 'Escape') setEditingId(null)
+                        }}
+                        placeholder="First name"
+                        aria-label="First name"
+                        className="min-w-0 flex-1 rounded-lg bg-ink px-2 py-1 text-sm text-paper outline-none ring-1 ring-ember"
+                      />
+                      <input
+                        value={editLast}
+                        onChange={(e) => setEditLast(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') saveEdit()
+                          if (e.key === 'Escape') setEditingId(null)
+                        }}
+                        placeholder="Last name"
+                        aria-label="Last name"
+                        className="min-w-0 flex-1 rounded-lg bg-ink px-2 py-1 text-sm text-paper outline-none ring-1 ring-ember"
+                      />
+                    </div>
                   ) : (
                     <button
                       type="button"
