@@ -42,9 +42,17 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
 ## Sprint 1 — MVP Foundations
 
 ### Hardware (sensors, pump, enclosure)
-- [ ] Source components: ESP32, 12V peristaltic pump, MOSFET/relay module, load cell +
+- [~] Source components: ESP32, 12V peristaltic pump, MOSFET/relay module, load cell +
       HX711, WS2812B ring, 12V supply, food-grade silicone tubing
-  - Owner: _unassigned_ · Branch: `hw/source-components`
+  - Owner: fumio65 · Branch: `hw/source-components`
+  - Notes: Exact product/variant picks locked in for every remaining component (pump,
+    relay module, load cell + HX711, LED ring, battery pack, jumper wires) — see
+    `PRD.md`'s hardware table "Sourced Pick" column for the specific Shopee links and
+    `DECISIONS.md`'s "Hardware component sourcing" entry for why each variant was
+    chosen over its alternatives (e.g. the relay module must be the 5V-triggered
+    variant, not 12V, to switch reliably off the ESP32's 3.3V GPIO). Left `[~]` rather
+    than `[x]` — picking the variant isn't the same as having it in hand; actual
+    purchase/have-it status is tracked in `Lasenggo3000_Components.xlsx`, not here.
 - [ ] Wire ESP32 → MOSFET → pump (bench test: pump runs on GPIO trigger)
   - Owner: _unassigned_ · Branch: `hw/pump-wiring`
 - [ ] Wire load cell + HX711 → ESP32, confirm raw weight readings in serial monitor
@@ -113,6 +121,111 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
     into the actual POUR command/duration is app/ble-commands.
 - [ ] NO_CUP handling in UI (alert/snackbar, don't advance turn)
   - Owner: _unassigned_ · Branch: `app/no-cup-alert`
+- [x] Confirm before ending a session (staged Back → confirm → final warning)
+  - Owner: fumio65 · Branch: `design/night-market-theme` · Done: 2026-10-10
+  - Notes: "Back" used to call the exit handler directly — one stray tap mid-round and
+    there was no way back into that session. Replaced with a three-stage confirm,
+    entirely as an animated overlay (no native `confirm()` dialog): 'idle' (plain Back
+    button) → 'confirm' (Back expands in place into "Keep going" / a plain-link
+    "⚠ End session" warning, "Keep going" auto-focused as the safe default) → 'final'
+    (a second "End for good?" stage with "Yes, end session" / "Cancel") — so neither
+    the original stray tap nor a stray tap on the newly-exposed warning link can end
+    the round by accident. Also added a way to check Session History mid-round without
+    ending the session (ActiveSessionScreen stays mounted, hidden via CSS, rather than
+    unmounted, so its state survives the round-trip). Took several passes to get the
+    animation right — an invalid Tailwind class (`duration-250`, not a real scale value
+    or bracket syntax) was silently no-oping, and the confirm bar's absolutely-positioned
+    containing block was sized to its own hidden sibling, causing severe text wrapping
+    despite a width cap that should have prevented it; both root-caused via live browser
+    testing rather than guessing from code review. Fixed with `duration-[220ms]`
+    consistently and `w-max` alongside the `max-w-[...]` cap.
+    Verified manually: accidental Back no longer ends a session; History is reachable
+    and returns to the same in-progress round; the confirm bar never overlaps the
+    Participants/Session-history buttons at any viewport width tested.
+- [x] Pause / resume a participant mid-session, with a reason tag
+  - Owner: fumio65 · Branch: `design/night-market-theme` · Done: 2026-10-10
+  - Notes: Real-world gap: someone at the table gets too drunk to keep drinking, has to
+    step out for an emergency, or sneaks off without saying anything ("Run away",
+    settled on after "Takas"/"Escape" as working names) — none of them necessarily come
+    back, but the turn order shouldn't wait on them either. Pausing requires picking a
+    reason chip (Drunk / Went home / Run away / Emergency / Other) before it takes
+    effect, since tagging it right away matters most for the case where this is the
+    last anyone hears from them tonight; resuming needs no reason. Both are logged as
+    real `PAUSE`/`RESUME` rows in `events` (new `events.note text` column, migrated via
+    the same idempotent `ALTER TABLE` pattern as `migrateAddEventVolume`), not just an
+    in-memory flag, so the record survives even if they never resume. `useTurnManager`
+    skips paused participants when advancing, and jumps off a participant immediately
+    if they're paused mid-turn rather than waiting for their next Pass/Pour. The
+    "Manage participants" sheet (new `ParticipantManagerSheet`) gained per-row
+    Pause/Resume alongside the inline rename it already had, plus an "Add someone who
+    just joined" form — adding mid-session was missing entirely before this. Pause
+    status + reason now also show on HistoryDetail's stat bars for a finished session
+    (`buildPausedAtEnd`, scans each participant's newest PAUSE/RESUME event), not just
+    in the live activity log.
+    Verified manually: pausing mid-turn immediately advances to the next active person;
+    a participant paused with a reason and never resumed shows that reason correctly in
+    both the live session and History after ending it.
+- [x] Clear the participant roster after a session ends
+  - Owner: fumio65 · Branch: `design/night-market-theme` · Done: 2026-10-11
+  - Notes: Real bug, not just cosmetic: `participants.id` is a SQLite PRIMARY KEY, and
+    the in-memory roster (client-generated UUIDs) was persisting across session
+    start/end cycles. Ending a session and starting a new one without retyping names
+    reused the same ids for a fresh `participants` INSERT, throwing
+    `UNIQUE constraint failed: participants.id` and leaving the second session stuck —
+    reproduced and confirmed live (browser + console) before fixing, not assumed from
+    the user's report alone. Fixed with a new `clearParticipants()` in `useParticipants`,
+    called from `App.jsx`'s `handleExitSession()`. The alternative (keep the names,
+    mint fresh ids) was considered and rejected — the user chose clearing outright.
+    Verified manually end to end: "Who's joining" is empty immediately after ending a
+    session, and starting a second session with freshly re-added participants no
+    longer crashes (confirmed via console: no `UNIQUE constraint` error on the second
+    `createSession` call).
+- [x] Simulate Pour ahead of real BLE (unblocks testing the full pour flow without hardware)
+  - Owner: fumio65 · Branch: `design/night-market-theme` · Done: 2026-10-11
+  - Notes: Pour was sitting disabled since `app/active-session-screen` waiting on
+    `app/ble-commands`/`app/ble-status-subscription`, which left the turn-manager →
+    event-logging → undo → session-log → history path for POUR completely untested
+    end to end. Rather than wait on hardware (none of Sprint 1's BLE/firmware/hardware
+    tasks have started yet), `ActiveSessionScreen`'s new `handlePour()` stands in for
+    the real BLE round-trip with a fixed ~900ms "Pouring…" delay before calling
+    `onPourConfirmed()` (already existed in `useTurnManager`, just unreachable) — same
+    code path real hardware will drive later, nothing about `onPourConfirmed` or the
+    event-logging `onEvent` callback changed. Guarded by an `isPouring` flag so a
+    double-click can't double-log a turn; both Pass and Pour disable for that window.
+    The status pill was changed from a fixed "Not connected" to "Simulated — no
+    hardware connected" (pulsing amber dot while a pour is in flight) so this build is
+    never mistaken for hardware-ready. Swap `handlePour`'s `setTimeout` for the real
+    BLE command + STATUS subscription once `app/ble-commands` and
+    `app/ble-status-subscription` exist — everything downstream stays the same.
+    Verified manually: poured and passed interleaved correctly across both
+    participants, turn order advanced, session log/activity feed/undo all updated
+    exactly as they already did for Pass.
+- [x] Rename live session's "Recent activity" heading to "Activity log"
+  - Owner: fumio65 · Branch: `design/night-market-theme` · Done: 2026-10-11
+  - Notes: Matches HistoryDetail's existing "Activity log" heading for the same
+    `ActivityFeed` component, so the feed reads the same whether a session is live or
+    already over. Text-only change (`SessionLog.jsx`); comments elsewhere referencing
+    the old name updated to match.
+- [x] Per-volume (Light/Standard/Heavy) breakdown on each participant's stat row
+  - Owner: fumio65 · Branch: `design/night-market-theme` · Done: 2026-10-11
+  - Notes: `ParticipantStatBar` (shared by the live Session log and HistoryDetail)
+    showed a `totalMl` sum but not the Light/Standard/Heavy composition behind it.
+    First pass spelled it out in words ("1 Light · 1 Standard · 1 Heavy poured") —
+    rejected on review: read as a dense sentence that wrapped awkwardly in the
+    280px-wide session-log panel and duplicated the colored bar directly below it.
+    Replaced with small colored-dot + count chips using the bar's own
+    `VOLUME_COLOR`s (the same ones the shared `VolumeLegend` already keys), so
+    composition reads as color at a glance instead of as prose; full label is
+    still available per chip via `title`. Also fixed a real layout bug the first
+    pass introduced: the name and stat line used to share one flex row
+    (`justify-between`, stat side `shrink-0`), which was fine for short text but
+    pushed the name span to zero width — hiding it entirely — once the stat text
+    got long. Name and stats are now stacked on their own lines instead. Spacing
+    pass on top (`space-y-1.5` within a row, `space-y-4` between participants in
+    both SessionLog and HistoryDetail's lists) after it read too cramped.
+    Verified manually in both the live Session log and HistoryDetail with a
+    participant hitting all three volumes (worst-case density) — single line,
+    no wrapping, no clipping, name always visible.
 
 ### App — Bluetooth integration
 - [ ] Integrate `@capacitor-community/bluetooth-le`: scan for "Lasenggo3000", connect,

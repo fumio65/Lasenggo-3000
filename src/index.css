@@ -1,1 +1,88 @@
 @import "tailwindcss";
+
+/**
+ * "Night Market Circuit" theme — see doc/DECISIONS.md for the design
+ * rationale (warm night-market glow, not generic tech dark-mode; the
+ * circular turn ring is the one deliberate signature motion).
+ */
+@theme {
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+
+  --color-ink: #191310;
+  --color-smoke: #2b2420;
+  --color-smoke-light: #3a322c;
+  --color-ember: #e98a2e;
+  --color-ember-dim: #b5691f;
+  /* SessionLog's per-participant pour breakdown (Light/Standard/Heavy): a
+     3-step scale that needs to actually read as 3 distinct colors at a
+     glance, not 3 opacities of the same orange. Light is a pale gold (high
+     lightness, not just a faded ember), Standard reuses the app's ember
+     accent, Heavy shifts toward a deeper red-orange — distinguishable from
+     both ember and the maroon warning color used elsewhere. */
+  --color-pour-light: #f2c879;
+  --color-pour-heavy: #c2410c;
+  --color-paper: #f3e9d8;
+  --color-paper-dim: #c9bda8;
+  --color-bamboo: #4c6b52;
+  --color-bamboo-dim: #80997f;
+  --color-maroon: #8c2f39;
+  --color-maroon-dim: #c75a65;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-ink);
+    color: var(--color-paper);
+    font-family: var(--font-body);
+  }
+
+  /* Visible keyboard focus everywhere, using the accent rather than the
+     browser default blue, which would clash with the palette. */
+  :focus-visible {
+    outline: 2px solid var(--color-ember);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* SessionLog (ActiveSessionScreen): newest-event entrance. Each row only
+   plays this once, on mount — existing rows keep their event id as `key`
+   and never remount, so the animation doesn't replay down the whole list
+   every time a new event is logged. */
+@keyframes log-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* SessionLog's "Activity log" list: scrollable (so a long session stays
+   boxed into a fixed height instead of pushing the rest of the page down),
+   but with the scrollbar itself hidden — the content still scrolls by touch
+   or wheel, there's just no visible track/thumb cluttering the panel. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

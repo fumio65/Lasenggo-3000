@@ -9,9 +9,27 @@ import { ensureAnonymousSession } from './features/sync/auth'
 import { runSync } from './features/sync/syncJob'
 
 function App() {
-  const { participants, addParticipant, removeParticipant, moveParticipant } =
-    useParticipants()
+  const {
+    participants,
+    addParticipant,
+    removeParticipant,
+    renameParticipant,
+    clearParticipants,
+    moveParticipant,
+    reorderParticipants,
+  } = useParticipants()
   const [screen, setScreen] = useState('participants') // 'participants' | 'session' | 'history'
+
+  // UX fix: screen switches are local-state only (no router/page nav — see
+  // doc/TASKS.md's Backlog "Real browser back/forward support" for the
+  // known, deliberate limitation that comes with that), so the browser
+  // never resets scroll position on its own the way a real page nav would.
+  // Without this, starting a session while scrolled down the participant
+  // list left the active session screen scrolled to that same offset,
+  // hiding its header until the person scrolled back up themselves.
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [screen])
   const [sessionId, setSessionId] = useState(null)
   const [sessionName, setSessionName] = useState('')
   const [passLimit, setPassLimit] = useState(null)
@@ -124,64 +142,86 @@ function App() {
     setSessionName('')
     setPassLimit(null)
     setScreen('participants')
+    // app/clear-after-session: also sidesteps a UNIQUE constraint crash —
+    // the old roster's ids are already written into this session's DB
+    // rows, so reusing them for a second session (Start session again
+    // without retyping anyone) would collide on participants.id.
+    clearParticipants()
     triggerSync() // session just ended — a natural moment to push it (backend/sync-job)
   }
 
   return (
     <>
-      {screen === 'session' && (
-        <ActiveSessionScreen
-          participants={participants}
-          sessionId={sessionId}
-          sessionName={sessionName}
-          passLimit={passLimit}
-          onExit={handleExitSession}
-        />
+      {/* UX fix: Session History used to be reachable only from the
+          participants screen, so checking it mid-round meant going through
+          Back (which — even with its own confirm — ends the session). Now
+          Session History can be opened straight from an active session
+          too: ActiveSessionScreen stays mounted (just hidden via CSS,
+          never unmounted) while screen is 'history', so useTurnManager's
+          in-memory turn order/pass-streak state — which has nowhere else
+          to live — survives the trip and the session is exactly as it was
+          when the person comes back. */}
+      {sessionId && (
+        <div className={screen === 'history' ? 'hidden' : undefined}>
+          <ActiveSessionScreen
+            participants={participants}
+            sessionId={sessionId}
+            sessionName={sessionName}
+            passLimit={passLimit}
+            onExit={handleExitSession}
+            onViewHistory={() => setScreen('history')}
+            onRenameParticipant={renameParticipant}
+            onAddParticipant={addParticipant}
+          />
+        </div>
       )}
-      {screen === 'history' && <HistoryScreen onExit={() => setScreen('participants')} />}
-      {screen === 'participants' && (
+      {screen === 'history' && (
+        <HistoryScreen onExit={() => setScreen(sessionId ? 'session' : 'participants')} />
+      )}
+      {!sessionId && screen === 'participants' && (
         <ParticipantList
           participants={participants}
           onAdd={addParticipant}
           onRemove={removeParticipant}
           onMoveUp={(id) => moveParticipant(id, -1)}
           onMoveDown={(id) => moveParticipant(id, 1)}
+          onReorder={reorderParticipants}
           onStartSession={handleStartSession}
           startingSession={starting}
           onViewHistory={() => setScreen('history')}
         />
       )}
-      <div className="fixed bottom-2 right-2 flex flex-col items-end gap-1 font-mono text-[10px]">
+      <div className="fixed bottom-2 right-2 flex flex-col items-end gap-1 text-[10px]">
         <div
-          className={`rounded px-2 py-1 ${
+          className={`rounded-full px-2 py-1 ring-1 ${
             authStatus === 'ready'
-              ? 'bg-emerald-950 text-emerald-400'
+              ? 'bg-bamboo/15 text-bamboo-dim ring-bamboo/40'
               : authStatus === 'error'
-                ? 'bg-red-950 text-red-400'
-                : 'bg-neutral-900 text-neutral-500'
+                ? 'bg-maroon/15 text-maroon-dim ring-maroon/40'
+                : 'bg-smoke text-paper-dim ring-smoke-light'
           }`}
         >
           auth: {authStatus}
           {deviceId ? ` (${deviceId.slice(0, 8)})` : ''}
         </div>
         <div
-          className={`rounded px-2 py-1 ${
+          className={`rounded-full px-2 py-1 ring-1 ${
             dbStatus === 'ready'
-              ? 'bg-emerald-950 text-emerald-400'
+              ? 'bg-bamboo/15 text-bamboo-dim ring-bamboo/40'
               : dbStatus === 'error'
-                ? 'bg-red-950 text-red-400'
-                : 'bg-neutral-900 text-neutral-500'
+                ? 'bg-maroon/15 text-maroon-dim ring-maroon/40'
+                : 'bg-smoke text-paper-dim ring-smoke-light'
           }`}
         >
           db: {dbStatus}
         </div>
         <div
-          className={`rounded px-2 py-1 ${
+          className={`rounded-full px-2 py-1 ring-1 ${
             syncStatus === 'done'
-              ? 'bg-emerald-950 text-emerald-400'
+              ? 'bg-bamboo/15 text-bamboo-dim ring-bamboo/40'
               : syncStatus === 'error'
-                ? 'bg-red-950 text-red-400'
-                : 'bg-neutral-900 text-neutral-500'
+                ? 'bg-maroon/15 text-maroon-dim ring-maroon/40'
+                : 'bg-smoke text-paper-dim ring-smoke-light'
           }`}
         >
           sync: {syncStatus}
