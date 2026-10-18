@@ -327,18 +327,27 @@ export async function endSession(sessionId) {
 }
 
 /** Every event for the *current* session, newest first, with the
- * participant's name and the pour volume (for POUR rows; NULL for PASS)
- * joined in — backs the "session log" panel on ActiveSessionScreen: both
- * its per-participant Light/Standard/Heavy/mL breakdown and the recent
- * activity list. Not capped — a casual session's event count is small
- * enough that aggregating client-side from the full list is simpler (and
- * more honest) than maintaining a second, separately-capped query. */
+ * participant's name, the pour volume (for POUR rows; NULL for PASS), and
+ * now (app/drink-session-log) the name of whichever drink was being
+ * served at the moment of that pour (`e.drink_id`, tagged per-pour since
+ * app/drink-tracking's switchback follow-up) joined in — backs the
+ * "session log" panel on ActiveSessionScreen: its per-participant
+ * Light/Standard/Heavy/mL breakdown (now also "which drink(s) this
+ * person actually had"), the recent activity list, and the Drinks log.
+ * LEFT JOIN, not JOIN: a PASS row has no drink_id at all, and even a POUR
+ * row's drink could in principle have been deleted since (cancelQueuedDrink
+ * is a real DELETE) — drink_name just comes back null rather than
+ * silently dropping the whole event. Not capped — a casual session's
+ * event count is small enough that aggregating client-side from the full
+ * list is simpler (and more honest) than maintaining a second,
+ * separately-capped query. */
 export async function getSessionEvents(sessionId) {
   const db = getDatabase()
   const result = await db.query(
-    `SELECT e.id, e.type, e.volume, e.note, e.drink_id, e.timestamp, e.participant_id, p.name as participant_name
+    `SELECT e.id, e.type, e.volume, e.note, e.drink_id, e.timestamp, e.participant_id, p.name as participant_name, d.name as drink_name
      FROM events e
      JOIN participants p ON p.id = e.participant_id
+     LEFT JOIN drinks d ON d.id = e.drink_id
      WHERE e.session_id = ?
      ORDER BY e.timestamp DESC`,
     [sessionId],

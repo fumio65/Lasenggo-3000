@@ -810,3 +810,27 @@ dialog's queuing feature. Asked which exact wording to use; the user
 said to just pick one rather than choose between options, so this went
 with the most literal, unambiguous label rather than a shorter one that
 would still require the dialog's subtext to disambiguate.
+
+---
+
+### The live session log shows which drink each participant poured, and every drink the session has touched
+**Decision**: Two additions to the live "Session log" panel:
+1. Each participant's stat row now lists the actual drink name(s) they've
+   poured from this session (deduped, first-poured order), not just their
+   Light/Standard/Heavy pour-size breakdown. Backed by widening
+   `getSessionEvents` to `LEFT JOIN drinks` and selecting `d.name AS
+   drink_name`, then collecting a per-participant `Set` of names from POUR
+   events in `SessionLog.jsx`'s `buildStats`.
+2. A new "Drinks" section lists every drink the session has touched —
+   "Now serving", everything still queued, and anything already switched
+   away from — not just the subset `getSessionDrinkHistory` exposes for
+   the switch-back picker. Built client-side by merging `drinkHistory`
+   and `queuedDrinks` (already both in state) rather than a new query.
+   Each drink's volume is shown via a new `formatVolumeMl` helper, which
+   switches to L at >= 1000mL (`1500` -> `"1.5L"`) instead of always
+   showing a raw mL number.
+**Why**: User-reported the app never logged which alcohol each person was
+actually drinking, and the session log didn't account for alcohol that
+was current or queued — only completed history. Both gaps come from the
+same root cause: the data already existed (drink_id on every pour; status
+on every drink row) but was never surfaced in the live session's own log.

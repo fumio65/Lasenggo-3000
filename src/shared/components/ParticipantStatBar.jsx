@@ -1,4 +1,5 @@
 import { POUR_VOLUMES } from '../../features/pour/usePourVolume'
+import { formatVolumeMl } from '../../features/pour/volumeUnits'
 
 export const VOLUME_BY_ID = Object.fromEntries(POUR_VOLUMES.map((v) => [v.id, v]))
 // Bar segment colors, in the same light→heavy order as POUR_VOLUMES, plus
@@ -75,6 +76,18 @@ export function ParticipantStatBar({ stat, maxActions, isCurrent = false, isPaus
           </span>
         )}
       </div>
+      {/* app/drink-session-log: which drink(s) this person has actually
+          poured from this session, by name — the Light/Standard/Heavy
+          breakdown below says how much they drank, never what. Only
+          drinks they poured show up here (not every drink the session
+          has had), deduped, in the order they were first poured. Omitted
+          entirely for a session with no drink tracking or a participant
+          who hasn't poured anything with a drink attached yet. */}
+      {stat.drinkNames?.length > 0 && (
+        <p className="truncate text-xs text-paper-dim/80" title={stat.drinkNames.join(', ')}>
+          {stat.drinkNames.join(', ')}
+        </p>
+      )}
       {/* UX pass (round 2, app/volume-breakdown-stat): spelling out "1
           Light · 1 Standard · 1 Heavy poured" read as a dense sentence that
           wrapped awkwardly and duplicated the colored bar directly below
@@ -100,7 +113,9 @@ export function ParticipantStatBar({ stat, maxActions, isCurrent = false, isPaus
         )}
         <span>
           {pourTotal} poured · {stat.pass} passed
-          {stat.totalMl > 0 && <span className="text-paper-dim/70"> · ~{stat.totalMl}mL</span>}
+          {stat.totalMl > 0 && (
+            <span className="text-paper-dim/70"> · ~{formatVolumeMl(stat.totalMl)}</span>
+          )}
         </span>
       </div>
       <div className="h-2.5 w-full overflow-hidden rounded-full bg-ink">

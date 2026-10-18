@@ -187,6 +187,19 @@ export function ActiveSessionScreen({
   // one spotlighted with the urgent "switch to?" prompt once isEmpty —
   // the rest of the queue still shows normally below it.
   const nextQueuedDrink = queuedDrinks[0] ?? null
+
+  // app/drink-session-log: every drink this session has touched, for the
+  // SessionLog panel's "Drinks" section — drinkHistory already covers
+  // 'serving' + 'served' (getSessionDrinkHistory), queuedDrinks covers
+  // 'queued' but doesn't select a `status` column at all (every row from
+  // it is queued by definition), so it's stamped on here rather than in
+  // SQL. Merged and ordered oldest-first by started_at so the list reads
+  // as "what happened, in order" instead of two disjoint lists glued
+  // together.
+  const allDrinksForLog = [
+    ...drinkHistory,
+    ...queuedDrinks.map((d) => ({ ...d, status: 'queued' })),
+  ].sort((a, b) => new Date(a.started_at) - new Date(b.started_at))
   const barWidthPct =
     currentDrink?.volume_ml != null
       ? Math.max(0, Math.min(100, (remainingMl / currentDrink.volume_ml) * 100))
@@ -1236,6 +1249,7 @@ export function ActiveSessionScreen({
           currentParticipantId={current?.id}
           pausedIds={pausedIds}
           pauseReasons={pauseReasons}
+          drinks={allDrinksForLog}
         />
       </div>
     </div>

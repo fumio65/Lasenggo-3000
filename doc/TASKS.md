@@ -1109,6 +1109,37 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
     grepped for "Switch / Queue" and "Switch / Queue drink" to confirm
     both strings shipped. No live click-through in an actual browser this
     session — same device-bridge dev-server gap noted in earlier entries.
+- [x] Log which drink each participant poured + a live "Drinks" section
+      (current + queued, not just history) — Owner: fumio65 · Branch:
+      `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-reported two gaps: (1) no record of which alcohol each
+    participant actually drank, (2) the session log only covered finished
+    drink history, not what's currently serving or queued.
+    `sessionQueries.js`: `getSessionEvents` now `LEFT JOIN`s `drinks` and
+    selects `d.name AS drink_name` (LEFT, not JOIN, since a PASS row has
+    no `drink_id` and a cancelled queued drink's row can be gone entirely
+    — `drink_name` just comes back null rather than dropping the event).
+    `volumeUnits.js`: new `formatVolumeMl(ml)` — >= 1000mL displays as L
+    (`1500` -> `"1.5L"`), otherwise plain `"<n>mL"`.
+    `SessionLog.jsx`: `buildStats` now collects a per-participant `Set` of
+    drink names from POUR events (deduped, first-poured order) as
+    `stat.drinkNames`; a new "Drinks" section lists every drink the
+    session has touched (merging `drinkHistory` + `queuedDrinks`
+    client-side in `ActiveSessionScreen.jsx` as `allDrinksForLog` — no new
+    query needed, both lists already existed in state) labeled "Now
+    serving"/"Queued"/"Served" with `formatVolumeMl` for the volume.
+    `ParticipantStatBar.jsx`: renders `stat.drinkNames` as a small text
+    line under the participant's name; falls back to nothing for
+    HistoryDetail's unrelated stat shape, which never sets that field.
+    Verified: `node_modules/.bin/rolldown` syntax-checked all five changed
+    files cleanly; a full `vite build` succeeded in 3.72s (needed a
+    one-time delete-permission re-grant for `dist/` in this fresh
+    container — same as a previous entry, confirming it doesn't persist
+    across separate device-bridge calls), and the compiled bundle was
+    grepped for "Now serving", "Queued", "Served", and "drink_name" to
+    confirm the right code shipped. No live click-through in an actual
+    browser this session — same device-bridge dev-server gap noted in
+    earlier entries.
 - [ ] Multiple pour stations (v2 scalability — architecture TBD, see `tagaybox_spec.md`)
 - [ ] Real browser back/forward support for in-app screens (participants/session/
       history currently switch via local React state only, per EXAMPLES.md's

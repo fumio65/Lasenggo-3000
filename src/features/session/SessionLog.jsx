@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { ParticipantStatBar, VolumeLegend, VOLUME_BY_ID } from '../../shared/components/ParticipantStatBar'
 import { ScrollFadeBox } from '../../shared/components/ScrollFadeBox'
 import { ActivityFeed } from '../../shared/components/ActivityFeed'
+import { formatVolumeMl } from '../pour/volumeUnits'
 
 /** Builds the per-participant breakdown ParticipantStatBar renders: a pour
  * count per volume id, a pass count, and a total-mL estimate (count ×
@@ -12,7 +13,19 @@ function buildStats(participants, events) {
   const base = Object.fromEntries(
     participants.map((p) => [
       p.id,
-      { id: p.id, name: p.name, pass: 0, totalMl: 0, byVolume: { light: 0, standard: 0, heavy: 0 } },
+      {
+        id: p.id,
+        name: p.name,
+        pass: 0,
+        totalMl: 0,
+        byVolume: { light: 0, standard: 0, heavy: 0 },
+        // app/drink-session-log: which drinks (by name) this person has
+        // actually poured, in first-poured order. A Set first so repeats
+        // across many pours of the same drink only count once; turned
+        // into an array at the end since that's what ParticipantStatBar
+        // renders.
+        drinkNameSet: new Set(),
+      },
     ]),
   )
 
@@ -24,10 +37,14 @@ function buildStats(participants, events) {
     } else if (event.type === 'POUR' && row.byVolume[event.volume] !== undefined) {
       row.byVolume[event.volume] += 1
       row.totalMl += VOLUME_BY_ID[event.volume]?.approxMl ?? 0
+      if (event.drink_name) row.drinkNameSet.add(event.drink_name)
     }
   }
 
-  return participants.map((p) => base[p.id])
+  return participants.map((p) => {
+    const { drinkNameSet, ...rest } = base[p.id]
+    return { ...rest, drinkNames: [...drinkNameSet] }
+  })
 }
 
 /**
@@ -45,7 +62,7 @@ function buildStats(participants, events) {
  * viewport, burying "Activity log" further down with every person
  * added. A short roster just never shows a fade/scroll at all.
  */
-export function SessionLog({ events, participants, currentParticipantId, pausedIds, pauseReasons }) {
+export function SessionLog({ events, participants, currentParticipantId, pausedIds, pauseReasons, drinks = [] }) {
   const stats = useMemo(() => {
     // UX fix: this used to pull the current participant to the front while
     // leaving everyone else at their original absolute position (so turn
@@ -95,6 +112,39 @@ export function SessionLog({ events, participants, currentParticipantId, pausedI
           <div className="mt-3">
             <VolumeLegend />
           </div>
+
+          {/* app/drink-session-log: every drink this session has touched —
+              "Now serving", everything queued behind it, and anything
+              already switched away from — not just the picker-friendly
+              subset getSessionDrinkHistory exposes elsewhere. Hidden
+              entirely for a session that never used drink tracking, same
+              as HistoryDetail's past-session equivalent. */}
+          {drinks.length > 0 && (
+            <>
+              <h3 className="mt-5 font-display text-xs font-semibold text-paper-dim">
+                Drinks
+              </h3>
+              <ul className="mt-2 space-y-1.5">
+                {drinks.map((drink) => (
+                  <li key={drink.id} className="flex items-baseline justify-between gap-3 text-sm">
+                    <span className="truncate text-paper">
+                      {drink.name}
+                      {drink.volume_ml != null && (
+                        <span className="text-paper-dim"> · {formatVolumeMl(drink.volume_ml)}</span>
+                      )}
+                    </span>
+                    <span className="shrink-0 text-xs text-paper-dim">
+                      {drink.status === 'serving'
+                        ? 'Now serving'
+                        : drink.status === 'queued'
+                          ? 'Queued'
+                          : 'Served'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
 
           <h3 className="mt-5 font-display text-xs font-semibold text-paper-dim">
             Activity log
