@@ -6,6 +6,9 @@ import { ParticipantManagerSheet } from './ParticipantManagerSheet'
 import { usePourVolume, POUR_VOLUMES } from '../pour/usePourVolume'
 import { BackIcon } from '../../shared/components/BackIcon'
 import { HistoryIcon } from '../../shared/components/HistoryIcon'
+import { EditIcon } from '../../shared/components/EditIcon'
+import { TrashIcon } from '../../shared/components/TrashIcon'
+import { SwitchIcon } from '../../shared/components/SwitchIcon'
 import { PourVolumeSelector } from '../pour/PourVolumeSelector'
 import {
   logEvent,
@@ -93,6 +96,14 @@ export function ActiveSessionScreen({
   const [editName, setEditName] = useState('')
   const [editVolumeInput, setEditVolumeInput] = useState('')
   const [editVolumeUnit, setEditVolumeUnit] = useState('ml')
+
+  // app/drink-queue-list (UX pass): deleting a queued drink is permanent
+  // and there's no undo for it (unlike logged Pour/Pass events), so a tap
+  // on the trash icon arms a same-row "Delete this?" confirm instead of
+  // deleting immediately — a second explicit tap is required. Keeping it
+  // inline rather than a popup/dialog, same convention as the rest of this
+  // list (see DECISIONS.md).
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
 
   // app/drink-switchback: every drink actually served this session
   // (current + history), used to list "past drinks" you can switch back
@@ -261,6 +272,7 @@ export function ActiveSessionScreen({
         refreshDrinkHistory()
       })
       .catch((err) => console.error('Failed to switch to queued drink', err))
+    setConfirmDeleteId(null)
   }
 
   // app/drink-queue-list: opens the inline edit form for one "Up next"
@@ -270,6 +282,7 @@ export function ActiveSessionScreen({
   // of this app already accepts (VolumeInput is an input-time convenience
   // only; nothing downstream remembers the original unit).
   function openEditQueuedDrink(drink) {
+    setConfirmDeleteId(null)
     setEditingQueuedId(drink.id)
     setEditName(drink.name)
     setEditVolumeInput(drink.volume_ml != null ? String(drink.volume_ml) : '')
@@ -281,6 +294,21 @@ export function ActiveSessionScreen({
     setEditName('')
     setEditVolumeInput('')
     setEditVolumeUnit('ml')
+  }
+
+  // app/drink-queue-list (UX pass): first tap arms the row's delete
+  // confirm, a second tap (on the confirm button, below) actually deletes.
+  // Tapping anything else on the row — Edit, Switch now, or arming a
+  // different row's confirm — disarms it, so at most one row is ever
+  // armed at a time and nothing stays armed longer than the user's
+  // attention is actually on it.
+  function armDeleteQueuedDrink(drinkId) {
+    setEditingQueuedId(null)
+    setConfirmDeleteId(drinkId)
+  }
+
+  function disarmDeleteQueuedDrink() {
+    setConfirmDeleteId(null)
   }
 
   // app/drink-volume-required: same rule as every other drink form in
@@ -323,6 +351,7 @@ export function ActiveSessionScreen({
     cancelQueuedDrink(drinkId)
       .then(refreshQueuedDrinks)
       .catch((err) => console.error('Failed to cancel queued drink', err))
+    setConfirmDeleteId(null)
   }
 
   // app/undo-last-action: the event this device most recently logged, kept
@@ -677,108 +706,157 @@ export function ActiveSessionScreen({
                 )}
               </div>
 
-              {/* app/drink-queue (+ app/drink-queue-list): "Up next" —
-                  now a real multi-item queue, oldest-staged first
+              {/* app/drink-queue (+ app/drink-queue-list, UX pass):
+                  "Up next" — a real multi-item queue, oldest-staged first
                   (getQueuedDrinks orders by started_at ASC), each row
-                  independently switchable, editable, and deletable. Only
-                  the first row (nextQueuedDrink) gets the urgent
-                  maroon-toned "switch to?" treatment once isEmpty — later
-                  rows stay quiet (smoke-toned) since they aren't the
-                  immediate concern yet. Still just passive rows, never a
-                  popup (see DECISIONS.md), so nothing happens without a
-                  tap. Each row swaps into an inline edit form in place when
-                  editingQueuedId matches it, instead of opening a dialog. */}
-              {queuedDrinks.map((drink) => {
-                const isNext = drink.id === nextQueuedDrink?.id
-                const urgent = isNext && isEmpty
-                const queuedRemaining = remainingForDrink(drink)
-                const isEditing = editingQueuedId === drink.id
+                  independently switchable, editable, and deletable.
+                  Rebuilt from flex-wrapped pills into proper stacked cards
+                  (full-width rows, left-aligned text, icon buttons on the
+                  right) — the pill styling read fine for one row but
+                  became a cramped, centered wall of text and buttons once
+                  several rows stacked up. Only the first row
+                  (nextQueuedDrink) gets the urgent maroon "switch to?"
+                  treatment once isEmpty — later rows stay quiet (smoke-
+                  toned) since they aren't the immediate concern yet.
+                  Delete is a two-tap confirm (armDeleteQueuedDrink /
+                  confirmDeleteId) rather than instant, since there's no
+                  undo for it; everything else stays a single tap, inline,
+                  never a popup (see DECISIONS.md). Edit swaps a row into
+                  a form in place instead of opening a dialog. */}
+              {queuedDrinks.length > 0 && (
+                <div className="w-full space-y-2">
+                  {queuedDrinks.map((drink) => {
+                    const isNext = drink.id === nextQueuedDrink?.id
+                    const urgent = isNext && isEmpty
+                    const queuedRemaining = remainingForDrink(drink)
+                    const isEditing = editingQueuedId === drink.id
+                    const isConfirmingDelete = confirmDeleteId === drink.id
 
-                if (isEditing) {
-                  return (
-                    <form
-                      key={drink.id}
-                      onSubmit={handleEditQueuedSubmit}
-                      className="flex w-full flex-wrap items-center justify-center gap-2 rounded-xl bg-smoke/60 px-3 py-2 text-sm ring-1 ring-smoke-light"
-                    >
-                      <input
-                        type="text"
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        placeholder="Drink name"
-                        className="min-w-0 flex-1 rounded-xl bg-ink px-3 py-2 text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
-                      />
-                      <VolumeInput
-                        amount={editVolumeInput}
-                        unit={editVolumeUnit}
-                        onAmountChange={setEditVolumeInput}
-                        onUnitChange={setEditVolumeUnit}
-                        idPrefix={`edit-queued-${drink.id}`}
-                      />
-                      <button
-                        type="submit"
-                        disabled={!editName.trim() || editVolumeMissing}
-                        className="rounded-full bg-ember px-2.5 py-1 text-xs font-semibold text-ink transition active:scale-95 disabled:opacity-40"
-                      >
-                        Save
-                      </button>
-                      <button
-                        type="button"
-                        onClick={closeEditQueuedDrink}
-                        className="rounded-full px-2 py-1 text-xs text-paper-dim/70 transition hover:text-paper"
-                      >
-                        Cancel
-                      </button>
-                      {editVolumeMissing && (
-                        <p className="w-full px-1 text-xs text-maroon-dim">
-                          Add a volume, or clear the name.
-                        </p>
-                      )}
-                    </form>
-                  )
-                }
+                    if (isEditing) {
+                      return (
+                        <form
+                          key={drink.id}
+                          onSubmit={handleEditQueuedSubmit}
+                          className="flex w-full flex-wrap items-center gap-2 rounded-xl bg-smoke/60 px-3 py-2.5 text-sm ring-1 ring-smoke-light"
+                        >
+                          <input
+                            type="text"
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                            placeholder="Drink name"
+                            autoFocus
+                            className="min-w-0 flex-1 rounded-xl bg-ink px-3 py-2 text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
+                          />
+                          <VolumeInput
+                            amount={editVolumeInput}
+                            unit={editVolumeUnit}
+                            onAmountChange={setEditVolumeInput}
+                            onUnitChange={setEditVolumeUnit}
+                            idPrefix={`edit-queued-${drink.id}`}
+                          />
+                          <button
+                            type="submit"
+                            disabled={!editName.trim() || editVolumeMissing}
+                            className="rounded-full bg-ember px-3 py-1.5 text-xs font-semibold text-ink transition active:scale-95 disabled:opacity-40"
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            onClick={closeEditQueuedDrink}
+                            className="rounded-full px-3 py-1.5 text-xs font-medium text-paper-dim transition hover:text-paper"
+                          >
+                            Cancel
+                          </button>
+                          {editVolumeMissing && (
+                            <p className="w-full px-1 text-xs text-maroon-dim">
+                              Add a volume, or clear the name.
+                            </p>
+                          )}
+                        </form>
+                      )
+                    }
 
-                return (
-                  <div
-                    key={drink.id}
-                    className={`flex flex-wrap items-center justify-center gap-2 rounded-full px-4 py-2 text-sm ring-1 ${
-                      urgent
-                        ? 'bg-maroon/15 text-maroon-dim ring-maroon/40'
-                        : 'bg-smoke/60 text-paper-dim ring-smoke-light'
-                    }`}
-                  >
-                    <span>
-                      {urgent ? `${currentDrink.name} is empty · switch to` : 'Up next:'}{' '}
-                      <span className="text-paper">{drink.name}</span>
-                      {queuedRemaining != null ? ` · ${queuedRemaining}mL left` : ''}
-                      {urgent ? '?' : ''}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handlePromoteQueuedDrink(drink.id)}
-                      className={`rounded-full px-2.5 py-1 text-xs font-semibold transition active:scale-95 ${
-                        urgent ? 'bg-maroon text-paper' : 'bg-smoke-light text-paper hover:bg-ember hover:text-ink'
-                      }`}
-                    >
-                      Switch now
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openEditQueuedDrink(drink)}
-                      className="rounded-full px-2 py-1 text-xs text-paper-dim/70 transition hover:text-paper"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleCancelQueuedDrink(drink.id)}
-                      className="rounded-full px-2 py-1 text-xs text-paper-dim/70 transition hover:text-paper"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                )
-              })}
+                    return (
+                      <div
+                        key={drink.id}
+                        className={`flex items-center gap-3 rounded-xl px-3 py-2.5 ring-1 transition ${
+                          urgent
+                            ? 'bg-maroon/15 ring-maroon/40'
+                            : 'bg-smoke/60 ring-smoke-light'
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className={`truncate text-xs font-medium ${urgent ? 'text-maroon-dim' : 'text-paper-dim'}`}>
+                            {urgent ? `${currentDrink.name} is empty — switch to?` : 'Up next'}
+                          </p>
+                          <p className="truncate text-sm text-paper">
+                            {drink.name}
+                            {queuedRemaining != null && (
+                              <span className="text-paper-dim"> · {queuedRemaining}mL left</span>
+                            )}
+                          </p>
+                        </div>
+
+                        {isConfirmingDelete ? (
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            <span className="text-xs font-medium text-maroon-dim">Delete?</span>
+                            <button
+                              type="button"
+                              onClick={() => handleCancelQueuedDrink(drink.id)}
+                              className="rounded-full bg-maroon px-2.5 py-1 text-xs font-semibold text-paper transition active:scale-95"
+                            >
+                              Yes
+                            </button>
+                            <button
+                              type="button"
+                              onClick={disarmDeleteQueuedDrink}
+                              className="rounded-full px-2.5 py-1 text-xs font-medium text-paper-dim transition hover:text-paper"
+                            >
+                              No
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handlePromoteQueuedDrink(drink.id)}
+                              aria-label={`Switch now to ${drink.name}`}
+                              title="Switch now"
+                              className={`flex items-center gap-1 rounded-full px-2.5 py-1.5 text-xs font-semibold transition active:scale-95 ${
+                                urgent
+                                  ? 'bg-maroon text-paper'
+                                  : 'bg-smoke-light text-paper hover:bg-ember hover:text-ink'
+                              }`}
+                            >
+                              <SwitchIcon className="h-3.5 w-3.5" />
+                              <span className="hidden sm:inline">Switch</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openEditQueuedDrink(drink)}
+                              aria-label={`Edit ${drink.name}`}
+                              title="Edit"
+                              className="rounded-full p-1.5 text-paper-dim/80 transition hover:bg-smoke-light hover:text-paper active:scale-95"
+                            >
+                              <EditIcon className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => armDeleteQueuedDrink(drink.id)}
+                              aria-label={`Delete ${drink.name}`}
+                              title="Delete"
+                              className="rounded-full p-1.5 text-paper-dim/80 transition hover:bg-maroon/20 hover:text-maroon-dim active:scale-95"
+                            >
+                              <TrashIcon className="h-4 w-4" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
 
             </div>
           )}

@@ -718,3 +718,22 @@ was lost. Given three options (keep one slot but warn before replacing;
 turn it into a real multi-item queue; leave as-is), the user chose the
 multi-item queue, plus asked that each item support edit and delete
 individually rather than only cancel.
+
+---
+
+### Queued-drink rows use icon buttons and a two-tap delete confirm
+**Decision**: The "Up next" list was rebuilt from centered flex-wrapped
+pills into left-aligned, full-width stacked cards. Switch now/Edit/Delete
+are icon buttons (new `EditIcon`/`TrashIcon`/`SwitchIcon`, matching the
+existing `BackIcon`/`HistoryIcon` stroke convention) instead of plain text
+buttons. Deleting a row is now a two-tap confirm — tapping the trash icon
+arms that row's "Delete?" state (Yes/No) in place; a second tap is needed
+to actually delete. Switch now, Edit, or arming a different row's confirm
+all disarm it, so at most one row is ever armed.
+**Why**: User-reported: the delete button had no confirmation at all (a
+single mistaken tap permanently removed a queued drink, with no undo —
+unlike Pour/Pass, which do have one), and the row styling itself hadn't
+held up once more than one item was queued — a centered pill of wrapped
+text and text-buttons read fine for a single row but became cramped and
+hard to scan once several were stacked. The confirm stays inline rather
+than a popup/dialog, consistent with the rest of this list.

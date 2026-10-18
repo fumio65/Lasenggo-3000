@@ -1001,6 +1001,29 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
     not a new regression. No live click-through in an actual browser was
     possible this session; flagging that gap honestly rather than claiming
     verification that didn't happen.
+- [x] Queued-drink list UI/UX pass: icon buttons + delete confirm — Owner:
+      fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-reported the Delete button had no confirmation and the
+    "Up next" list's styling didn't hold up once more than one row was
+    queued. Rebuilt each row from a centered flex-wrapped pill into a
+    left-aligned, full-width card (name + remaining mL on the left,
+    actions on the right). Added three small SVG icon components
+    (`EditIcon`, `TrashIcon`, `SwitchIcon` in `src/shared/components/`,
+    matching the existing `BackIcon`/`HistoryIcon` stroke convention — no
+    new icon-library dependency) and swapped the plain text Switch
+    now/Edit/Delete buttons for icon buttons. Delete is now a two-tap
+    confirm: tapping the trash icon arms that row's inline "Delete? Yes/No"
+    state (`confirmDeleteId`) instead of deleting immediately; a second tap
+    on Yes is required, and tapping Switch now, Edit, or arming a different
+    row's confirm disarms it. Kept inline rather than a popup/dialog, same
+    convention as the rest of this list (see DECISIONS.md).
+    Verified: `node_modules/.bin/rolldown` syntax-checked the file cleanly;
+    a full `vite build` succeeded in 9.45s (104 modules — the 3 new icon
+    files included), and the compiled bundle was grepped for "Delete?",
+    "Switch now to ", and "Up next" to confirm the right code shipped. No
+    live click-through in an actual browser this session — same
+    device-bridge dev-server gap noted in the previous entry, not
+    attempted again here since the pattern is already established.
 - [ ] Multiple pour stations (v2 scalability — architecture TBD, see `tagaybox_spec.md`)
 - [ ] Real browser back/forward support for in-app screens (participants/session/
       history currently switch via local React state only, per EXAMPLES.md's
