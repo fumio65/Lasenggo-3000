@@ -849,3 +849,21 @@ combined number — no way to tell how much came from the drink before the
 switch vs. the one after. This was the previous entry's `drinkNames` list
 (names only, no amounts) not actually solving the problem it was meant
 to — separating *how much*, not just listing *which*.
+
+---
+
+### Each participant's per-drink line also shows its own pour-size counts
+**Decision**: Each drink in a participant's breakdown now shows its own
+Light/Standard/Heavy dot-counts (same colored-dot convention the overall
+per-participant bar already uses), not just its mL total. A drink's
+`drinkTotalsByName` bucket keeps a `byVolume` count alongside its `ml`
+running total, built the exact same way the participant-wide `byVolume`
+already was.
+**Why**: Asked directly whether this was worth adding, now that mL is
+already split per drink — agreed it is: pour-size composition is
+genuinely different information from the amount itself (a mL total alone
+doesn't say whether it came from a few Heavy pours or many Light ones),
+and once a participant has had more than one drink, that composition is
+exactly the kind of thing that stops being obvious from the aggregate
+bar above. Folded into the same per-drink line rather than a second
+stacked bar, to avoid piling on more UI chrome per drink.

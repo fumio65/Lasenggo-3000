@@ -42,7 +42,19 @@ function buildStats(participants, events) {
       const ml = VOLUME_BY_ID[event.volume]?.approxMl ?? 0
       row.totalMl += ml
       if (event.drink_name) {
-        row.drinkTotalsByName[event.drink_name] = (row.drinkTotalsByName[event.drink_name] ?? 0) + ml
+        // app/drink-session-log (pour-size per drink): each drink's
+        // bucket now also keeps its own Light/Standard/Heavy counts, not
+        // just a running mL total — "how much" and "how" both belong to
+        // the drink that produced them, same as the overall byVolume
+        // above already tracks for the whole participant.
+        const bucket =
+          row.drinkTotalsByName[event.drink_name] ??
+          (row.drinkTotalsByName[event.drink_name] = {
+            ml: 0,
+            byVolume: { light: 0, standard: 0, heavy: 0 },
+          })
+        bucket.ml += ml
+        bucket.byVolume[event.volume] += 1
       }
     }
   }
@@ -51,7 +63,11 @@ function buildStats(participants, events) {
     const { drinkTotalsByName, ...rest } = base[p.id]
     return {
       ...rest,
-      drinkTotals: Object.entries(drinkTotalsByName).map(([name, ml]) => ({ name, ml })),
+      drinkTotals: Object.entries(drinkTotalsByName).map(([name, { ml, byVolume }]) => ({
+        name,
+        ml,
+        byVolume,
+      })),
     }
   })
 }

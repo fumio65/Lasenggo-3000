@@ -1164,6 +1164,28 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
     cleanly; a full `vite build` succeeded in 10.91s. No live
     click-through in an actual browser this session — same device-bridge
     dev-server gap noted in earlier entries.
+- [x] Show pour-size (Light/Standard/Heavy) counts per drink, not just
+      mL — Owner: fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: Proactively asked whether this was worth building now that
+    mL is already split per drink; agreed, with the scope narrowed to
+    reuse the existing per-drink line rather than add a second stacked
+    bar per drink. `SessionLog.jsx`: each `drinkTotalsByName` bucket
+    (keyed by drink name) now holds `{ ml, byVolume: { light, standard,
+    heavy } }` instead of a bare mL number — same per-POUR accumulation
+    the participant-wide `byVolume` already does, just scoped to the
+    drink that pour belonged to. `ParticipantStatBar.jsx`: each drink's
+    line gained a second row of small colored-dot counts (same dots/
+    colors/order as the participant-wide ones above), filtered to only
+    the volumes actually poured for that drink.
+    Verified: hand-traced `buildStats` in an isolated `node` script with
+    3 pours of "Tanduay" (2 Standard + 1 Heavy) and 1 "Red Horse" (Light)
+    — confirmed each drink's `byVolume` came back correctly isolated
+    (Tanduay: standard 2/heavy 1, Red Horse: light 1) while the
+    participant's own overall `byVolume`/`totalMl` still matched the sum
+    across both drinks. `node_modules/.bin/rolldown` syntax-checked both
+    changed files cleanly; a full `vite build` succeeded in 10.10s. No
+    live click-through in an actual browser this session — same
+    device-bridge dev-server gap noted in earlier entries.
 - [ ] Multiple pour stations (v2 scalability — architecture TBD, see `tagaybox_spec.md`)
 - [ ] Real browser back/forward support for in-app screens (participants/session/
       history currently switch via local React state only, per EXAMPLES.md's

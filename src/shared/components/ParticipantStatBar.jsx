@@ -88,13 +88,38 @@ export function ParticipantStatBar({ stat, maxActions, isCurrent = false, isPaus
           session with no drink tracking or a participant who hasn't
           poured anything with a drink attached yet. */}
       {stat.drinkTotals?.length > 0 && (
-        <ul className="space-y-0.5">
-          {stat.drinkTotals.map((d) => (
-            <li key={d.name} className="flex items-baseline justify-between gap-2 text-xs text-paper-dim/80">
-              <span className="truncate">{d.name}</span>
-              <span className="shrink-0 tabular-nums">~{formatVolumeMl(d.ml)}</span>
-            </li>
-          ))}
+        <ul className="space-y-1">
+          {stat.drinkTotals.map((d) => {
+            // app/drink-session-log (pour-size per drink): the same
+            // Light/Standard/Heavy counts the dots above already show
+            // for the participant as a whole, but scoped to just this
+            // one drink — so "how much" (the mL) and "how" (the pour
+            // sizes that built it up) both read per-drink instead of
+            // the sizes only ever being shown in aggregate.
+            const drinkVolumes = POUR_VOLUMES.filter((v) => d.byVolume[v.id] > 0)
+            return (
+              <li key={d.name} className="space-y-0.5 text-xs text-paper-dim/80">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="truncate">{d.name}</span>
+                  <span className="shrink-0 tabular-nums">~{formatVolumeMl(d.ml)}</span>
+                </div>
+                {drinkVolumes.length > 0 && (
+                  <div className="flex items-center gap-2.5 text-paper-dim/60">
+                    {drinkVolumes.map((v) => (
+                      <span
+                        key={v.id}
+                        title={`${v.label}: ${d.byVolume[v.id]}`}
+                        className="flex items-center gap-1 tabular-nums"
+                      >
+                        <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${VOLUME_COLOR[v.id]}`} />
+                        {d.byVolume[v.id]}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </li>
+            )
+          })}
         </ul>
       )}
       {/* UX pass (round 2, app/volume-breakdown-stat): spelling out "1
