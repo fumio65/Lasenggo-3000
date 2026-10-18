@@ -941,17 +941,28 @@ export function ActiveSessionScreen({
                   never a popup (see DECISIONS.md). Edit swaps a row into
                   a form in place instead of opening a dialog. */}
               {queuedDrinks.length > 0 && (
-                <div className="w-full space-y-2">
+                <div className="relative w-full space-y-2">
                   {renderQueuedRow(queuedDrinks[0], 0)}
 
                   {queuedDrinks.length > 1 && (
                     <>
-                      {/* app/drink-queue-list (UX pass: long queues):
-                          collapsed by default once there's more than one
-                          row — the oldest-staged drink above is already
-                          the one that matters most; everything behind it
-                          is a "later" concern that doesn't need to take up
-                          screen space until asked for. */}
+                      {/* app/drink-queue-list (UX pass: long queues, then
+                          UX pass: floating dropdown): collapsed by default
+                          once there's more than one row — the
+                          oldest-staged drink above is already the one
+                          that matters most. The expanded list used to sit
+                          inline, which pushed TurnRing (the turn-order
+                          circle, rendered further down this same column)
+                          down the page every time it opened — reported as
+                          "the circle moves down" when tapping the toggle.
+                          It's now an absolutely positioned dropdown
+                          instead: anchored to this relative wrapper,
+                          floating over whatever's below (`z-20`, `shadow-lg`)
+                          rather than pushing it, so opening/closing it
+                          never changes anyone else's layout. Capped at
+                          `max-h-64` + scroll as a safety net for a queue
+                          long enough that even the dropdown would run off
+                          the bottom of the screen. */}
                       <button
                         type="button"
                         onClick={() => setQueueExpanded((v) => !v)}
@@ -967,7 +978,7 @@ export function ActiveSessionScreen({
                         </span>
                       </button>
                       {queueExpanded && (
-                        <div className="space-y-2">
+                        <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 space-y-2 overflow-y-auto rounded-xl bg-smoke p-2 ring-1 ring-smoke-light shadow-lg">
                           {queuedDrinks.slice(1).map((drink, i) => renderQueuedRow(drink, i + 1))}
                         </div>
                       )}

@@ -783,3 +783,17 @@ the rest of the screen down as more drinks get queued. The oldest row is
 the only one that's an immediate concern anyway; everything behind it is
 "later," so it doesn't need to occupy space until someone actually asks
 to see it.
+
+---
+
+### The expanded queue floats as a dropdown instead of pushing layout
+**Decision**: The "+N more queued" expanded list is now absolutely
+positioned (`absolute top-full z-20`, anchored to a `relative` wrapper
+around the toggle) instead of sitting inline in document flow, floating
+over whatever's below it rather than displacing it. Capped at `max-h-64`
+with scroll as a safety net for a long enough queue.
+**Why**: User-reported: opening the expanded queue pushed TurnRing (the
+turn-order circle, rendered further down the same column) down the page
+every time it opened. Floating the dropdown over the rest of the screen
+instead of inserting it into the flow keeps everything else's position
+fixed regardless of how many rows are expanded.

@@ -1079,6 +1079,23 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
     was grepped for "more queued" and "Hide" to confirm the right code
     shipped. No live click-through in an actual browser this session —
     same device-bridge dev-server gap noted in earlier entries.
+- [x] Fix: expanding the queue pushed TurnRing down the page — Owner:
+      fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-reported the turn-order circle shifted down whenever the
+    "+N more queued" toggle was expanded, since the expanded rows sat
+    inline and grew the column's height above it. `ActiveSessionScreen.jsx`:
+    the wrapper around the toggle button is now `relative`, and the
+    expanded panel is `absolute left-0 right-0 top-full z-20 mt-1 max-h-64
+    overflow-y-auto ... shadow-lg` instead of a plain in-flow `<div>` — it
+    now floats over whatever's below instead of displacing it, with a
+    capped height + scroll for a queue long enough to run off-screen.
+    Verified: `node_modules/.bin/rolldown` syntax-checked the file cleanly;
+    a full `vite build` succeeded in 14.41s, and the compiled CSS bundle
+    was grepped for `.top-full`, `.z-20`, and `.shadow-lg` to confirm
+    Tailwind actually generated those utilities. No live click-through in
+    an actual browser this session — same device-bridge dev-server gap
+    noted in earlier entries; worth confirming the floating panel doesn't
+    get clipped by any `overflow-hidden` ancestor once it's checked live.
 - [ ] Multiple pour stations (v2 scalability — architecture TBD, see `tagaybox_spec.md`)
 - [ ] Real browser back/forward support for in-app screens (participants/session/
       history currently switch via local React state only, per EXAMPLES.md's
