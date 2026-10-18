@@ -664,3 +664,19 @@ a slot someone already claimed should never be bumped by an unrelated
 switch. "Served" isn't a dead end either way: the picker surfaces every
 `'serving'`/`'served'` row regardless, so a drink that lost the "Up next"
 spotlight is exactly as reachable as one that never had it.
+
+---
+
+### The "switch back" picker includes the currently-queued ("Up next") drink too
+**Decision**: The picker inside the Switch dialog now merges in whatever
+drink is currently staged as "Up next" (`queuedDrink`), not just the plain
+history rows `getSessionDrinkHistory` returns (`status IN ('serving',
+'served')` — a `'queued'` row was never included there to begin with).
+**Why**: User-reported: typing into "Different drink" while the current
+drink still had volume switched correctly and auto-staged the old drink as
+"Up next" — but that banner lives on the main screen, and the Switch dialog
+is a full-screen overlay that sits in front of it. Once the dialog was open
+there was no way back to that drink without closing the dialog first, even
+though the picker looked like it should be the complete answer to "switch
+back to anything." Folding the queued drink into the same list (tagged
+"· Up next" inline) makes the picker self-contained.

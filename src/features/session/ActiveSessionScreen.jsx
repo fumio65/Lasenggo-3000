@@ -134,14 +134,23 @@ export function ActiveSessionScreen({
   const remainingMl = remainingForDrink(currentDrink)
 
   // app/drink-switchback: the "switch back to a past drink" picker list —
-  // every served drink this session except whichever is currently
-  // "Now serving" or already staged as "Up next" (both shown elsewhere),
-  // newest-started first so the most recently left-behind drink is the
-  // easiest one to find.
-  const pastDrinks = drinkHistory
-    .filter((d) => d.id !== currentDrink?.id && d.id !== queuedDrink?.id)
-    .slice()
-    .reverse()
+  // every drink this session has ever been "Now serving", except whichever
+  // one that is *right now* — newest-started first so the most recently
+  // left-behind drink is the easiest one to find.
+  //
+  // This includes the drink currently staged as "Up next" (queuedDrink),
+  // merged in here rather than left to show up through getSessionDrinkHistory
+  // alone — that query only selects status IN ('serving', 'served'), so a
+  // 'queued' row was never actually in `drinkHistory` to begin with. The
+  // dialog used to exclude it on the assumption it was already reachable
+  // via the "Up next" banner's own "Switch now" button, but that banner
+  // sits on the main screen *behind* this full-screen dialog — once the
+  // dialog is open there was genuinely no way back to a staged drink
+  // without closing it first. Folding it in here makes the picker the one
+  // self-contained place to switch to anything, staged or not.
+  const pastDrinks = [...(queuedDrink ? [queuedDrink] : []), ...drinkHistory]
+    .filter((d) => d.id !== currentDrink?.id)
+    .sort((a, b) => (a.started_at < b.started_at ? 1 : -1))
   // isEmpty gates both the "X mL left" deficit styling and the "Up next"
   // banner's quiet-vs-urgent state; barWidthPct is the same fraction
   // clamped into a drawable [0, 100] range (the deficit itself is still
@@ -776,9 +785,13 @@ export function ActiveSessionScreen({
                     switch back to it. Remaining volume is read straight
                     from the already-correct per-drink pour tagging, so it
                     resumes exactly where that drink was left, however long
-                    ago that was. The drink currently "Now serving" and
-                    whatever's already "Up next" are left out — they're
-                    both shown above already. */}
+                    ago that was. Only the drink currently "Now serving" is
+                    left out; whatever's already staged as "Up next" is
+                    included here too (tagged "Up next" inline) and not
+                    just left to the banner above — that banner sits behind
+                    this full-screen dialog while it's open, so without
+                    this the only way back to a staged drink would be
+                    closing the dialog first. */}
                 {pastDrinks.length > 0 && (
                   <div className="space-y-2 border-t border-smoke-light pt-3">
                     <p className="px-1 text-xs text-paper-dim">
@@ -788,6 +801,7 @@ export function ActiveSessionScreen({
                       {pastDrinks.map((d) => {
                         const remaining = remainingForDrink(d)
                         const empty = remaining != null && remaining <= 0
+                        const isUpNext = d.id === queuedDrink?.id
                         return (
                           <button
                             key={d.id}
@@ -795,7 +809,10 @@ export function ActiveSessionScreen({
                             onClick={() => handleSwitchToPastDrink(d.id)}
                             className="flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-left text-sm ring-1 ring-smoke-light transition hover:bg-smoke-light active:scale-95"
                           >
-                            <span className="truncate text-paper">{d.name}</span>
+                            <span className="truncate text-paper">
+                              {d.name}
+                              {isUpNext && <span className="text-paper-dim"> · Up next</span>}
+                            </span>
                             <span className={`shrink-0 text-xs ${empty ? 'text-maroon-dim' : 'text-paper-dim'}`}>
                               {remaining != null ? `${remaining}mL left` : 'no volume logged'}
                             </span>

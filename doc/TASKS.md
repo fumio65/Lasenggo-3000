@@ -542,6 +542,38 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
     listed at 40mL). Checked the DB directly after each step via the
     browser's exposed `CapacitorSQLite` plugin to confirm row `status`
     and values matched what the UI showed. No console errors throughout.
+- [x] Fix: "switch back" picker couldn't reach a drink staged as "Up next"
+  - Owner: fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-reported same day, right after the switchback feature
+    shipped: "I enter the different-drink field while the current drink
+    isn't empty, it switches, and I can't switch back to that drink."
+    Traced it to a gap, not a logic bug: switching away correctly staged
+    the old drink as "Up next" (per the earlier `demoteCurrentDrink`
+    work), but the "Up next" banner lives on the main screen, behind the
+    Switch dialog's full-screen overlay — once the dialog was open there
+    was no way back to it without closing the dialog first. The dialog's
+    own "switch back to a past drink" picker looked like the complete
+    answer but wasn't: it's built from `getSessionDrinkHistory`, which
+    only selects `status IN ('serving', 'served')` — a `'queued'` row was
+    never in that list, so the old exclusion filter for it
+    (`d.id !== queuedDrink?.id`) was dead code all along, not an actual
+    safeguard.
+    Fix: merge `queuedDrink` into the picker list client-side (the one
+    place that already has it in state), excluding only the drink
+    currently "Now serving", and tag that entry "· Up next" inline so
+    it's not confusing to see it listed twice (banner + picker). Sorted
+    by `started_at` descending across the merged list rather than
+    reversing the history query's own order, so the queued drink sorts
+    correctly by recency instead of always landing last.
+    Couldn't get a live rebuild to finish during this fix — `vite build`
+    and `vite dev` both hung repeatedly at the Tailwind project-wide scan
+    step (normally ~3-5s) across five attempts, while targeted
+    single/double-file `rolldown` transforms of the exact changed files
+    stayed fast (3-7s) and came back clean with no syntax/reference
+    errors. Looks like something unrelated was loading the machine's disk
+    heavily at the time (OneDrive sync, AV scan), not a problem with this
+    change. Flagged to the user; worth a quick live click-through once
+    confirmed working again.
 - [x] Split roster names into first/last, block duplicate participants, allow
       editing a name on "Who's joining" before Start session
   - Owner: fumio65 · Branch: `app/participant-first-last-name` · Done: 2026-10-12
