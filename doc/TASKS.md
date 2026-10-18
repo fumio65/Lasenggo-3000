@@ -1045,6 +1045,20 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
     to confirm the right code shipped. No live click-through in an actual
     browser this session — same device-bridge dev-server gap noted in
     earlier entries.
+- [x] Fix: every queued row said "Up next" — Owner: fumio65 · Branch:
+      `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-reported two drinks waiting, both rows labeled "Up next" —
+    ambiguous about which one actually comes next. `ActiveSessionScreen.jsx`:
+    added the row's `index` to the `queuedDrinks.map` callback and derived
+    a `queueLabel` — urgent empty-drink message for the oldest row when
+    the current drink is out, "Up next" for the oldest row otherwise, and
+    `#${index + 1} in queue` for every row behind it.
+    Verified: `node_modules/.bin/rolldown` syntax-checked the file cleanly;
+    a full `vite build` succeeded (32.28s this run — Tailwind's generate
+    step was slower than usual but still completed, no hang), and the
+    compiled bundle was grepped for "in queue" to confirm the new label
+    text shipped. No live click-through in an actual browser this
+    session — same device-bridge dev-server gap noted in earlier entries.
 - [ ] Multiple pour stations (v2 scalability — architecture TBD, see `tagaybox_spec.md`)
 - [ ] Real browser back/forward support for in-app screens (participants/session/
       history currently switch via local React state only, per EXAMPLES.md's

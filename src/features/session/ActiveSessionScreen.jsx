@@ -790,9 +790,19 @@ export function ActiveSessionScreen({
                   a form in place instead of opening a dialog. */}
               {queuedDrinks.length > 0 && (
                 <div className="w-full space-y-2">
-                  {queuedDrinks.map((drink) => {
+                  {queuedDrinks.map((drink, index) => {
                     const isNext = drink.id === nextQueuedDrink?.id
                     const urgent = isNext && isEmpty
+                    // app/drink-queue-list (fix: every row said "Up next"):
+                    // only the oldest-staged row actually is "up next" —
+                    // later rows are further back in line, so they get
+                    // their queue position instead of repeating the same
+                    // label on every row.
+                    const queueLabel = urgent
+                      ? `${currentDrink.name} is empty — switch to?`
+                      : isNext
+                        ? 'Up next'
+                        : `#${index + 1} in queue`
                     const queuedRemaining = remainingForDrink(drink)
                     const isEditing = editingQueuedId === drink.id
                     const isConfirmingDelete = confirmDeleteId === drink.id
@@ -853,7 +863,7 @@ export function ActiveSessionScreen({
                       >
                         <div className="min-w-0 flex-1">
                           <p className={`truncate text-xs font-medium ${urgent ? 'text-maroon-dim' : 'text-paper-dim'}`}>
-                            {urgent ? `${currentDrink.name} is empty — switch to?` : 'Up next'}
+                            {queueLabel}
                           </p>
                           <p className="truncate text-sm text-paper">
                             {drink.name}

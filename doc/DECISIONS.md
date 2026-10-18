@@ -754,3 +754,14 @@ drinks could be corrected. Switching away and back just to fix a typo
 would also wrongly re-queue/re-serve the drink and disturb its
 started_at, so this needed to be a true in-place edit, not a workaround
 through Switch.
+
+---
+
+### Only the first queued row says "Up next" — later rows show their position
+**Decision**: Every row in the queue list used to say "Up next" regardless
+of position. Only the oldest-staged row (`nextQueuedDrink`) says "Up next"
+now; rows behind it show `#2 in queue`, `#3 in queue`, and so on by index.
+**Why**: User-reported having two drinks waiting and both rows labeled
+"Up next" — which is genuinely ambiguous about which one actually comes
+next. The queue is already ordered oldest-first; the label just wasn't
+reflecting that order.
