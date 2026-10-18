@@ -1,0 +1,55 @@
+import { useEffect, useState } from 'react'
+
+/**
+ * app/turn-timer: an optional per-turn countdown — "look more intense"
+ * (user's own framing), not a house rule. `durationSeconds` is null when
+ * the feature is off (the default); any other value is a positive
+ * integer picked from the mid-session control's presets.
+ *
+ * `turnKey` identifies *whose turn this counting applies to* — the
+ * caller passes `currentIndex` from useTurnManager, since that's
+ * guaranteed to change exactly when the turn actually advances (a Pass,
+ * a confirmed Pour, or a paused participant being skipped), and nothing
+ * else. Every time `turnKey` or `durationSeconds` changes, the clock
+ * resets to a fresh `durationSeconds` and `expired` clears — so turning
+ * the timer on mid-turn starts counting immediately from the full
+ * duration, same as a fresh turn would.
+ *
+ * Deliberately a *soft* signal only, same philosophy as the existing
+ * pass-limit house rule (see useTurnManager's own doc comment): this
+ * hook never calls onPass or any other turn-advancing action itself.
+ * `expired` just flips to true once the clock hits zero; the caller
+ * decides what that means (here: a buzzer sound + a flashing badge,
+ * nothing else — Pass and Pour both keep working normally past zero).
+ */
+export function useTurnTimer(turnKey, durationSeconds) {
+  const [secondsLeft, setSecondsLeft] = useState(durationSeconds)
+  const [expired, setExpired] = useState(false)
+
+  // Reset on a new turn or a changed/toggled duration.
+  useEffect(() => {
+    setSecondsLeft(durationSeconds)
+    setExpired(false)
+    // turnKey is intentionally part of this effect's trigger even though
+    // it's never read inside it — it's the "whose turn" identity that
+    // should force a reset.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [turnKey, durationSeconds])
+
+  // The actual ticking — disabled (durationSeconds null) means no timer
+  // ever runs at all, not just one that never reaches zero.
+  useEffect(() => {
+    if (durationSeconds == null) return
+    if (secondsLeft <= 0) {
+      setExpired(true)
+      return
+    }
+    const id = setTimeout(() => setSecondsLeft((s) => s - 1), 1000)
+    return () => clearTimeout(id)
+  }, [secondsLeft, durationSeconds])
+
+  return {
+    secondsLeft: durationSeconds == null ? null : secondsLeft,
+    expired: durationSeconds != null && expired,
+  }
+}

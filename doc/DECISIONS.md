@@ -997,3 +997,25 @@ lot of Drinks/Activity-log entries), scrolling made the Back button
 disappear along with the rest of the header — both screens are a single
 unbounded scrolling page with no separate scroll container, so there
 was previously nothing keeping the button in view.
+
+---
+
+### Optional, mid-session-settable turn timer with a buzzer
+**Decision**: A new per-turn countdown, off by default, toggled on and
+set via a small control right next to TurnRing (not at Start Session —
+the user explicitly wanted it settable mid-session too). Presets only
+(10s/15s/30s/60s/Off), no free-form input. On expiry: a synthesized
+two-beep buzzer (Web Audio, no audio asset) plus the control itself
+flashing maroon with "Time's up!" — nothing is forced; Pass and Pour
+both keep working exactly as before and after expiry. The preset picker
+is an absolute-positioned dropdown (same floating-over-rather-than-
+pushing-layout pattern as the queue's own "+N more queued" dropdown),
+so opening it never nudges TurnRing. Given explicit options via
+AskUserQuestion, the user chose buzzer+flash-only over auto-Pass,
+presets over free input, and a new control near the turn ring over
+folding it into the participant manager sheet.
+**Why**: User-asked-for, framed as wanting the session to "look more
+intense," not as a real house rule to enforce — so this follows the
+same soft-signal, never-force philosophy already established for the
+pass-limit house rule (see useTurnManager's doc comment) rather than
+auto-advancing the turn.

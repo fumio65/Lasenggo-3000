@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTurnManager } from './useTurnManager'
+import { useTurnTimer } from './useTurnTimer'
 import { TurnRing } from './TurnRing'
 import { SessionLog } from './SessionLog'
 import { ParticipantManagerSheet } from './ParticipantManagerSheet'
@@ -9,7 +10,9 @@ import { HistoryIcon } from '../../shared/components/HistoryIcon'
 import { EditIcon } from '../../shared/components/EditIcon'
 import { TrashIcon } from '../../shared/components/TrashIcon'
 import { SwitchIcon } from '../../shared/components/SwitchIcon'
+import { TimerIcon } from '../../shared/components/TimerIcon'
 import { PourVolumeSelector } from '../pour/PourVolumeSelector'
+import { playBuzzer } from '../../shared/playBuzzer'
 import {
   logEvent,
   deleteEvent,
@@ -536,6 +539,30 @@ export function ActiveSessionScreen({
       .catch((err) => console.error('Failed to delete undone event', err))
     setLastEvent(null)
   }
+
+  // app/turn-timer: optional, mid-session-settable per-turn countdown —
+  // the user's own framing was "make it look more intense", not a real
+  // house rule, so this never calls onPass/onPourConfirmed itself (see
+  // useTurnTimer's doc comment). `timerSeconds` is null (off) by default;
+  // picking a preset from the control below turns it on. `timerPickerOpen`
+  // is the little floating dropdown that preset list lives in — same
+  // absolute-positioned, non-layout-shifting pattern already used for the
+  // "+N more queued" dropdown, since a toggle like this shouldn't nudge
+  // TurnRing around every time it's opened either.
+  const [timerSeconds, setTimerSeconds] = useState(null)
+  const [timerPickerOpen, setTimerPickerOpen] = useState(false)
+  const { secondsLeft: timerSecondsLeft, expired: timerExpired } = useTurnTimer(
+    currentIndex,
+    timerSeconds,
+  )
+
+  // Buzzer fires exactly once per expiry, not once per render while
+  // `timerExpired` stays true — `useTurnTimer` only flips `expired` to
+  // true once per turn, so a plain effect on it already has that
+  // guarantee without needing its own extra ref/flag here.
+  useEffect(() => {
+    if (timerExpired) playBuzzer()
+  }, [timerExpired])
 
   // app/simulate-pour: stands in for the real BLE round-trip (send POUR
   // command -> wait for STATUS: POURED) until `app/ble-commands` +
@@ -1176,6 +1203,71 @@ export function ActiveSessionScreen({
           </div>
 
           <TurnRing participants={participants} currentIndex={currentIndex} current={current} pausedIds={pausedIds} />
+
+          {/* app/turn-timer: the mid-session on/off + duration control,
+              right next to what it's actually timing. A relative wrapper
+              + absolute dropdown (not an inline-expanding list) so
+              opening it never nudges TurnRing or anything else around it —
+              same reasoning as the queue's own floating dropdown. Picking
+              a preset both sets the duration and turns the timer on in
+              one tap; "Off" is its own option rather than a separate
+              toggle, since there's nothing else to configure once it's
+              off. */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setTimerPickerOpen((v) => !v)}
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium ring-1 transition active:scale-95 ${
+                timerExpired
+                  ? 'bg-maroon text-paper ring-maroon/40'
+                  : timerSeconds != null
+                    ? 'bg-smoke-light text-paper ring-smoke-light'
+                    : 'bg-smoke text-paper-dim ring-smoke-light hover:text-paper'
+              }`}
+            >
+              <TimerIcon className="h-3.5 w-3.5" />
+              {timerExpired
+                ? "Time's up!"
+                : timerSeconds != null
+                  ? `${timerSecondsLeft}s`
+                  : 'Turn timer: Off'}
+            </button>
+            {timerPickerOpen && (
+              <div className="absolute left-1/2 top-full z-20 mt-1 flex -translate-x-1/2 items-center gap-1 rounded-full bg-smoke p-1 ring-1 ring-smoke-light shadow-lg">
+                {[10, 15, 30, 60].map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => {
+                      setTimerSeconds(s)
+                      setTimerPickerOpen(false)
+                    }}
+                    className={`rounded-full px-2.5 py-1 text-xs font-medium transition active:scale-95 ${
+                      timerSeconds === s
+                        ? 'bg-ember text-ink'
+                        : 'text-paper-dim hover:bg-smoke-light hover:text-paper'
+                    }`}
+                  >
+                    {s}s
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTimerSeconds(null)
+                    setTimerPickerOpen(false)
+                  }}
+                  className={`rounded-full px-2.5 py-1 text-xs font-medium transition active:scale-95 ${
+                    timerSeconds == null
+                      ? 'bg-smoke-light text-paper'
+                      : 'text-paper-dim hover:bg-smoke-light hover:text-paper'
+                  }`}
+                >
+                  Off
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* app/pass-limit-house-rule: soft warning only — Pass stays enabled
               and Pour (simulated, app/simulate-pour) is the real next step. */}

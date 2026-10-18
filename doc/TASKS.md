@@ -1355,6 +1355,42 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
     that the sticky bar doesn't gap at the very top on scroll bounce (iOS
     rubber-banding can occasionally reveal a sliver above a `sticky`
     element depending on the surrounding scroll container).
+- [x] Optional, mid-session turn timer + buzzer — Owner: fumio65 ·
+      Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-asked-for ("add a buzzer or a time limit when they're
+    turn to drink so it look more intense", explicitly optional and
+    settable mid-session, not just at Start Session). Used
+    AskUserQuestion to settle three open questions before building:
+    timeout behavior (buzzer+flash only, no forced auto-Pass — matches
+    the existing pass-limit house rule's soft-signal philosophy),
+    duration picker (presets, not free input), and control placement
+    (new control near TurnRing, not folded into the participant manager
+    sheet). New `useTurnTimer.js` (`turnKey` = `currentIndex` from
+    useTurnManager, `durationSeconds` = null when off) resets on every
+    new turn or duration change and flips `expired` once per turn — it
+    never calls `onPass`/`onPourConfirmed` itself, same "soft signal,
+    caller decides" shape as `isOverPassLimit`. New `playBuzzer.js`
+    synthesizes a two-beep buzzer via Web Audio (no audio file asset,
+    consistent with this app's offline-first stance) rather than
+    bundling a sound file. New `TimerIcon.jsx` matches the existing
+    icon-stroke convention. `ActiveSessionScreen.jsx`: a pill next to
+    TurnRing shows "Turn timer: Off" / "`<n>`s" / "Time's up!" (maroon,
+    pulsing), opening an absolute-positioned preset dropdown (10s/15s/
+    30s/60s/Off) — same non-layout-shifting pattern as the queue's own
+    dropdown — and a `useEffect` on `expired` calls `playBuzzer()`
+    exactly once per expiry.
+    Verified: hand-traced the countdown/expiry state machine in an
+    isolated script (10s duration ticked 12 times: counts 10→1, then
+    stays "EXPIRED" rather than going negative or re-firing; disabled
+    duration never counts at all). `node_modules/.bin/rolldown`
+    syntax-checked all four changed/new files cleanly; a full `vite
+    build` succeeded in 4.22s, and the compiled bundle was grepped for
+    "Turn timer: Off", "Time's up!", and "AudioContext" to confirm the
+    UI strings and the Web Audio usage both shipped. No live
+    click-through in an actual browser this session — same
+    device-bridge dev-server gap noted in earlier entries; the buzzer
+    sound itself in particular can only really be judged by ear once
+    tested live.
 - [ ] Multiple pour stations (v2 scalability — architecture TBD, see `tagaybox_spec.md`)
 - [ ] Real browser back/forward support for in-app screens (participants/session/
       history currently switch via local React state only, per EXAMPLES.md's
