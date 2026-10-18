@@ -1059,6 +1059,26 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
     compiled bundle was grepped for "in queue" to confirm the new label
     text shipped. No live click-through in an actual browser this
     session — same device-bridge dev-server gap noted in earlier entries.
+- [x] Collapse a long "Up next" queue behind a count toggle — Owner:
+      fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: Raised proactively (asked what to do about queue UX once
+    several drinks are waiting). Given three options via AskUserQuestion
+    (fixed-height scroll; collapse-to-count with expand; a separate
+    dedicated queue view), the user chose collapse-to-count. Pulled the
+    per-row markup out of the inline `.map()` into a `renderQueuedRow(drink,
+    index)` function so it can be called from two places without
+    duplicating JSX. Only `queuedDrinks[0]` (the oldest-staged row) always
+    renders; once `queuedDrinks.length > 1`, a "+N more queued" toggle
+    appears below it, and the rest only render (via `queueExpanded` state)
+    once tapped — tapping again ("Hide") collapses them.
+    Verified: `node_modules/.bin/rolldown` syntax-checked the file cleanly;
+    a full `vite build` succeeded in 5.53s (needed a one-time delete
+    permission grant for `dist/`/`node_modules/.vite` in this session,
+    since a previous call's `rm -rf` had failed with "Operation not
+    permitted" — noted here in case it recurs), and the compiled bundle
+    was grepped for "more queued" and "Hide" to confirm the right code
+    shipped. No live click-through in an actual browser this session —
+    same device-bridge dev-server gap noted in earlier entries.
 - [ ] Multiple pour stations (v2 scalability — architecture TBD, see `tagaybox_spec.md`)
 - [ ] Real browser back/forward support for in-app screens (participants/session/
       history currently switch via local React state only, per EXAMPLES.md's

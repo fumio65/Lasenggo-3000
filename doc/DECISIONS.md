@@ -765,3 +765,21 @@ now; rows behind it show `#2 in queue`, `#3 in queue`, and so on by index.
 "Up next" — which is genuinely ambiguous about which one actually comes
 next. The queue is already ordered oldest-first; the label just wasn't
 reflecting that order.
+
+---
+
+### A long queue collapses behind a "+N more queued" toggle
+**Decision**: Only the single most-urgent queued row (the oldest-staged
+one) renders by default now. Once a second drink is queued, a "+N more
+queued" pill appears below it; tapping it expands the rest in place
+("Hide" to collapse again). Given three options (cap the list at a fixed
+height and let it scroll; collapse to a count and expand on tap; move the
+whole queue into its own separate view), the user picked collapse-and-
+expand.
+**Why**: Raised proactively — with the queue no longer limited to one
+slot (see the multi-item-queue entry above), stacking every row inline
+without bound would grow the "Now serving" card unpredictably and push
+the rest of the screen down as more drinks get queued. The oldest row is
+the only one that's an immediate concern anyway; everything behind it is
+"later," so it doesn't need to occupy space until someone actually asks
+to see it.

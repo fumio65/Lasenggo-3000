@@ -105,6 +105,14 @@ export function ActiveSessionScreen({
   // list (see DECISIONS.md).
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
 
+  // app/drink-queue-list (UX pass: long queues): with the queue capable
+  // of holding any number of drinks, showing every row inline doesn't
+  // scale — the card would grow without bound and push the rest of the
+  // screen down. Only the single most-urgent row (the oldest-staged one)
+  // shows by default; the rest collapse behind a "+N more queued" toggle
+  // and only render once the person actually asks to see them.
+  const [queueExpanded, setQueueExpanded] = useState(false)
+
   // app/drink-switchback: every drink actually served this session
   // (current + history), used to list "past drinks" you can switch back
   // to from the Switch dialog — see getSessionDrinkHistory. Each one's
@@ -528,6 +536,150 @@ export function ActiveSessionScreen({
       setIsPouring(false)
     }, 900)
   }
+  // app/drink-queue-list (UX pass: long queues): one row's markup, pulled
+  // out of the JSX below so it can be called once for the always-visible
+  // oldest row and again, per item, for whatever's behind the "+N more
+  // queued" toggle — same row, same handlers, just two call sites instead
+  // of duplicated JSX.
+  function renderQueuedRow(drink, index) {
+    const isNext = drink.id === nextQueuedDrink?.id
+    const urgent = isNext && isEmpty
+    // app/drink-queue-list (fix: every row said "Up next"): only the
+    // oldest-staged row actually is "up next" — later rows are further
+    // back in line, so they get their queue position instead of
+    // repeating the same label on every row.
+    const queueLabel = urgent
+      ? `${currentDrink.name} is empty — switch to?`
+      : isNext
+        ? 'Up next'
+        : `#${index + 1} in queue`
+    const queuedRemaining = remainingForDrink(drink)
+    const isEditing = editingQueuedId === drink.id
+    const isConfirmingDelete = confirmDeleteId === drink.id
+
+    if (isEditing) {
+      return (
+        <form
+          key={drink.id}
+          onSubmit={handleEditQueuedSubmit}
+          className="flex w-full flex-wrap items-center gap-2 rounded-xl bg-smoke/60 px-3 py-2.5 text-sm ring-1 ring-smoke-light"
+        >
+          <input
+            type="text"
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            placeholder="Drink name"
+            autoFocus
+            className="min-w-0 flex-1 rounded-xl bg-ink px-3 py-2 text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
+          />
+          <VolumeInput
+            amount={editVolumeInput}
+            unit={editVolumeUnit}
+            onAmountChange={setEditVolumeInput}
+            onUnitChange={setEditVolumeUnit}
+            idPrefix={`edit-queued-${drink.id}`}
+          />
+          <button
+            type="submit"
+            disabled={!editName.trim() || editVolumeMissing}
+            className="rounded-full bg-ember px-3 py-1.5 text-xs font-semibold text-ink transition active:scale-95 disabled:opacity-40"
+          >
+            Save
+          </button>
+          <button
+            type="button"
+            onClick={closeEditQueuedDrink}
+            className="rounded-full px-3 py-1.5 text-xs font-medium text-paper-dim transition hover:text-paper"
+          >
+            Cancel
+          </button>
+          {editVolumeMissing && (
+            <p className="w-full px-1 text-xs text-maroon-dim">
+              Add a volume, or clear the name.
+            </p>
+          )}
+        </form>
+      )
+    }
+
+    return (
+      <div
+        key={drink.id}
+        className={`flex items-center gap-3 rounded-xl px-3 py-2.5 ring-1 transition ${
+          urgent
+            ? 'bg-maroon/15 ring-maroon/40'
+            : 'bg-smoke/60 ring-smoke-light'
+        }`}
+      >
+        <div className="min-w-0 flex-1">
+          <p className={`truncate text-xs font-medium ${urgent ? 'text-maroon-dim' : 'text-paper-dim'}`}>
+            {queueLabel}
+          </p>
+          <p className="truncate text-sm text-paper">
+            {drink.name}
+            {queuedRemaining != null && (
+              <span className="text-paper-dim"> · {queuedRemaining}mL left</span>
+            )}
+          </p>
+        </div>
+
+        {isConfirmingDelete ? (
+          <div className="flex shrink-0 items-center gap-1.5">
+            <span className="text-xs font-medium text-maroon-dim">Delete?</span>
+            <button
+              type="button"
+              onClick={() => handleCancelQueuedDrink(drink.id)}
+              className="rounded-full bg-maroon px-2.5 py-1 text-xs font-semibold text-paper transition active:scale-95"
+            >
+              Yes
+            </button>
+            <button
+              type="button"
+              onClick={disarmDeleteQueuedDrink}
+              className="rounded-full px-2.5 py-1 text-xs font-medium text-paper-dim transition hover:text-paper"
+            >
+              No
+            </button>
+          </div>
+        ) : (
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={() => handlePromoteQueuedDrink(drink.id)}
+              aria-label={`Switch now to ${drink.name}`}
+              title="Switch now"
+              className={`flex items-center gap-1 rounded-full px-2.5 py-1.5 text-xs font-semibold transition active:scale-95 ${
+                urgent
+                  ? 'bg-maroon text-paper'
+                  : 'bg-smoke-light text-paper hover:bg-ember hover:text-ink'
+              }`}
+            >
+              <SwitchIcon className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Switch</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => openEditQueuedDrink(drink)}
+              aria-label={`Edit ${drink.name}`}
+              title="Edit"
+              className="rounded-full p-1.5 text-paper-dim/80 transition hover:bg-smoke-light hover:text-paper active:scale-95"
+            >
+              <EditIcon className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => armDeleteQueuedDrink(drink.id)}
+              aria-label={`Delete ${drink.name}`}
+              title="Delete"
+              className="rounded-full p-1.5 text-paper-dim/80 transition hover:bg-maroon/20 hover:text-maroon-dim active:scale-95"
+            >
+              <TrashIcon className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-ink px-6 py-10 text-paper">
@@ -790,146 +942,37 @@ export function ActiveSessionScreen({
                   a form in place instead of opening a dialog. */}
               {queuedDrinks.length > 0 && (
                 <div className="w-full space-y-2">
-                  {queuedDrinks.map((drink, index) => {
-                    const isNext = drink.id === nextQueuedDrink?.id
-                    const urgent = isNext && isEmpty
-                    // app/drink-queue-list (fix: every row said "Up next"):
-                    // only the oldest-staged row actually is "up next" —
-                    // later rows are further back in line, so they get
-                    // their queue position instead of repeating the same
-                    // label on every row.
-                    const queueLabel = urgent
-                      ? `${currentDrink.name} is empty — switch to?`
-                      : isNext
-                        ? 'Up next'
-                        : `#${index + 1} in queue`
-                    const queuedRemaining = remainingForDrink(drink)
-                    const isEditing = editingQueuedId === drink.id
-                    const isConfirmingDelete = confirmDeleteId === drink.id
+                  {renderQueuedRow(queuedDrinks[0], 0)}
 
-                    if (isEditing) {
-                      return (
-                        <form
-                          key={drink.id}
-                          onSubmit={handleEditQueuedSubmit}
-                          className="flex w-full flex-wrap items-center gap-2 rounded-xl bg-smoke/60 px-3 py-2.5 text-sm ring-1 ring-smoke-light"
-                        >
-                          <input
-                            type="text"
-                            value={editName}
-                            onChange={(e) => setEditName(e.target.value)}
-                            placeholder="Drink name"
-                            autoFocus
-                            className="min-w-0 flex-1 rounded-xl bg-ink px-3 py-2 text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
-                          />
-                          <VolumeInput
-                            amount={editVolumeInput}
-                            unit={editVolumeUnit}
-                            onAmountChange={setEditVolumeInput}
-                            onUnitChange={setEditVolumeUnit}
-                            idPrefix={`edit-queued-${drink.id}`}
-                          />
-                          <button
-                            type="submit"
-                            disabled={!editName.trim() || editVolumeMissing}
-                            className="rounded-full bg-ember px-3 py-1.5 text-xs font-semibold text-ink transition active:scale-95 disabled:opacity-40"
-                          >
-                            Save
-                          </button>
-                          <button
-                            type="button"
-                            onClick={closeEditQueuedDrink}
-                            className="rounded-full px-3 py-1.5 text-xs font-medium text-paper-dim transition hover:text-paper"
-                          >
-                            Cancel
-                          </button>
-                          {editVolumeMissing && (
-                            <p className="w-full px-1 text-xs text-maroon-dim">
-                              Add a volume, or clear the name.
-                            </p>
-                          )}
-                        </form>
-                      )
-                    }
-
-                    return (
-                      <div
-                        key={drink.id}
-                        className={`flex items-center gap-3 rounded-xl px-3 py-2.5 ring-1 transition ${
-                          urgent
-                            ? 'bg-maroon/15 ring-maroon/40'
-                            : 'bg-smoke/60 ring-smoke-light'
-                        }`}
+                  {queuedDrinks.length > 1 && (
+                    <>
+                      {/* app/drink-queue-list (UX pass: long queues):
+                          collapsed by default once there's more than one
+                          row — the oldest-staged drink above is already
+                          the one that matters most; everything behind it
+                          is a "later" concern that doesn't need to take up
+                          screen space until asked for. */}
+                      <button
+                        type="button"
+                        onClick={() => setQueueExpanded((v) => !v)}
+                        className="flex w-full items-center justify-center gap-1 rounded-full py-1.5 text-xs font-medium text-paper-dim transition hover:text-paper"
                       >
-                        <div className="min-w-0 flex-1">
-                          <p className={`truncate text-xs font-medium ${urgent ? 'text-maroon-dim' : 'text-paper-dim'}`}>
-                            {queueLabel}
-                          </p>
-                          <p className="truncate text-sm text-paper">
-                            {drink.name}
-                            {queuedRemaining != null && (
-                              <span className="text-paper-dim"> · {queuedRemaining}mL left</span>
-                            )}
-                          </p>
+                        {queueExpanded
+                          ? 'Hide'
+                          : `+${queuedDrinks.length - 1} more queued`}
+                        <span
+                          className={`inline-block transition-transform ${queueExpanded ? 'rotate-180' : ''}`}
+                        >
+                          ▾
+                        </span>
+                      </button>
+                      {queueExpanded && (
+                        <div className="space-y-2">
+                          {queuedDrinks.slice(1).map((drink, i) => renderQueuedRow(drink, i + 1))}
                         </div>
-
-                        {isConfirmingDelete ? (
-                          <div className="flex shrink-0 items-center gap-1.5">
-                            <span className="text-xs font-medium text-maroon-dim">Delete?</span>
-                            <button
-                              type="button"
-                              onClick={() => handleCancelQueuedDrink(drink.id)}
-                              className="rounded-full bg-maroon px-2.5 py-1 text-xs font-semibold text-paper transition active:scale-95"
-                            >
-                              Yes
-                            </button>
-                            <button
-                              type="button"
-                              onClick={disarmDeleteQueuedDrink}
-                              className="rounded-full px-2.5 py-1 text-xs font-medium text-paper-dim transition hover:text-paper"
-                            >
-                              No
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex shrink-0 items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => handlePromoteQueuedDrink(drink.id)}
-                              aria-label={`Switch now to ${drink.name}`}
-                              title="Switch now"
-                              className={`flex items-center gap-1 rounded-full px-2.5 py-1.5 text-xs font-semibold transition active:scale-95 ${
-                                urgent
-                                  ? 'bg-maroon text-paper'
-                                  : 'bg-smoke-light text-paper hover:bg-ember hover:text-ink'
-                              }`}
-                            >
-                              <SwitchIcon className="h-3.5 w-3.5" />
-                              <span className="hidden sm:inline">Switch</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => openEditQueuedDrink(drink)}
-                              aria-label={`Edit ${drink.name}`}
-                              title="Edit"
-                              className="rounded-full p-1.5 text-paper-dim/80 transition hover:bg-smoke-light hover:text-paper active:scale-95"
-                            >
-                              <EditIcon className="h-4 w-4" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => armDeleteQueuedDrink(drink.id)}
-                              aria-label={`Delete ${drink.name}`}
-                              title="Delete"
-                              className="rounded-full p-1.5 text-paper-dim/80 transition hover:bg-maroon/20 hover:text-maroon-dim active:scale-95"
-                            >
-                              <TrashIcon className="h-4 w-4" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
+                      )}
+                    </>
+                  )}
                 </div>
               )}
 
