@@ -141,49 +141,39 @@ async function getRemainingMl(drinkId, volumeMl) {
  * current at once, with getCurrentDrink's `ORDER BY started_at DESC`
  * only picking the right one by the accident of always being the most
  * recently touched row. app/drink-switchback: what it becomes instead
- * depends on two things — whether it still has alcohol in it (the whole
- * point of the feature: "I can still switch it back since there's still
- * alcohol on it"), and whether the one "Up next" slot is actually free.
- * Still has volume (or none was ever declared, so there's nothing to
- * disprove) AND nothing else is already staged there -> becomes the new
- * "Up next". Either it's empty, or something else already earned that
- * slot (the common case: switching to a *third* drink while an earlier
- * one is already staged — that staged drink was a deliberate choice and
- * must never be silently bumped or deleted just because a different
- * drink is now being left) -> plain history ('served'). 'served' isn't
- * "finished", just "not current, not staged" — getSessionDrinkHistory
- * still surfaces it with its real remaining volume either way, so
- * nothing actually becomes harder to switch back to; it just isn't the
- * one row spotlighted as "Up next". No-op if nothing is currently
- * serving. */
-async function demoteCurrentDrink(sessionId, excludeDrinkId = null) {
+ * depends on whether it still has alcohol in it — the whole point of the
+ * feature ("I can still switch it back since there's still alcohol on
+ * it"). Still has remaining volume (or none was ever declared, so
+ * there's nothing to disprove) -> joins "Up next" as another queued row
+ * — app/drink-queue-list made "Up next" a real multi-item queue, so
+ * there's no single slot to fight over any more, and nothing else ever
+ * needs to be bumped, replaced, or excluded to make room. Actually
+ * empty -> plain history ('served') instead. No-op if nothing is
+ * currently serving. */
+async function demoteCurrentDrink(sessionId) {
   const current = await getCurrentDrink(sessionId)
   if (!current) return
   const db = getDatabase()
   const remaining = await getRemainingMl(current.id, current.volume_ml)
   const stillHasVolume = remaining == null || remaining > 0
-  // `excludeDrinkId` is switchToDrink's target — when it's the row
-  // already sitting in the queue slot (promoting "Up next"), that slot
-  // reads as free for this check, since it's about to be vacated anyway.
-  const existingQueued = await getQueuedDrink(sessionId)
-  const queueSlotTaken =
-    existingQueued != null && existingQueued.id !== excludeDrinkId && existingQueued.id !== current.id
-  if (stillHasVolume && !queueSlotTaken) {
-    await db.run("UPDATE drinks SET status = 'queued' WHERE id = ?", [current.id], false)
-  } else {
-    await db.run("UPDATE drinks SET status = 'served' WHERE id = ?", [current.id], false)
-  }
+  await db.run(
+    `UPDATE drinks SET status = '${stillHasVolume ? 'queued' : 'served'}' WHERE id = ?`,
+    [current.id],
+    false,
+  )
 }
 
-/** app/drink-tracking (+ app/drink-queue): logs a drink row — called once
- * at Start Session (if a drink was given; see createSession), every time
- * someone taps "Same drink" (a fresh bottle/batch of the same thing), and
- * for both "switch now" and "queue for later" in the UI. `status` is
- * 'serving' for the first three (it's immediately what's being served) and
- * 'queued' for the last (staged ahead of time, not yet active — see
- * db.js's drinks table notes and DECISIONS.md). Queuing a new drink
- * replaces any existing queued one for this session, since only one
- * "what's coming up next" makes sense at a time. Inserting a new
+/** app/drink-tracking (+ app/drink-queue, app/drink-queue-list): logs a
+ * drink row — called once at Start Session (if a drink was given; see
+ * createSession), every time someone taps "Same drink" (a fresh
+ * bottle/batch of the same thing), and for both "switch now" and "queue
+ * for later" in the UI. `status` is 'serving' for the first three (it's
+ * immediately what's being served) and 'queued' for the last (staged
+ * ahead of time, not yet active — see db.js's drinks table notes and
+ * DECISIONS.md). "Up next" is a real multi-item queue (app/drink-
+ * queue-list) — queuing a new drink adds another row rather than
+ * replacing whatever's already staged, same as "Same drink"/"different
+ * drink" never used to replace history either. Inserting a new
  * 'serving' row first demotes whatever was serving before it
  * (demoteCurrentDrink) — this used to not happen at all, which meant the
  * old row silently stayed marked 'serving' forever (see DECISIONS.md).
@@ -194,35 +184,47 @@ export async function addDrink(sessionId, name, volumeMl = null, status = 'servi
     await demoteCurrentDrink(sessionId)
   }
   const db = getDatabase()
-  const set = [
-    ...(status === 'queued'
-      ? [{ statement: "DELETE FROM drinks WHERE session_id = ? AND status = 'queued'", values: [sessionId] }]
-      : []),
-    {
-      statement:
-        'INSERT INTO drinks (id, session_id, name, volume_ml, started_at, status, synced) VALUES (?, ?, ?, ?, ?, ?, 0)',
-      values: [id, sessionId, name.trim(), volumeMl ?? null, new Date().toISOString(), status],
-    },
-  ]
-  await db.executeSet(set, true)
+  await db.run(
+    'INSERT INTO drinks (id, session_id, name, volume_ml, started_at, status, synced) VALUES (?, ?, ?, ?, ?, ?, 0)',
+    [id, sessionId, name.trim(), volumeMl ?? null, new Date().toISOString(), status],
+    false,
+  )
   return id
 }
 
-/** app/drink-queue (+ app/drink-switchback): switches to `drinkId` — a
- * queued drink being promoted (the one-tap confirm once the current
- * drink hits 0, never automatic, see DECISIONS.md), or any past drink
- * from this session being switched back to (app/drink-switchback's "pick
- * from a list" — the drink doesn't have to be the one most recently
- * switched away from, any of them works the same way). Either way: the
- * currently-serving drink (if any) is demoted first (demoteCurrentDrink —
- * re-queued as "Up next" if it still has alcohol in it, otherwise just
- * marked 'served'), then `drinkId` itself becomes 'serving'. `started_at`
- * is reset to now — purely a "when did this stint actually begin" display
- * value now, since remaining-volume math is driven entirely by each
- * pour's tagged `drink_id` (app/drink-switchback), not by comparing
- * timestamps, so resetting it here can never mis-attribute a pour. */
+/** app/drink-queue-list: edits a queued drink's name and/or volume in
+ * place — the "edit" action on an "Up next" row. Scoped to `status =
+ * 'queued'` in the WHERE clause rather than trusting the caller: once a
+ * drink has actually been served (promoted to 'serving', or demoted to
+ * 'served'), it may already have real pours tagged against its id, and
+ * silently changing its declared volume at that point would be
+ * rewriting history rather than editing a still-pending plan. Renaming
+ * a drink that's already being poured is a different, not-yet-asked-for
+ * feature. */
+export async function updateQueuedDrink(drinkId, name, volumeMl = null) {
+  const db = getDatabase()
+  await db.run(
+    "UPDATE drinks SET name = ?, volume_ml = ? WHERE id = ? AND status = 'queued'",
+    [name.trim(), volumeMl ?? null, drinkId],
+    false,
+  )
+}
+
+/** app/drink-queue: switches to `drinkId` — a queued drink being
+ * promoted (one-tap confirm, never automatic, see DECISIONS.md), or
+ * (app/drink-switchback) any past drink from this session being switched
+ * back to, picked from a list — the drink doesn't have to be the one
+ * most recently switched away from, any of them works the same way.
+ * Either way: the currently-serving drink (if any) is demoted first
+ * (demoteCurrentDrink — joins "Up next" if it still has alcohol in it,
+ * otherwise just marked 'served'), then `drinkId` itself becomes
+ * 'serving'. `started_at` is reset to now — purely a "when did this
+ * stint actually begin" display value now, since remaining-volume math
+ * is driven entirely by each pour's tagged `drink_id` (app/drink-
+ * switchback), not by comparing timestamps, so resetting it here can
+ * never mis-attribute a pour. */
 export async function switchToDrink(sessionId, drinkId) {
-  await demoteCurrentDrink(sessionId, drinkId)
+  await demoteCurrentDrink(sessionId)
   const db = getDatabase()
   await db.run(
     "UPDATE drinks SET status = 'serving', started_at = ? WHERE id = ?",
@@ -234,7 +236,10 @@ export async function switchToDrink(sessionId, drinkId) {
 /** app/drink-queue: drops a queued drink that was never served — a queued
  * row never represents anything that actually happened, so a hard DELETE
  * (not a status change) is the correct "undo" here, same reasoning as
- * deleteEvent's undo. */
+ * deleteEvent's undo. Works on any one queue entry by id, so it doubles
+ * as the "delete" action on an individual "Up next" row (app/drink-
+ * queue-list) — no change needed there now that the queue holds more
+ * than one row. */
 export async function cancelQueuedDrink(drinkId) {
   const db = getDatabase()
   await db.run('DELETE FROM drinks WHERE id = ?', [drinkId], false)
@@ -258,28 +263,32 @@ export async function getCurrentDrink(sessionId) {
   return result.values?.[0] ?? null
 }
 
-/** app/drink-queue: the drink staged to serve next, if any — backs the
- * "Up next" row on ActiveSessionScreen and its one-tap "Switch now"
- * confirm. Both addDrink(..., 'queued') and demoteCurrentDrink only ever
- * leave one 'queued' row per session (each deletes any existing one
- * first), so this is just that row, or null. */
-export async function getQueuedDrink(sessionId) {
+/** app/drink-queue-list: every drink staged to serve next, oldest-queued
+ * first (first in, first "up next") — backs the "Up next" list on
+ * ActiveSessionScreen, each with its own "Switch now"/edit/delete. Used
+ * to be a single slot (`getQueuedDrink`, at most one 'queued' row ever
+ * existed); now any number can be staged at once — queuing a new one no
+ * longer replaces an existing one, and a drink that's demoted off
+ * "Now serving" while it still has alcohol in it joins this list rather
+ * than fighting over a slot. */
+export async function getQueuedDrinks(sessionId) {
   const db = getDatabase()
   const result = await db.query(
-    "SELECT id, name, volume_ml, started_at FROM drinks WHERE session_id = ? AND status = 'queued' ORDER BY started_at DESC LIMIT 1",
+    "SELECT id, name, volume_ml, started_at FROM drinks WHERE session_id = ? AND status = 'queued' ORDER BY started_at ASC",
     [sessionId],
   )
-  return result.values?.[0] ?? null
+  return result.values ?? []
 }
 
 /** app/drink-switchback: every drink that was actually served at some
  * point this session — 'serving' (the current one) plus 'served' (history
  * it was switched away from) — oldest first, excluding any 'queued' row
- * that was never promoted (that one was never actually served). Backs the
- * "switch back to a past drink" picker in ActiveSessionScreen's Switch
- * dialog; remaining volume for each one is computed client-side there
- * from the same `events` list already in state (same formula this file's
- * own getRemainingMl uses), rather than re-querying per row here. */
+ * (app/drink-queue-list's "Up next" list is where those live instead;
+ * this stays the "switch back to a past drink" picker's source, so the
+ * two don't show the same drink in two different lists). Remaining
+ * volume for each one is computed client-side from the same `events`
+ * list already in state (same formula this file's own getRemainingMl
+ * uses), rather than re-querying per row here. */
 export async function getSessionDrinkHistory(sessionId) {
   const db = getDatabase()
   const result = await db.query(

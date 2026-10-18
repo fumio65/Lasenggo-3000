@@ -695,3 +695,26 @@ readout to measure against — read as a bug rather than the field being
 intentionally optional. Requiring volume the moment a name exists keeps the
 "skip drink tracking entirely" path available while closing the
 half-filled-in gap.
+
+---
+
+### "Up next" is a real multi-item queue, not a single contested slot
+**Decision**: `drinks.status = 'queued'` is no longer a single slot — any
+number of rows can hold that status at once. `getQueuedDrinks` returns all
+of them, oldest-staged first (`ORDER BY started_at ASC`); the UI renders
+each as its own row with independent Switch now / Edit / Delete controls,
+and only the oldest one gets the urgent "switch to?" styling once the
+current drink is empty. `updateQueuedDrink(drinkId, name, volumeMl)` lets a
+queued row's name/volume be corrected in place without cancelling and
+re-adding it. **This supersedes the earlier "auto-requeue only if the slot
+is free, else mark served" decision** — that logic existed only because a
+second queued drink had nowhere to go; with no slot to contend over,
+`demoteCurrentDrink` now unconditionally re-queues a drink that still has
+volume (or marks it `'served'` if it doesn't), full stop.
+**Why**: User-reported: with a drink already staged as "Up next," switching
+away from the current drink a second time didn't add to the queue — it
+silently replaced whatever was already staged, with no indication anything
+was lost. Given three options (keep one slot but warn before replacing;
+turn it into a real multi-item queue; leave as-is), the user chose the
+multi-item queue, plus asked that each item support edit and delete
+individually rather than only cancel.

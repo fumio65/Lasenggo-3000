@@ -969,6 +969,38 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
     Verified manually: warning appears exactly on the configured count and
     stays visible without blocking Pass; leaving the field blank produces no
     warning at all, confirming it's fully optional.
+- [x] "Up next" multi-item queue, with per-item edit/delete — Owner: fumio65 ·
+      Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: `drinks.status = 'queued'` is no longer treated as a single slot.
+    `sessionQueries.js`: `demoteCurrentDrink` simplified to unconditionally
+    re-queue a drink that still has volume (or mark it `'served'` if empty) —
+    the old "only re-queue if the slot is free" branch is gone entirely, since
+    there's no slot to contend over any more. Added `getQueuedDrinks(sessionId)`
+    (replaces the old single-row `getQueuedDrink`, returns all `'queued'` rows
+    oldest-first) and `updateQueuedDrink(drinkId, name, volumeMl)` for in-place
+    edits. `ActiveSessionScreen.jsx`'s "Up next" banner is now a list render
+    over `queuedDrinks`: each row has its own Switch now / Edit / Delete, only
+    the oldest row (`nextQueuedDrink`) gets the urgent maroon "switch to?"
+    styling once the current drink is empty, and Edit swaps a row into an
+    inline name+volume form in place (same "volume required once a name is
+    given" rule as every other drink form in this app, via a new
+    `editVolumeMissing` check). The Switch dialog's "switch back" picker no
+    longer merges in the queued drink or tags it "· Up next" — now that queued
+    items have their own dedicated list, duplicating one into the picker would
+    just be confusing.
+    See DECISIONS.md — this supersedes the earlier "auto-requeue only if the
+    slot is free" decision.
+    Verified: `node_modules/.bin/rolldown` syntax-checked `ActiveSessionScreen.jsx`
+    cleanly; a full `vite build` succeeded in 3.91s (fast, no hang this time),
+    and the compiled bundle was grepped for the new "Up next" and "Add a
+    volume, or clear the name" strings to confirm the right code shipped.
+    `vite dev` did come up and answered the first request (curl to `/` → 200)
+    within the same shell call that started it, but a follow-up curl from a
+    separate call couldn't reach it again — consistent with this device
+    bridge's per-call fresh-container behavior noted earlier in this file,
+    not a new regression. No live click-through in an actual browser was
+    possible this session; flagging that gap honestly rather than claiming
+    verification that didn't happen.
 - [ ] Multiple pour stations (v2 scalability — architecture TBD, see `tagaybox_spec.md`)
 - [ ] Real browser back/forward support for in-app screens (participants/session/
       history currently switch via local React state only, per EXAMPLES.md's

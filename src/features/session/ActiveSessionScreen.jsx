@@ -15,7 +15,8 @@ import {
   addSessionParticipant,
   getCurrentDrink,
   addDrink,
-  getQueuedDrink,
+  updateQueuedDrink,
+  getQueuedDrinks,
   switchToDrink,
   cancelQueuedDrink,
   getSessionDrinkHistory,
@@ -72,13 +73,26 @@ export function ActiveSessionScreen({
   const [switchVolumeInput, setSwitchVolumeInput] = useState('')
   const [switchVolumeUnit, setSwitchVolumeUnit] = useState('ml')
 
-  // app/drink-queue: a drink staged ahead of time ("set this up now, switch
-  // to it once the current one's empty") — separate from currentDrink/
-  // switching above, which is the immediate "switch right now" path.
-  const [queuedDrink, setQueuedDrink] = useState(null)
+  // app/drink-queue (+ app/drink-queue-list): drinks staged ahead of time
+  // ("set this up now, switch to it once the current one's empty") —
+  // separate from currentDrink/switching above, which is the immediate
+  // "switch right now" path. A real multi-item queue now, not a single
+  // slot — queuing a new drink, or demoting the current one while it
+  // still has volume, both just add another row rather than replacing
+  // whatever's already staged.
+  const [queuedDrinks, setQueuedDrinks] = useState([])
   const [queueName, setQueueName] = useState('')
   const [queueVolumeInput, setQueueVolumeInput] = useState('')
   const [queueVolumeUnit, setQueueVolumeUnit] = useState('ml')
+
+  // app/drink-queue-list: which "Up next" row (by id) is currently showing
+  // its inline edit form instead of its normal display, if any — at most
+  // one at a time, same single-editor-open convention the roster/People
+  // screens already use elsewhere in this app.
+  const [editingQueuedId, setEditingQueuedId] = useState(null)
+  const [editName, setEditName] = useState('')
+  const [editVolumeInput, setEditVolumeInput] = useState('')
+  const [editVolumeUnit, setEditVolumeUnit] = useState('ml')
 
   // app/drink-switchback: every drink actually served this session
   // (current + history), used to list "past drinks" you can switch back
@@ -92,8 +106,8 @@ export function ActiveSessionScreen({
     if (sessionId) getCurrentDrink(sessionId).then(setCurrentDrink)
   }
 
-  function refreshQueuedDrink() {
-    if (sessionId) getQueuedDrink(sessionId).then(setQueuedDrink)
+  function refreshQueuedDrinks() {
+    if (sessionId) getQueuedDrinks(sessionId).then(setQueuedDrinks)
   }
 
   function refreshDrinkHistory() {
@@ -101,7 +115,7 @@ export function ActiveSessionScreen({
   }
 
   useEffect(refreshCurrentDrink, [sessionId])
-  useEffect(refreshQueuedDrink, [sessionId])
+  useEffect(refreshQueuedDrinks, [sessionId])
   useEffect(refreshDrinkHistory, [sessionId])
 
   // app/drink-tracking (depletion follow-up): remaining volume is derived,
@@ -136,26 +150,24 @@ export function ActiveSessionScreen({
   // app/drink-switchback: the "switch back to a past drink" picker list —
   // every drink this session has ever been "Now serving", except whichever
   // one that is *right now* — newest-started first so the most recently
-  // left-behind drink is the easiest one to find.
-  //
-  // This includes the drink currently staged as "Up next" (queuedDrink),
-  // merged in here rather than left to show up through getSessionDrinkHistory
-  // alone — that query only selects status IN ('serving', 'served'), so a
-  // 'queued' row was never actually in `drinkHistory` to begin with. The
-  // dialog used to exclude it on the assumption it was already reachable
-  // via the "Up next" banner's own "Switch now" button, but that banner
-  // sits on the main screen *behind* this full-screen dialog — once the
-  // dialog is open there was genuinely no way back to a staged drink
-  // without closing it first. Folding it in here makes the picker the one
-  // self-contained place to switch to anything, staged or not.
-  const pastDrinks = [...(queuedDrink ? [queuedDrink] : []), ...drinkHistory]
+  // left-behind drink is the easiest one to find. A 'queued' row never
+  // shows up here (getSessionDrinkHistory only selects 'serving'/
+  // 'served') — app/drink-queue-list gave "Up next" its own dedicated
+  // list with its own Switch now/edit/delete, so a staged drink has a
+  // single home instead of appearing in two different lists at once.
+  const pastDrinks = drinkHistory
     .filter((d) => d.id !== currentDrink?.id)
-    .sort((a, b) => (a.started_at < b.started_at ? 1 : -1))
+    .slice()
+    .reverse()
   // isEmpty gates both the "X mL left" deficit styling and the "Up next"
-  // banner's quiet-vs-urgent state; barWidthPct is the same fraction
+  // list's quiet-vs-urgent state; barWidthPct is the same fraction
   // clamped into a drawable [0, 100] range (the deficit itself is still
   // shown as a negative number in the text, just not as a negative bar).
   const isEmpty = remainingMl != null && remainingMl <= 0
+  // app/drink-queue-list: the oldest-queued ("first in line") drink is the
+  // one spotlighted with the urgent "switch to?" prompt once isEmpty —
+  // the rest of the queue still shows normally below it.
+  const nextQueuedDrink = queuedDrinks[0] ?? null
   const barWidthPct =
     currentDrink?.volume_ml != null
       ? Math.max(0, Math.min(100, (remainingMl / currentDrink.volume_ml) * 100))
@@ -166,7 +178,7 @@ export function ActiveSessionScreen({
     addDrink(sessionId, currentDrink.name, currentDrink.volume_ml)
       .then(() => {
         refreshCurrentDrink()
-        refreshQueuedDrink()
+        refreshQueuedDrinks()
         refreshDrinkHistory()
       })
       .catch((err) => console.error('Failed to log drink', err))
@@ -195,7 +207,7 @@ export function ActiveSessionScreen({
     addDrink(sessionId, trimmed, volumeMl)
       .then(() => {
         refreshCurrentDrink()
-        refreshQueuedDrink()
+        refreshQueuedDrinks()
         refreshDrinkHistory()
       })
       .catch((err) => console.error('Failed to log drink', err))
@@ -209,10 +221,12 @@ export function ActiveSessionScreen({
     setSwitching(false)
   }
 
-  // app/drink-queue: "Queue next drink" — stages a drink without touching
-  // what's currently being served. Separate submit handler from the
-  // "switch now" form above since this one passes status 'queued' and
-  // refreshes queuedDrink, not currentDrink.
+  // app/drink-queue (+ app/drink-queue-list): "Queue next drink" — stages
+  // a drink without touching what's currently being served, adding
+  // another row to the queue rather than replacing whatever's already
+  // there. Separate submit handler from the "switch now" form above since
+  // this one passes status 'queued' and refreshes queuedDrinks, not
+  // currentDrink.
   const queueVolumeMissing =
     queueName.trim() !== '' && parseVolumeToMl(queueVolumeInput, queueVolumeUnit) == null
 
@@ -222,7 +236,7 @@ export function ActiveSessionScreen({
     const volumeMl = parseVolumeToMl(queueVolumeInput, queueVolumeUnit)
     if (!sessionId || !trimmed || volumeMl == null) return
     addDrink(sessionId, trimmed, volumeMl, 'queued')
-      .then(refreshQueuedDrink)
+      .then(refreshQueuedDrinks)
       .catch((err) => console.error('Failed to queue drink', err))
     // app/drink-switchback: queuing never demotes the current drink, so
     // drinkHistory doesn't need refreshing here — unlike the "serving"
@@ -234,18 +248,55 @@ export function ActiveSessionScreen({
     setSwitching(false)
   }
 
-  // app/drink-queue: the one-tap confirm that actually switches to the
-  // queued drink — never automatic (see DECISIONS.md). Refreshes both
-  // currentDrink (now the promoted one) and queuedDrink (now empty).
-  function handlePromoteQueuedDrink() {
-    if (!sessionId || !queuedDrink) return
-    switchToDrink(sessionId, queuedDrink.id)
+  // app/drink-queue: the one-tap confirm that actually switches to a
+  // queued drink — never automatic (see DECISIONS.md). `drinkId` is now
+  // required (app/drink-queue-list: more than one row can be queued at
+  // once, so "the" queued drink is no longer a single implicit target).
+  function handlePromoteQueuedDrink(drinkId) {
+    if (!sessionId || !drinkId) return
+    switchToDrink(sessionId, drinkId)
       .then(() => {
         refreshCurrentDrink()
-        refreshQueuedDrink()
+        refreshQueuedDrinks()
         refreshDrinkHistory()
       })
       .catch((err) => console.error('Failed to switch to queued drink', err))
+  }
+
+  // app/drink-queue-list: opens the inline edit form for one "Up next"
+  // row, prefilled from its current name/volume. `volume_ml` is stored as
+  // a plain mL integer, so the edit form always reopens in mL regardless
+  // of which unit it was originally entered in — same tradeoff the rest
+  // of this app already accepts (VolumeInput is an input-time convenience
+  // only; nothing downstream remembers the original unit).
+  function openEditQueuedDrink(drink) {
+    setEditingQueuedId(drink.id)
+    setEditName(drink.name)
+    setEditVolumeInput(drink.volume_ml != null ? String(drink.volume_ml) : '')
+    setEditVolumeUnit('ml')
+  }
+
+  function closeEditQueuedDrink() {
+    setEditingQueuedId(null)
+    setEditName('')
+    setEditVolumeInput('')
+    setEditVolumeUnit('ml')
+  }
+
+  // app/drink-volume-required: same rule as every other drink form in
+  // this app — a name without a volume doesn't save.
+  const editVolumeMissing =
+    editName.trim() !== '' && parseVolumeToMl(editVolumeInput, editVolumeUnit) == null
+
+  function handleEditQueuedSubmit(e) {
+    e.preventDefault()
+    const trimmed = editName.trim()
+    const volumeMl = parseVolumeToMl(editVolumeInput, editVolumeUnit)
+    if (!editingQueuedId || !trimmed || volumeMl == null) return
+    updateQueuedDrink(editingQueuedId, trimmed, volumeMl)
+      .then(refreshQueuedDrinks)
+      .catch((err) => console.error('Failed to edit queued drink', err))
+    closeEditQueuedDrink()
   }
 
   // app/drink-switchback: switching back to any past drink from the
@@ -258,17 +309,19 @@ export function ActiveSessionScreen({
     switchToDrink(sessionId, drinkId)
       .then(() => {
         refreshCurrentDrink()
-        refreshQueuedDrink()
+        refreshQueuedDrinks()
         refreshDrinkHistory()
       })
       .catch((err) => console.error('Failed to switch back to drink', err))
     setSwitching(false)
   }
 
-  function handleCancelQueuedDrink() {
-    if (!queuedDrink) return
-    cancelQueuedDrink(queuedDrink.id)
-      .then(refreshQueuedDrink)
+  // app/drink-queue-list: cancelling one queued row no longer touches the
+  // others — `drinkId` is required since more than one row can be queued.
+  function handleCancelQueuedDrink(drinkId) {
+    if (!drinkId) return
+    cancelQueuedDrink(drinkId)
+      .then(refreshQueuedDrinks)
       .catch((err) => console.error('Failed to cancel queued drink', err))
   }
 
@@ -624,51 +677,108 @@ export function ActiveSessionScreen({
                 )}
               </div>
 
-              {/* app/drink-queue: "Up next" — a drink staged ahead of time,
-                  separate from the immediate "switch now" panel below.
-                  Quiet (smoke-toned) while the current drink still has
-                  volume left; switches to the maroon-toned empty state
-                  once isEmpty, since that's the moment "Switch now" here
-                  actually matters — still just a passive row, never a
-                  popup (see DECISIONS.md), so nothing happens without the
-                  tap. */}
-              {queuedDrink && (
-                <div
-                  className={`flex flex-wrap items-center justify-center gap-2 rounded-full px-4 py-2 text-sm ring-1 ${
-                    isEmpty
-                      ? 'bg-maroon/15 text-maroon-dim ring-maroon/40'
-                      : 'bg-smoke/60 text-paper-dim ring-smoke-light'
-                  }`}
-                >
-                  <span>
-                    {isEmpty ? `${currentDrink.name} is empty · switch to` : 'Up next:'}{' '}
-                    <span className={isEmpty ? 'text-paper' : 'text-paper'}>
-                      {queuedDrink.name}
-                    </span>
-                    {(() => {
-                      const queuedRemaining = remainingForDrink(queuedDrink)
-                      return queuedRemaining != null ? ` · ${queuedRemaining}mL left` : ''
-                    })()}
-                    {isEmpty ? '?' : ''}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handlePromoteQueuedDrink}
-                    className={`rounded-full px-2.5 py-1 text-xs font-semibold transition active:scale-95 ${
-                      isEmpty ? 'bg-maroon text-paper' : 'bg-smoke-light text-paper hover:bg-ember hover:text-ink'
+              {/* app/drink-queue (+ app/drink-queue-list): "Up next" —
+                  now a real multi-item queue, oldest-staged first
+                  (getQueuedDrinks orders by started_at ASC), each row
+                  independently switchable, editable, and deletable. Only
+                  the first row (nextQueuedDrink) gets the urgent
+                  maroon-toned "switch to?" treatment once isEmpty — later
+                  rows stay quiet (smoke-toned) since they aren't the
+                  immediate concern yet. Still just passive rows, never a
+                  popup (see DECISIONS.md), so nothing happens without a
+                  tap. Each row swaps into an inline edit form in place when
+                  editingQueuedId matches it, instead of opening a dialog. */}
+              {queuedDrinks.map((drink) => {
+                const isNext = drink.id === nextQueuedDrink?.id
+                const urgent = isNext && isEmpty
+                const queuedRemaining = remainingForDrink(drink)
+                const isEditing = editingQueuedId === drink.id
+
+                if (isEditing) {
+                  return (
+                    <form
+                      key={drink.id}
+                      onSubmit={handleEditQueuedSubmit}
+                      className="flex w-full flex-wrap items-center justify-center gap-2 rounded-xl bg-smoke/60 px-3 py-2 text-sm ring-1 ring-smoke-light"
+                    >
+                      <input
+                        type="text"
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        placeholder="Drink name"
+                        className="min-w-0 flex-1 rounded-xl bg-ink px-3 py-2 text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
+                      />
+                      <VolumeInput
+                        amount={editVolumeInput}
+                        unit={editVolumeUnit}
+                        onAmountChange={setEditVolumeInput}
+                        onUnitChange={setEditVolumeUnit}
+                        idPrefix={`edit-queued-${drink.id}`}
+                      />
+                      <button
+                        type="submit"
+                        disabled={!editName.trim() || editVolumeMissing}
+                        className="rounded-full bg-ember px-2.5 py-1 text-xs font-semibold text-ink transition active:scale-95 disabled:opacity-40"
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        onClick={closeEditQueuedDrink}
+                        className="rounded-full px-2 py-1 text-xs text-paper-dim/70 transition hover:text-paper"
+                      >
+                        Cancel
+                      </button>
+                      {editVolumeMissing && (
+                        <p className="w-full px-1 text-xs text-maroon-dim">
+                          Add a volume, or clear the name.
+                        </p>
+                      )}
+                    </form>
+                  )
+                }
+
+                return (
+                  <div
+                    key={drink.id}
+                    className={`flex flex-wrap items-center justify-center gap-2 rounded-full px-4 py-2 text-sm ring-1 ${
+                      urgent
+                        ? 'bg-maroon/15 text-maroon-dim ring-maroon/40'
+                        : 'bg-smoke/60 text-paper-dim ring-smoke-light'
                     }`}
                   >
-                    Switch now
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleCancelQueuedDrink}
-                    className="rounded-full px-2 py-1 text-xs text-paper-dim/70 transition hover:text-paper"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              )}
+                    <span>
+                      {urgent ? `${currentDrink.name} is empty · switch to` : 'Up next:'}{' '}
+                      <span className="text-paper">{drink.name}</span>
+                      {queuedRemaining != null ? ` · ${queuedRemaining}mL left` : ''}
+                      {urgent ? '?' : ''}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handlePromoteQueuedDrink(drink.id)}
+                      className={`rounded-full px-2.5 py-1 text-xs font-semibold transition active:scale-95 ${
+                        urgent ? 'bg-maroon text-paper' : 'bg-smoke-light text-paper hover:bg-ember hover:text-ink'
+                      }`}
+                    >
+                      Switch now
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openEditQueuedDrink(drink)}
+                      className="rounded-full px-2 py-1 text-xs text-paper-dim/70 transition hover:text-paper"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleCancelQueuedDrink(drink.id)}
+                      className="rounded-full px-2 py-1 text-xs text-paper-dim/70 transition hover:text-paper"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )
+              })}
 
             </div>
           )}
@@ -795,19 +905,12 @@ export function ActiveSessionScreen({
                   </form>
                 </div>
 
-                {/* app/drink-switchback: "there's still alcohol on it" —
-                    pick any drink this session has already served (not
-                    just the one most recently switched away from) and
-                    switch back to it. Remaining volume is read straight
-                    from the already-correct per-drink pour tagging, so it
-                    resumes exactly where that drink was left, however long
-                    ago that was. Only the drink currently "Now serving" is
-                    left out; whatever's already staged as "Up next" is
-                    included here too (tagged "Up next" inline) and not
-                    just left to the banner above — that banner sits behind
-                    this full-screen dialog while it's open, so without
-                    this the only way back to a staged drink would be
-                    closing the dialog first. */}
+                                {/* app/drink-switchback: switch back to any past drink
+                    and see how much was left and roughly how long ago that
+                    was. Only the drink currently "Now serving" is left out
+                    — queued ("Up next") drinks now have their own list
+                    above (app/drink-queue-list), so they're no longer
+                    duplicated into this picker. */}
                 {pastDrinks.length > 0 && (
                   <div className="space-y-2 border-t border-smoke-light pt-3">
                     <p className="px-1 text-xs text-paper-dim">
@@ -817,7 +920,6 @@ export function ActiveSessionScreen({
                       {pastDrinks.map((d) => {
                         const remaining = remainingForDrink(d)
                         const empty = remaining != null && remaining <= 0
-                        const isUpNext = d.id === queuedDrink?.id
                         return (
                           <button
                             key={d.id}
@@ -825,10 +927,7 @@ export function ActiveSessionScreen({
                             onClick={() => handleSwitchToPastDrink(d.id)}
                             className="flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-left text-sm ring-1 ring-smoke-light transition hover:bg-smoke-light active:scale-95"
                           >
-                            <span className="truncate text-paper">
-                              {d.name}
-                              {isUpNext && <span className="text-paper-dim"> · Up next</span>}
-                            </span>
+                            <span className="truncate text-paper">{d.name}</span>
                             <span className={`shrink-0 text-xs ${empty ? 'text-maroon-dim' : 'text-paper-dim'}`}>
                               {remaining != null ? `${remaining}mL left` : 'no volume logged'}
                             </span>
