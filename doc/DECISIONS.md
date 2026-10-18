@@ -680,3 +680,18 @@ there was no way back to that drink without closing the dialog first, even
 though the picker looked like it should be the complete answer to "switch
 back to anything." Folding the queued drink into the same list (tagged
 "· Up next" inline) makes the picker self-contained.
+
+---
+
+### Drink volume is required once a drink name is given
+**Decision**: Typing a drink name without a volume no longer lets you
+proceed — Start Session, the mid-session "different drink" switch, and
+"queue next drink" are all disabled with an inline message until a volume
+is filled in too (or the name is cleared). The Drink section as a whole is
+still fully optional — this only applies once a name has been typed.
+**Why**: User-reported: a name with no volume used to be accepted silently,
+and the session would start with nothing for the depletion bar/remaining-mL
+readout to measure against — read as a bug rather than the field being
+intentionally optional. Requiring volume the moment a name exists keeps the
+"skip drink tracking entirely" path available while closing the
+half-filled-in gap.

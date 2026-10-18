@@ -542,6 +542,34 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
     listed at 40mL). Checked the DB directly after each step via the
     browser's exposed `CapacitorSQLite` plugin to confirm row `status`
     and values matched what the UI showed. No console errors throughout.
+- [x] Require a drink volume once a drink name is given
+  - Owner: fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-reported: "I can put a name of the drink and leave the ml
+    empty and I can start the session" — confirmed with the user this
+    should be required, not just optional-as-designed (asked via
+    AskUserQuestion; chose "Require volume if a name is given" over
+    keeping it optional or just warning).
+    Added the same `nameGiven && parseVolumeToMl(...) == null` check in
+    three places that all independently build a drink row from a
+    name+volume pair: "Who's joining" (`ParticipantList.handleStart`,
+    disables "Start session"), the Switch dialog's "different drink" form
+    (`handleSwitchSubmit`), and its "queue next drink" form
+    (`handleQueueSubmit`) — each disables its own submit button and shows
+    an inline maroon message ("Add a volume ... or clear the name") the
+    same way `duplicateError` already does elsewhere in this file, rather
+    than failing silently or only catching it server-side. The whole
+    Drink section stays optional; the rule only engages once a name has
+    actually been typed, so leaving everything blank to skip drink
+    tracking is unaffected.
+    Verified via a clean production build (`vite build` succeeded,
+    ~18s — slower than the usual ~3-6s but no longer the repeated hangs
+    seen during the previous fix tonight) and confirmed the three new
+    inline-message strings are present in the minified output bundle.
+    Couldn't get the dev server to come up for a live click-through this
+    round (stayed unresponsive past 60s while the one-shot production
+    build completed fine in 18s) — same machine-load symptoms as the
+    previous task, not specific to this change; worth a live check once
+    confirmed working normally again.
 - [x] Fix: "switch back" picker couldn't reach a drink staged as "Up next"
   - Owner: fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
   - Notes: User-reported same day, right after the switchback feature

@@ -382,6 +382,16 @@ export function ParticipantList({
     setLastName('')
   }
 
+  // app/drink-volume-required: a drink name without a volume used to be
+  // accepted silently — the session would start, but with nothing for the
+  // depletion bar/remaining-mL readout to measure against, which read as
+  // a bug rather than an intentionally-optional field. Volume is now
+  // required the moment a name is typed (still fine to leave the whole
+  // Drink section blank — it's only required once you've committed to a
+  // name).
+  const drinkNameGiven = drinkName.trim() !== ''
+  const drinkVolumeMissing = drinkNameGiven && parseVolumeToMl(drinkVolumeInput, drinkVolumeUnit) == null
+
   function handleStart() {
     // app/pass-limit-house-rule: blank/invalid/non-positive stays disabled
     // (null), matching useTurnManager's `passLimit` contract.
@@ -630,13 +640,18 @@ export function ParticipantList({
                 onUnitChange={setDrinkVolumeUnit}
               />
             </div>
+            {drinkVolumeMissing && (
+              <p className="px-1 text-xs text-maroon-dim">
+                Add a volume for {drinkName.trim()}, or clear the name to skip drink tracking.
+              </p>
+            )}
           </div>
         </section>
 
         <button
           type="button"
           onClick={handleStart}
-          disabled={participants.length < 2 || startingSession}
+          disabled={participants.length < 2 || startingSession || drinkVolumeMissing}
           className="w-full rounded-xl bg-ember px-4 py-3 font-display text-lg font-semibold text-ink transition active:scale-[0.98] disabled:opacity-30"
         >
           {startingSession ? 'Starting…' : 'Start session'}

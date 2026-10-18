@@ -180,11 +180,18 @@ export function ActiveSessionScreen({
     setSwitching(true)
   }
 
+  // app/drink-volume-required: same rule as "Who's joining" — a drink
+  // name without a volume used to switch silently, leaving the depletion
+  // bar/remaining-mL readout with nothing to measure against. Required
+  // the moment a name is typed; still fine to leave the whole field blank.
+  const switchVolumeMissing =
+    switchName.trim() !== '' && parseVolumeToMl(switchVolumeInput, switchVolumeUnit) == null
+
   function handleSwitchSubmit(e) {
     e.preventDefault()
     const trimmed = switchName.trim()
-    if (!sessionId || !trimmed) return
     const volumeMl = parseVolumeToMl(switchVolumeInput, switchVolumeUnit)
+    if (!sessionId || !trimmed || volumeMl == null) return
     addDrink(sessionId, trimmed, volumeMl)
       .then(() => {
         refreshCurrentDrink()
@@ -206,11 +213,14 @@ export function ActiveSessionScreen({
   // what's currently being served. Separate submit handler from the
   // "switch now" form above since this one passes status 'queued' and
   // refreshes queuedDrink, not currentDrink.
+  const queueVolumeMissing =
+    queueName.trim() !== '' && parseVolumeToMl(queueVolumeInput, queueVolumeUnit) == null
+
   function handleQueueSubmit(e) {
     e.preventDefault()
     const trimmed = queueName.trim()
-    if (!sessionId || !trimmed) return
     const volumeMl = parseVolumeToMl(queueVolumeInput, queueVolumeUnit)
+    if (!sessionId || !trimmed || volumeMl == null) return
     addDrink(sessionId, trimmed, volumeMl, 'queued')
       .then(refreshQueuedDrink)
       .catch((err) => console.error('Failed to queue drink', err))
@@ -733,12 +743,15 @@ export function ActiveSessionScreen({
                       />
                       <button
                         type="submit"
-                        disabled={!switchName.trim()}
+                        disabled={!switchName.trim() || switchVolumeMissing}
                         className="flex-1 rounded-xl bg-ember px-3 py-2 text-sm font-semibold text-ink transition active:scale-95 disabled:opacity-30"
                       >
                         Log
                       </button>
                     </div>
+                    {switchVolumeMissing && (
+                      <p className="px-1 text-xs text-maroon-dim">Add a volume, or clear the name.</p>
+                    )}
                   </form>
                 </div>
 
@@ -770,12 +783,15 @@ export function ActiveSessionScreen({
                       />
                       <button
                         type="submit"
-                        disabled={!queueName.trim()}
+                        disabled={!queueName.trim() || queueVolumeMissing}
                         className="flex-1 rounded-xl px-3 py-2 text-sm font-semibold text-paper ring-1 ring-smoke-light transition hover:bg-smoke-light active:scale-95 disabled:opacity-30"
                       >
                         Queue
                       </button>
                     </div>
+                    {queueVolumeMissing && (
+                      <p className="px-1 text-xs text-maroon-dim">Add a volume, or clear the name.</p>
+                    )}
                   </form>
                 </div>
 
