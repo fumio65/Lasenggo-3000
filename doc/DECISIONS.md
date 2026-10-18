@@ -980,3 +980,20 @@ to the question a drink log actually answers than "how much is done".
 Matching the live bar's direction means a drink's bar behaves the same
 way whether the session is happening now or being looked back on,
 instead of requiring a different mental model for each.
+
+---
+
+### The Back button on Session History pages is sticky now
+**Decision**: `HistoryList` and `HistoryDetail` both pull their Back
+button into its own `sticky top-0 z-10` bar, bled to the page's real
+edges (`-mx-6 -mt-6`, re-padded) and painted with a solid `bg-ink` so
+scrolling content doesn't show through underneath it. The big title
+stays in normal flow below it (not also sticky) — a compact pinned
+button reads as the familiar mobile pattern, and keeping the title
+scrolling avoids permanently reserving extra vertical space just to
+keep one button in view.
+**Why**: User-reported that on a long session list (or a session with a
+lot of Drinks/Activity-log entries), scrolling made the Back button
+disappear along with the rest of the header — both screens are a single
+unbounded scrolling page with no separate scroll container, so there
+was previously nothing keeping the button in view.

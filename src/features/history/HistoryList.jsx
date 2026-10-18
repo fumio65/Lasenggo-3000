@@ -20,7 +20,20 @@ export function HistoryList({ onBack, onSelect }) {
   return (
     <div className="min-h-screen bg-ink text-paper p-6">
       <div className="mx-auto max-w-md space-y-6">
-        <header className="space-y-3">
+        {/* app/history-sticky-back: a long session list scrolls the whole
+            page (no own ScrollFadeBox — this list is meant to show
+            everything), and the Back button used to live inline in the
+            header, so it scrolled away with it — reported as "the back
+            button disappears". Pulled into its own sticky bar, pinned to
+            the top of the viewport (`-mx-6 -mt-6` cancels this page's own
+            `p-6` so the bar bleeds to the real edges, then re-adds its own
+            padding) with a solid `bg-ink` so scrolling content doesn't
+            show through underneath it. Only the button is sticky, not
+            the title below it — a floating button with no header card
+            around it is the familiar mobile pattern, and keeping the
+            big title in normal flow avoids permanently reserving that
+            much vertical space just to keep one button in view. */}
+        <div className="sticky top-0 z-10 -mx-6 -mt-6 bg-ink px-6 pb-3 pt-6">
           <button
             type="button"
             onClick={onBack}
@@ -29,6 +42,9 @@ export function HistoryList({ onBack, onSelect }) {
           >
             <BackIcon /> Back
           </button>
+        </div>
+
+        <header className="space-y-3">
           <div className="flex items-center justify-between">
             <h1 className="font-display text-2xl font-semibold tracking-tight">
               Session history

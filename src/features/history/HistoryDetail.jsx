@@ -104,7 +104,14 @@ export function HistoryDetail({ sessionId, onBack }) {
   return (
     <div className="min-h-screen bg-ink text-paper p-6">
       <div className="mx-auto max-w-md space-y-6">
-        <header className="space-y-3">
+        {/* app/history-sticky-back: this page can run long once Drinks
+            and the full Activity log are showing, and the Back button
+            used to scroll away with the rest of the header — reported
+            as "the back button disappears". Same fix as HistoryList:
+            pulled into its own sticky bar pinned to the top of the
+            viewport, bleeding to the real page edges and painted over
+            with `bg-ink` so scrolling content doesn't show through. */}
+        <div className="sticky top-0 z-10 -mx-6 -mt-6 bg-ink px-6 pb-3 pt-6">
           <button
             type="button"
             onClick={onBack}
@@ -113,6 +120,9 @@ export function HistoryDetail({ sessionId, onBack }) {
           >
             <BackIcon /> Back
           </button>
+        </div>
+
+        <header className="space-y-3">
           <h1 className="font-display text-2xl font-semibold tracking-tight">
             {loading || !detail?.session
               ? 'Session'

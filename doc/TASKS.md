@@ -1332,6 +1332,29 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
     syntax-checked the file cleanly; a full `vite build` succeeded in
     4.04s. No live click-through in an actual browser this session —
     same device-bridge dev-server gap noted in earlier entries.
+- [x] Fix: Back button scrolled away on long Session History pages —
+      Owner: fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-reported that scrolling a long session list (or a
+    session with a lot of Drinks/Activity-log entries) scrolled the Back
+    button out of view with the rest of the header, since both
+    `HistoryList` and `HistoryDetail` are a single unbounded-height
+    scrolling page. Pulled the button into its own
+    `sticky top-0 z-10 -mx-6 -mt-6 bg-ink px-6 pb-3 pt-6` bar in both
+    files — the negative margins cancel the page's own `p-6` so the bar
+    bleeds to the real viewport edges, then re-adds its own padding; the
+    solid background stops scrolling content showing through underneath
+    it. The big session-name/date title stays in normal flow below it
+    rather than also being made sticky, so it still scrolls away
+    normally and the sticky bar stays compact.
+    Verified: `node_modules/.bin/rolldown` syntax-checked both files
+    cleanly; a full `vite build` succeeded in 4.21s, and the compiled CSS
+    was grepped for `.sticky`, `.-mx-6`, and `.-mt-6` to confirm Tailwind
+    generated those utilities. No live click-through in an actual
+    browser this session — same device-bridge dev-server gap noted in
+    earlier entries; worth confirming on an actual phone-width screen
+    that the sticky bar doesn't gap at the very top on scroll bounce (iOS
+    rubber-banding can occasionally reveal a sliver above a `sticky`
+    element depending on the surrounding scroll container).
 - [ ] Multiple pour stations (v2 scalability — architecture TBD, see `tagaybox_spec.md`)
 - [ ] Real browser back/forward support for in-app screens (participants/session/
       history currently switch via local React state only, per EXAMPLES.md's
