@@ -884,3 +884,19 @@ drink (two prior entries), a participant who'd had several different
 drinks would stack an increasingly tall block in an already-compact,
 height-capped panel. The same fix already proven for the queue list
 applied directly here.
+
+---
+
+### Fix: the default-shown drink was the first one poured, not the current one
+**Decision**: `ParticipantStatBar`'s default-shown drink (before the
+previous entry's "+N more drinks" toggle is expanded) is now
+`stat.drinkTotals[0]`, not `stat.drinkTotals[stat.drinkTotals.length - 1]`.
+**Why**: User-reported the collapsed view showed the drink they'd poured
+*first* all session, not whichever they were *currently* on. Root cause:
+`getSessionEvents` orders events newest-first (`ORDER BY timestamp DESC`),
+so when `buildStats` iterates that list, a drink's name is inserted into
+`drinkTotalsByName` on its *most recent* pour, not its earliest — a plain
+object's insertion order therefore comes out newest-drink-first, not
+first-poured as the comments (now corrected) had assumed. Taking the
+*last* array entry as "the current drink" was picking the oldest one
+instead.

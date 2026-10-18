@@ -22,9 +22,13 @@ function buildStats(participants, events) {
         // app/drink-session-log (fix: switching drinks lumped everyone's
         // mL into one combined total, with no way to tell how much came
         // from the drink before a switch vs. the one after): a running
-        // mL total *per drink name* rather than one combined number, in
-        // first-poured order (a plain object preserves insertion order
-        // for string keys, same guarantee a Map would give here). Each
+        // mL total *per drink name* rather than one combined number. The
+        // resulting order is newest-drink-first, not first-poured — the
+        // `events` list this iterates comes from getSessionEvents sorted
+        // newest-first, so a drink's *first* appearance while iterating
+        // is actually its *most recent* pour, and a plain object's
+        // insertion order (preserved for string keys, same guarantee a
+        // Map would give here) ends up newest-first as a result. Each
         // pour's approxMl is added to its own drink's bucket, not to a
         // single pot every pour shares.
         drinkTotalsByName: {},

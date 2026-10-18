@@ -1206,6 +1206,30 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
     bundle was grepped for "more drink" and "Hide" to confirm the labels
     shipped. No live click-through in an actual browser this session —
     same device-bridge dev-server gap noted in earlier entries.
+- [x] Fix: collapsed drink view showed the first drink poured, not the
+      current one — Owner: fumio65 · Branch: `app/drink-tracking` ·
+      Done: 2026-10-18
+  - Notes: User-reported the default-shown drink (before expanding "+N
+    more drinks") was whichever drink they'd poured *first*, not the one
+    they were currently on. Root cause: `getSessionEvents` returns events
+    newest-first; `buildStats` (SessionLog.jsx) iterates that list and
+    inserts each drink name into `drinkTotalsByName` on its first
+    encounter — which, given newest-first iteration, is actually that
+    drink's *most recent* pour. So the object's insertion order comes out
+    newest-drink-first, not first-poured as the surrounding comments
+    (also corrected this commit) had assumed. `ParticipantStatBar.jsx`
+    was taking the *last* entry as "the current drink" — exactly
+    backwards. Changed to `drinkTotals[0]` for the always-visible row and
+    `drinkTotals.slice(1)` (already correctly ordered, no reversal
+    needed) for the collapsed ones.
+    Verified: traced `buildStats` in an isolated `node` script with
+    events in the real newest-first order (most recent pour — Red Horse —
+    listed before the earlier Tanduay pours) and confirmed
+    `drinkTotals[0]` came back as Red Horse, the actually-current drink.
+    `node_modules/.bin/rolldown` syntax-checked both changed files
+    cleanly; a full `vite build` succeeded in 10.54s. No live
+    click-through in an actual browser this session — same device-bridge
+    dev-server gap noted in earlier entries.
 - [ ] Multiple pour stations (v2 scalability — architecture TBD, see `tagaybox_spec.md`)
 - [ ] Real browser back/forward support for in-app screens (participants/session/
       history currently switch via local React state only, per EXAMPLES.md's

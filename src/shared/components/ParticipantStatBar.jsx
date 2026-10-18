@@ -94,9 +94,10 @@ export function ParticipantStatBar({ stat, maxActions, isCurrent = false, isPaus
           either. A participant who had 150mL of one drink then switched
           to another and had 300mL of it shows both lines separately
           rather than a single "~450mL" that erases which drink any of it
-          came from. In first-poured order; omitted entirely for a
-          session with no drink tracking or a participant who hasn't
-          poured anything with a drink attached yet. */}
+                    came from. Newest-drink-first (see buildStats in SessionLog.jsx
+          for why) — omitted entirely for a session with no drink
+          tracking or a participant who hasn't poured anything with a
+          drink attached yet. */}
       {stat.drinkTotals?.length > 0 && (() => {
         // app/drink-session-log (pour-size per drink), then (UX pass:
         // long drink lists): render one drink's row — the same
@@ -132,13 +133,20 @@ export function ParticipantStatBar({ stat, maxActions, isCurrent = false, isPaus
           )
         }
 
-        // Most recently poured drink first (last in drinkTotals' first-
-        // poured insertion order) — that's the one still relevant right
-        // now. Everything earlier collapses behind the toggle, most-
-        // recent-of-the-rest first, same reverse-chronological
-        // convention the Switch dialog's past-drinks picker already uses.
-        const latest = stat.drinkTotals[stat.drinkTotals.length - 1]
-        const earlier = stat.drinkTotals.slice(0, -1).reverse()
+        // Fix: this previously read `drinkTotals[length - 1]` as "most
+        // recent", which was backwards — `events` (buildStats' source)
+        // comes from getSessionEvents ordered newest-first, so a drink's
+        // *first* appearance while iterating that list is actually its
+        // *most recent* pour, and Object insertion order means
+        // `drinkTotals[0]` is the newest drink, not the oldest. The old
+        // code was defaulting to whichever drink this person poured
+        // first all session, not whichever they're currently on —
+        // reported as "it shows the first alcohol, not the current one".
+        // `drinkTotals[0]` is the fix; everything after it is already in
+        // the right (most-recent-of-the-rest-first) order with no
+        // reversal needed.
+        const latest = stat.drinkTotals[0]
+        const earlier = stat.drinkTotals.slice(1)
 
         return (
           <ul className="space-y-1">
