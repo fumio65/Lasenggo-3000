@@ -16,8 +16,9 @@ import {
   getCurrentDrink,
   addDrink,
   getQueuedDrink,
-  promoteQueuedDrink,
+  switchToDrink,
   cancelQueuedDrink,
+  getSessionDrinkHistory,
 } from '../storage/sessionQueries'
 import { findOrCreatePerson } from '../storage/peopleQueries'
 import { VolumeInput } from '../../shared/components/VolumeInput'
@@ -79,6 +80,14 @@ export function ActiveSessionScreen({
   const [queueVolumeInput, setQueueVolumeInput] = useState('')
   const [queueVolumeUnit, setQueueVolumeUnit] = useState('ml')
 
+  // app/drink-switchback: every drink actually served this session
+  // (current + history), used to list "past drinks" you can switch back
+  // to from the Switch dialog — see getSessionDrinkHistory. Each one's
+  // remaining volume is computed below from `events` (now that pours are
+  // tagged with the drink they were poured against, drink_id), not
+  // re-fetched per row.
+  const [drinkHistory, setDrinkHistory] = useState([])
+
   function refreshCurrentDrink() {
     if (sessionId) getCurrentDrink(sessionId).then(setCurrentDrink)
   }
@@ -87,8 +96,13 @@ export function ActiveSessionScreen({
     if (sessionId) getQueuedDrink(sessionId).then(setQueuedDrink)
   }
 
+  function refreshDrinkHistory() {
+    if (sessionId) getSessionDrinkHistory(sessionId).then(setDrinkHistory)
+  }
+
   useEffect(refreshCurrentDrink, [sessionId])
   useEffect(refreshQueuedDrink, [sessionId])
+  useEffect(refreshDrinkHistory, [sessionId])
 
   // app/drink-tracking (depletion follow-up): remaining volume is derived,
   // never stored — it's the declared volume_ml for the current "serving
@@ -99,13 +113,35 @@ export function ActiveSessionScreen({
   // can overshoot what's left) rather than clamped at 0 — see DECISIONS.md.
   // null (not 0) when the drink was logged without a volume, so the "Now
   // serving" row can tell "no volume given" apart from "exactly empty".
-  const pouredMlSinceCurrentDrink = currentDrink
-    ? events
-        .filter((e) => e.type === 'POUR' && e.timestamp >= currentDrink.started_at)
-        .reduce((sum, e) => sum + (POUR_VOLUMES.find((v) => v.id === e.volume)?.approxMl ?? 0), 0)
-    : 0
-  const remainingMl =
-    currentDrink?.volume_ml != null ? currentDrink.volume_ml - pouredMlSinceCurrentDrink : null
+  // app/drink-switchback: remaining volume for ANY drink (not just the
+  // current one) is its declared volume_ml minus every POUR event tagged
+  // with its id — drink_id, stamped at log time (see onEvent below) —
+  // rather than "every pour since this row's started_at", which is what
+  // this used to be. That timestamp-based version broke the moment a
+  // session could switch back to an earlier drink: pours made against a
+  // *different* drink in between would still fall after the old row's
+  // started_at and get wrongly counted against it. Tagging each pour with
+  // the exact drink it was poured against sidesteps that entirely, no
+  // matter how many times a session switches back and forth.
+  function remainingForDrink(drink) {
+    if (!drink || drink.volume_ml == null) return null
+    const pouredMl = events
+      .filter((e) => e.type === 'POUR' && e.drink_id === drink.id)
+      .reduce((sum, e) => sum + (POUR_VOLUMES.find((v) => v.id === e.volume)?.approxMl ?? 0), 0)
+    return drink.volume_ml - pouredMl
+  }
+
+  const remainingMl = remainingForDrink(currentDrink)
+
+  // app/drink-switchback: the "switch back to a past drink" picker list —
+  // every served drink this session except whichever is currently
+  // "Now serving" or already staged as "Up next" (both shown elsewhere),
+  // newest-started first so the most recently left-behind drink is the
+  // easiest one to find.
+  const pastDrinks = drinkHistory
+    .filter((d) => d.id !== currentDrink?.id && d.id !== queuedDrink?.id)
+    .slice()
+    .reverse()
   // isEmpty gates both the "X mL left" deficit styling and the "Up next"
   // banner's quiet-vs-urgent state; barWidthPct is the same fraction
   // clamped into a drawable [0, 100] range (the deficit itself is still
@@ -119,7 +155,11 @@ export function ActiveSessionScreen({
   function handleSwitchSameDrink() {
     if (!sessionId || !currentDrink) return
     addDrink(sessionId, currentDrink.name, currentDrink.volume_ml)
-      .then(refreshCurrentDrink)
+      .then(() => {
+        refreshCurrentDrink()
+        refreshQueuedDrink()
+        refreshDrinkHistory()
+      })
       .catch((err) => console.error('Failed to log drink', err))
     setSwitching(false)
   }
@@ -137,8 +177,19 @@ export function ActiveSessionScreen({
     if (!sessionId || !trimmed) return
     const volumeMl = parseVolumeToMl(switchVolumeInput, switchVolumeUnit)
     addDrink(sessionId, trimmed, volumeMl)
-      .then(refreshCurrentDrink)
+      .then(() => {
+        refreshCurrentDrink()
+        refreshQueuedDrink()
+        refreshDrinkHistory()
+      })
       .catch((err) => console.error('Failed to log drink', err))
+    // Pre-existing gap fixed alongside app/drink-switchback: this form
+    // never cleared itself on submit (unlike the queue form below, which
+    // always has), so the next time the dialog opened, typing a new name
+    // appended onto whatever was left over instead of starting fresh.
+    setSwitchName('')
+    setSwitchVolumeInput('')
+    setSwitchVolumeUnit('ml')
     setSwitching(false)
   }
 
@@ -154,6 +205,10 @@ export function ActiveSessionScreen({
     addDrink(sessionId, trimmed, volumeMl, 'queued')
       .then(refreshQueuedDrink)
       .catch((err) => console.error('Failed to queue drink', err))
+    // app/drink-switchback: queuing never demotes the current drink, so
+    // drinkHistory doesn't need refreshing here — unlike the "serving"
+    // paths above, which can quietly turn the old current drink into a
+    // history/requeued row.
     setQueueName('')
     setQueueVolumeInput('')
     setQueueVolumeUnit('ml')
@@ -164,13 +219,31 @@ export function ActiveSessionScreen({
   // queued drink — never automatic (see DECISIONS.md). Refreshes both
   // currentDrink (now the promoted one) and queuedDrink (now empty).
   function handlePromoteQueuedDrink() {
-    if (!queuedDrink) return
-    promoteQueuedDrink(queuedDrink.id)
+    if (!sessionId || !queuedDrink) return
+    switchToDrink(sessionId, queuedDrink.id)
       .then(() => {
         refreshCurrentDrink()
         refreshQueuedDrink()
+        refreshDrinkHistory()
       })
       .catch((err) => console.error('Failed to switch to queued drink', err))
+  }
+
+  // app/drink-switchback: switching back to any past drink from the
+  // picker list — same underlying operation as promoting the queue
+  // (switchToDrink demotes whatever's currently serving, re-queuing it
+  // as "Up next" if it still has alcohol in it, per DECISIONS.md), just
+  // aimed at a drink the user picked rather than the staged queue slot.
+  function handleSwitchToPastDrink(drinkId) {
+    if (!sessionId) return
+    switchToDrink(sessionId, drinkId)
+      .then(() => {
+        refreshCurrentDrink()
+        refreshQueuedDrink()
+        refreshDrinkHistory()
+      })
+      .catch((err) => console.error('Failed to switch back to drink', err))
+    setSwitching(false)
   }
 
   function handleCancelQueuedDrink() {
@@ -295,6 +368,13 @@ export function ActiveSessionScreen({
   const volumeIdRef = useRef(volumeId)
   volumeIdRef.current = volumeId
 
+  // app/drink-switchback: which drink a POUR should be tagged against —
+  // read via a ref inside onEvent for the same reason volumeIdRef is
+  // (onEvent is set up once by useTurnManager and shouldn't be recreated
+  // every time currentDrink changes).
+  const currentDrinkIdRef = useRef(currentDrink?.id ?? null)
+  currentDrinkIdRef.current = currentDrink?.id ?? null
+
   const {
     current,
     currentIndex,
@@ -309,7 +389,8 @@ export function ActiveSessionScreen({
     pausedIds,
     onEvent: (type, participant) => {
       const volume = type === 'POUR' ? volumeIdRef.current : null
-      logEvent(sessionId, participant.id, type, volume)
+      const drinkId = type === 'POUR' ? currentDrinkIdRef.current : null
+      logEvent(sessionId, participant.id, type, volume, null, drinkId)
         .then((eventId) => {
           setLastEvent({ id: eventId, type, participant })
           refreshEvents()
@@ -500,7 +581,7 @@ export function ActiveSessionScreen({
                   </span>
                   <button
                     type="button"
-                    onClick={() => (switching ? setSwitching(false) : setSwitching(true))}
+                    onClick={() => (switching ? setSwitching(false) : openSwitchDifferentDrink())}
                     className="rounded-full bg-smoke-light px-2.5 py-1 text-xs font-medium text-paper transition hover:bg-ember hover:text-ink active:scale-95"
                   >
                     Switch
@@ -545,7 +626,10 @@ export function ActiveSessionScreen({
                     <span className={isEmpty ? 'text-paper' : 'text-paper'}>
                       {queuedDrink.name}
                     </span>
-                    {queuedDrink.volume_ml ? ` · ${queuedDrink.volume_ml}mL` : ''}
+                    {(() => {
+                      const queuedRemaining = remainingForDrink(queuedDrink)
+                      return queuedRemaining != null ? ` · ${queuedRemaining}mL left` : ''
+                    })()}
                     {isEmpty ? '?' : ''}
                   </span>
                   <button
@@ -685,6 +769,42 @@ export function ActiveSessionScreen({
                     </div>
                   </form>
                 </div>
+
+                {/* app/drink-switchback: "there's still alcohol on it" —
+                    pick any drink this session has already served (not
+                    just the one most recently switched away from) and
+                    switch back to it. Remaining volume is read straight
+                    from the already-correct per-drink pour tagging, so it
+                    resumes exactly where that drink was left, however long
+                    ago that was. The drink currently "Now serving" and
+                    whatever's already "Up next" are left out — they're
+                    both shown above already. */}
+                {pastDrinks.length > 0 && (
+                  <div className="space-y-2 border-t border-smoke-light pt-3">
+                    <p className="px-1 text-xs text-paper-dim">
+                      Still some left in an earlier drink? Switch back to it.
+                    </p>
+                    <div className="max-h-40 space-y-1.5 overflow-y-auto">
+                      {pastDrinks.map((d) => {
+                        const remaining = remainingForDrink(d)
+                        const empty = remaining != null && remaining <= 0
+                        return (
+                          <button
+                            key={d.id}
+                            type="button"
+                            onClick={() => handleSwitchToPastDrink(d.id)}
+                            className="flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-left text-sm ring-1 ring-smoke-light transition hover:bg-smoke-light active:scale-95"
+                          >
+                            <span className="truncate text-paper">{d.name}</span>
+                            <span className={`shrink-0 text-xs ${empty ? 'text-maroon-dim' : 'text-paper-dim'}`}>
+                              {remaining != null ? `${remaining}mL left` : 'no volume logged'}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

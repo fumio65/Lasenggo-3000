@@ -625,3 +625,42 @@ bar already uses, so this isn't a new pattern for the codebase. `inert` (one
 attribute on the outer container) was chosen over manually gating `tabIndex`
 on every field — the dialog has two multi-field forms including `VolumeInput`
 internals, and `inert` covers all of it, including focus, in one line.
+
+---
+
+### Switching back to a past drink resumes its exact remaining volume, via per-pour tagging
+**Decision**: Every POUR event is now tagged with exactly which drink was
+being served at that moment (`events.drink_id`), and remaining volume for
+*any* drink — current or past — is computed as "declared volume minus every
+pour tagged with its id". This replaced the earlier "every pour since this
+drink row's `started_at`" approach.
+**Why**: The earlier approach broke the moment a session needed to switch
+back to an earlier drink (requested by the user: "there's still alcohol on
+it, I want to switch back"). Pours made against a different drink while the
+original was inactive would still land after its `started_at` and get
+wrongly counted against it on return. Tagging each pour with the exact drink
+it was poured against sidesteps the problem entirely, however many times a
+session switches back and forth, and keeps the computation (not re-fetched
+per drink, derived client-side from the same `events` list already in state)
+consistent for the live "Now serving" number and every row in the new
+"switch back to a past drink" picker.
+
+---
+
+### Switching back to a past drink: pick from a list, auto-requeue only if the slot is free
+**Decision**: "Switch back" works for any drink this session has actually
+served, picked from a list — not just the single most-recently-switched-away-
+from one. Switching away from the current drink auto-requeues it as the new
+"Up next" only when that slot isn't already occupied by something else;
+otherwise it just becomes ordinary history (`status = 'served'`), still fully
+reachable from the same picker with its correct remaining volume.
+**Why**: Both decided with the user up front. The list (not just "the last
+one") matches how an actual tagayan session plays out — more than two drinks
+in rotation is normal. The "only if free" rule was added after live testing
+surfaced the alternative (always clearing the existing queued slot) silently
+deleting a drink the user had deliberately staged, the moment a third drink
+entered the rotation — there's still only one "Up next" slot by design, and
+a slot someone already claimed should never be bumped by an unrelated
+switch. "Served" isn't a dead end either way: the picker surfaces every
+`'serving'`/`'served'` row regardless, so a drink that lost the "Up next"
+spotlight is exactly as reachable as one that never had it.

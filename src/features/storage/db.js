@@ -46,6 +46,16 @@ const SCHEMA = `
     synced INTEGER NOT NULL DEFAULT 0
   );
 
+  -- drink_id (app/drink-switchback): which drinks row was actually being
+  -- served at the moment a POUR happened, stamped at log time from
+  -- whatever ActiveSessionScreen's currentDrink was then. This is what
+  -- makes remaining-volume math correct no matter how many times a
+  -- session switches drinks back and forth — a pour is tied to the exact
+  -- serving period it happened in, not inferred from timestamps, so
+  -- switching back to an earlier drink resumes its *actual* remaining
+  -- volume instead of re-counting pours poured against something else in
+  -- between. NULL for PASS/PAUSE/RESUME rows, and for any POUR logged
+  -- before this column existed (pre-migration data; see DECISIONS.md).
   CREATE TABLE IF NOT EXISTS events (
     id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL REFERENCES sessions(id),
@@ -53,6 +63,7 @@ const SCHEMA = `
     type TEXT NOT NULL,
     volume TEXT,
     note TEXT,
+    drink_id TEXT,
     timestamp TEXT NOT NULL,
     synced INTEGER NOT NULL DEFAULT 0
   );
@@ -112,6 +123,7 @@ export async function initDatabase() {
   await migrateAddPersonDeviceId()
   await migrateAddPersonNameParts()
   await migrateAddDrinkStatus()
+  await migrateAddEventDrinkId()
   return db
 }
 
@@ -207,6 +219,19 @@ async function migrateAddPersonNameParts() {
 async function migrateAddDrinkStatus() {
   if (await columnExists('drinks', 'status')) return
   await db.execute("ALTER TABLE drinks ADD COLUMN status TEXT NOT NULL DEFAULT 'serving'")
+}
+
+/** app/drink-switchback: adds `events.drink_id` for installs/dev DBs whose
+ * `events` table predates this column (same reasoning as
+ * migrateAddDrinkStatus above — the SCHEMA's `CREATE TABLE IF NOT EXISTS`
+ * only applies to a brand-new table). Existing POUR rows are left NULL —
+ * there's no way to know in hindsight which drink they were poured
+ * against, so they simply don't count toward any drink's remaining volume
+ * (acceptable: this is pre-release dev data, not a real session anyone
+ * is mid-way through). */
+async function migrateAddEventDrinkId() {
+  if (await columnExists('events', 'drink_id')) return
+  await db.execute('ALTER TABLE events ADD COLUMN drink_id TEXT')
 }
 
 /** Returns the open connection. Throws if `initDatabase()` hasn't run yet. */

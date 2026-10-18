@@ -471,6 +471,77 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
     layout, which doesn't depend on viewport width at all — wasn't
     directly screenshotted at phone width; worth a quick look on an
     actual phone or devtools device toolbar.)
+- [x] Switch back to any past drink this session, picked from a list
+  - Owner: fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-requested follow-up, same day — "what if I queue a drink
+    then switch while there's still a drink in the current, I want to
+    switch it back since there's still alcohol on it". Two design
+    questions resolved with the user up front: switching back works for
+    *any* past drink this session, picked from a list (not just the one
+    most recently switched away from); switching back to an earlier
+    drink auto-re-queues the one just left, as the new "Up next" —
+    *only* if the "Up next" slot is actually free (see DECISIONS.md;
+    there's still only one such slot, so a drink that's already staged
+    there is never silently bumped).
+    Required a real data-model change, not a UI tweak: remaining volume
+    used to be computed as "every pour since this drink row's
+    `started_at`", using whichever row had `status = 'serving'`. That
+    breaks the moment a session can switch back to an earlier drink —
+    pours made against a *different* drink while this one was inactive
+    would still land after its `started_at` and get wrongly counted
+    against it. Fixed by tagging every POUR event with exactly which
+    drink was being served at that moment (`events.drink_id`, new
+    column + idempotent migration in `db.js`), set from a ref
+    (`currentDrinkIdRef`, same pattern `volumeIdRef` already uses) inside
+    `useTurnManager`'s `onEvent` callback. Remaining volume for any
+    drink, current or past, is now just "declared volume minus every
+    pour tagged with its id" — correct regardless of how many times a
+    session switches back and forth, and computed the same way (from the
+    already-fetched `events` list) for the live "Now serving" number and
+    every row in the new picker.
+    `sessionQueries.js`: `promoteQueuedDrink` and the old ad-hoc
+    "switch now" logic were unified into one `switchToDrink(sessionId,
+    drinkId)`, used both for promoting the queue and for picking a past
+    drink from the list. Both now funnel through a new internal
+    `demoteCurrentDrink` helper that decides what happens to the drink
+    being left: still has volume *and* the "Up next" slot is free ->
+    becomes the new "Up next"; otherwise (empty, or something else is
+    already staged there) -> becomes plain history. New
+    `getSessionDrinkHistory(sessionId)` lists every drink actually served
+    this session (`status IN ('serving', 'served')`) for the picker.
+    Along the way, live testing turned up and fixed two real bugs
+    predating this task, not introduced by it: (1) `promoteQueuedDrink`
+    never demoted the row it was switching away from, so two rows could
+    end up marked `'serving'` at once, silently masked by
+    `getCurrentDrink`'s `ORDER BY started_at DESC` always happening to
+    pick the right one — `getSessionDrinks`/history would have shown
+    both as current. (2) the "switch to a different drink" dialog form
+    never cleared itself after a submit (unlike the queue form, which
+    always had), so typing a second switch in the same dialog session
+    appended onto the previous entry instead of starting fresh.
+    A third bug was introduced and caught by this task's own live
+    testing before being fixed: the first version of `demoteCurrentDrink`
+    unconditionally cleared whatever was in the "Up next" slot whenever
+    *any* drink was demoted — fine when demoting the thing that's about
+    to reclaim that slot, but wrong the moment a session switches to a
+    *third* drink while an earlier one is already legitimately staged:
+    it silently deleted that staged drink instead of leaving it alone.
+    Fixed by only letting a demoted drink take the slot when it's free;
+    otherwise it just becomes ordinary history, still fully reachable
+    from the picker with its correct remaining volume.
+    Verified live end to end through a three-drink chain (Red Horse 100
+    -> pour -> Tanduay 50 -> pour -> switch back to Red Horse via "Switch
+    now", confirmed it resumed at its real 70mL rather than resetting to
+    100, and Tanduay correctly became the new "Up next" at its real
+    20mL; then switched to a third drink, Ginebra, confirmed Red Horse's
+    "Up next" status was left completely undisturbed, and that Tanduay
+    became ordinary history instead of displacing it; opened the picker
+    and confirmed it listed Tanduay at 20mL, picked it, confirmed it
+    resumed correctly and Ginebra became history in turn with its real
+    remaining volume; re-opened the picker and confirmed Ginebra now
+    listed at 40mL). Checked the DB directly after each step via the
+    browser's exposed `CapacitorSQLite` plugin to confirm row `status`
+    and values matched what the UI showed. No console errors throughout.
 - [x] Split roster names into first/last, block duplicate participants, allow
       editing a name on "Who's joining" before Start session
   - Owner: fumio65 · Branch: `app/participant-first-last-name` · Done: 2026-10-12

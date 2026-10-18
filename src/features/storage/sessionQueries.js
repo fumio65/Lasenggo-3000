@@ -1,4 +1,5 @@
 import { getDatabase } from './db'
+import { POUR_VOLUMES } from '../pour/usePourVolume'
 
 /**
  * Read/write helpers for the schema set up in `app/sqlite-schema`.
@@ -58,13 +59,18 @@ export async function createSession(participants, name = '', drinkName = '', dri
  * NULL for everything else. Returns the new row's id so a caller can later
  * target it precisely (app/undo-last-action uses this to undo exactly the
  * event it logged, not just "the most recent row" by time, which could
- * race). */
-export async function logEvent(sessionId, participantId, type, volume = null, note = null) {
+ * race).
+ * `drinkId` (app/drink-switchback) is only meaningful for a POUR row — the
+ * drinks row that was actually "Now serving" at the moment this pour
+ * happened, so remaining-volume math can later be computed exactly per
+ * drink regardless of how many times the session switches back and
+ * forth. Left null for PASS/PAUSE/RESUME. */
+export async function logEvent(sessionId, participantId, type, volume = null, note = null, drinkId = null) {
   const db = getDatabase()
   const id = crypto.randomUUID()
   await db.run(
-    'INSERT INTO events (id, session_id, participant_id, type, volume, note, timestamp, synced) VALUES (?, ?, ?, ?, ?, ?, ?, 0)',
-    [id, sessionId, participantId, type, volume, note, new Date().toISOString()],
+    'INSERT INTO events (id, session_id, participant_id, type, volume, note, drink_id, timestamp, synced) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)',
+    [id, sessionId, participantId, type, volume, note, drinkId, new Date().toISOString()],
     false,
   )
   return id
@@ -102,6 +108,73 @@ export async function renameParticipant(participantId, name) {
   await db.run('UPDATE participants SET name = ? WHERE id = ?', [name, participantId], false)
 }
 
+/** Internal: maps a POUR event's `volume` id (usePourVolume's
+ * light/standard/heavy) to its approximate mL, the same lookup
+ * ActiveSessionScreen already does client-side for the live display —
+ * kept in sync by importing POUR_VOLUMES from the same source of truth
+ * rather than hardcoding the numbers twice. */
+function mlForPourVolume(volumeId) {
+  return POUR_VOLUMES.find((v) => v.id === volumeId)?.approxMl ?? 0
+}
+
+/** Internal: a drink's remaining volume right now — its declared
+ * `volumeMl` minus every POUR event tagged with its id (app/drink-
+ * switchback's `events.drink_id`), or null if no volume was declared.
+ * This is the DB-side equivalent of the same formula ActiveSessionScreen
+ * computes client-side from its already-fetched `events` list; this one
+ * exists because `demoteCurrentDrink` below needs the number before the
+ * UI has necessarily refetched anything. */
+async function getRemainingMl(drinkId, volumeMl) {
+  if (volumeMl == null) return null
+  const db = getDatabase()
+  const result = await db.query("SELECT volume FROM events WHERE drink_id = ? AND type = 'POUR'", [
+    drinkId,
+  ])
+  const pouredMl = (result.values ?? []).reduce((sum, e) => sum + mlForPourVolume(e.volume), 0)
+  return volumeMl - pouredMl
+}
+
+/** Internal: whenever a drink is about to become 'serving' (a fresh
+ * addDrink, a queue promotion, or switching back to an older drink —
+ * everything funnels through here), whatever was 'serving' before it
+ * needs to stop being 'serving' first — otherwise two rows end up marked
+ * current at once, with getCurrentDrink's `ORDER BY started_at DESC`
+ * only picking the right one by the accident of always being the most
+ * recently touched row. app/drink-switchback: what it becomes instead
+ * depends on two things — whether it still has alcohol in it (the whole
+ * point of the feature: "I can still switch it back since there's still
+ * alcohol on it"), and whether the one "Up next" slot is actually free.
+ * Still has volume (or none was ever declared, so there's nothing to
+ * disprove) AND nothing else is already staged there -> becomes the new
+ * "Up next". Either it's empty, or something else already earned that
+ * slot (the common case: switching to a *third* drink while an earlier
+ * one is already staged — that staged drink was a deliberate choice and
+ * must never be silently bumped or deleted just because a different
+ * drink is now being left) -> plain history ('served'). 'served' isn't
+ * "finished", just "not current, not staged" — getSessionDrinkHistory
+ * still surfaces it with its real remaining volume either way, so
+ * nothing actually becomes harder to switch back to; it just isn't the
+ * one row spotlighted as "Up next". No-op if nothing is currently
+ * serving. */
+async function demoteCurrentDrink(sessionId, excludeDrinkId = null) {
+  const current = await getCurrentDrink(sessionId)
+  if (!current) return
+  const db = getDatabase()
+  const remaining = await getRemainingMl(current.id, current.volume_ml)
+  const stillHasVolume = remaining == null || remaining > 0
+  // `excludeDrinkId` is switchToDrink's target — when it's the row
+  // already sitting in the queue slot (promoting "Up next"), that slot
+  // reads as free for this check, since it's about to be vacated anyway.
+  const existingQueued = await getQueuedDrink(sessionId)
+  const queueSlotTaken =
+    existingQueued != null && existingQueued.id !== excludeDrinkId && existingQueued.id !== current.id
+  if (stillHasVolume && !queueSlotTaken) {
+    await db.run("UPDATE drinks SET status = 'queued' WHERE id = ?", [current.id], false)
+  } else {
+    await db.run("UPDATE drinks SET status = 'served' WHERE id = ?", [current.id], false)
+  }
+}
+
 /** app/drink-tracking (+ app/drink-queue): logs a drink row — called once
  * at Start Session (if a drink was given; see createSession), every time
  * someone taps "Same drink" (a fresh bottle/batch of the same thing), and
@@ -110,10 +183,17 @@ export async function renameParticipant(participantId, name) {
  * 'queued' for the last (staged ahead of time, not yet active — see
  * db.js's drinks table notes and DECISIONS.md). Queuing a new drink
  * replaces any existing queued one for this session, since only one
- * "what's coming up next" makes sense at a time. Returns the new row's id. */
+ * "what's coming up next" makes sense at a time. Inserting a new
+ * 'serving' row first demotes whatever was serving before it
+ * (demoteCurrentDrink) — this used to not happen at all, which meant the
+ * old row silently stayed marked 'serving' forever (see DECISIONS.md).
+ * Returns the new row's id. */
 export async function addDrink(sessionId, name, volumeMl = null, status = 'serving') {
-  const db = getDatabase()
   const id = crypto.randomUUID()
+  if (status === 'serving') {
+    await demoteCurrentDrink(sessionId)
+  }
+  const db = getDatabase()
   const set = [
     ...(status === 'queued'
       ? [{ statement: "DELETE FROM drinks WHERE session_id = ? AND status = 'queued'", values: [sessionId] }]
@@ -128,13 +208,21 @@ export async function addDrink(sessionId, name, volumeMl = null, status = 'servi
   return id
 }
 
-/** app/drink-queue: promotes a queued drink (see addDrink) to 'serving' —
- * the one-tap confirm once the current drink hits 0 (never automatic, see
- * DECISIONS.md). `started_at` is reset to now rather than kept at queue
- * time, so the depletion math on ActiveSessionScreen starts counting this
- * drink's pours from the moment it actually started being served, not
- * from whenever it happened to be staged. */
-export async function promoteQueuedDrink(drinkId) {
+/** app/drink-queue (+ app/drink-switchback): switches to `drinkId` — a
+ * queued drink being promoted (the one-tap confirm once the current
+ * drink hits 0, never automatic, see DECISIONS.md), or any past drink
+ * from this session being switched back to (app/drink-switchback's "pick
+ * from a list" — the drink doesn't have to be the one most recently
+ * switched away from, any of them works the same way). Either way: the
+ * currently-serving drink (if any) is demoted first (demoteCurrentDrink —
+ * re-queued as "Up next" if it still has alcohol in it, otherwise just
+ * marked 'served'), then `drinkId` itself becomes 'serving'. `started_at`
+ * is reset to now — purely a "when did this stint actually begin" display
+ * value now, since remaining-volume math is driven entirely by each
+ * pour's tagged `drink_id` (app/drink-switchback), not by comparing
+ * timestamps, so resetting it here can never mis-attribute a pour. */
+export async function switchToDrink(sessionId, drinkId) {
+  await demoteCurrentDrink(sessionId, drinkId)
   const db = getDatabase()
   await db.run(
     "UPDATE drinks SET status = 'serving', started_at = ? WHERE id = ?",
@@ -157,7 +245,10 @@ export async function cancelQueuedDrink(drinkId) {
  * (drink tracking is optional). Backs ActiveSessionScreen's "Now serving"
  * row. Filtered to status = 'serving' (app/drink-queue) so a queued row —
  * which can have a later started_at than the row actually being served —
- * never gets picked up as "current" by mistake. */
+ * never gets picked up as "current" by mistake. Exactly one row has this
+ * status at a time in practice (every path that sets a row to 'serving'
+ * demotes the previous one first via demoteCurrentDrink), but the
+ * ORDER BY + LIMIT 1 is kept as a defensive fallback. */
 export async function getCurrentDrink(sessionId) {
   const db = getDatabase()
   const result = await db.query(
@@ -169,8 +260,9 @@ export async function getCurrentDrink(sessionId) {
 
 /** app/drink-queue: the drink staged to serve next, if any — backs the
  * "Up next" row on ActiveSessionScreen and its one-tap "Switch now"
- * confirm. addDrink only ever leaves one 'queued' row per session (it
- * deletes any existing one first), so this is just that row, or null. */
+ * confirm. Both addDrink(..., 'queued') and demoteCurrentDrink only ever
+ * leave one 'queued' row per session (each deletes any existing one
+ * first), so this is just that row, or null. */
 export async function getQueuedDrink(sessionId) {
   const db = getDatabase()
   const result = await db.query(
@@ -180,15 +272,35 @@ export async function getQueuedDrink(sessionId) {
   return result.values?.[0] ?? null
 }
 
+/** app/drink-switchback: every drink that was actually served at some
+ * point this session — 'serving' (the current one) plus 'served' (history
+ * it was switched away from) — oldest first, excluding any 'queued' row
+ * that was never promoted (that one was never actually served). Backs the
+ * "switch back to a past drink" picker in ActiveSessionScreen's Switch
+ * dialog; remaining volume for each one is computed client-side there
+ * from the same `events` list already in state (same formula this file's
+ * own getRemainingMl uses), rather than re-querying per row here. */
+export async function getSessionDrinkHistory(sessionId) {
+  const db = getDatabase()
+  const result = await db.query(
+    "SELECT id, name, volume_ml, started_at, status FROM drinks WHERE session_id = ? AND status IN ('serving', 'served') ORDER BY started_at ASC",
+    [sessionId],
+  )
+  return result.values ?? []
+}
+
 /** The full drink log for one session, oldest first — backs
  * `app/history-detail`'s drink-log section, same "show the whole log, not
  * just the latest" idea as getSessionEvents' Activity log. Filtered to
- * status = 'serving' (app/drink-queue) — a queued-but-never-promoted row
- * was never actually served, so it doesn't belong in "what was served". */
+ * status IN ('serving', 'served') (app/drink-switchback) — a
+ * queued-but-never-promoted row was never actually served, so it doesn't
+ * belong in "what was served"; 'served' rows (drinks switched away from,
+ * whether finished or still mid-session) belong in the log just as much
+ * as the one still 'serving'. */
 export async function getSessionDrinks(sessionId) {
   const db = getDatabase()
   const result = await db.query(
-    "SELECT id, name, volume_ml, started_at FROM drinks WHERE session_id = ? AND status = 'serving' ORDER BY started_at ASC",
+    "SELECT id, name, volume_ml, started_at FROM drinks WHERE session_id = ? AND status IN ('serving', 'served') ORDER BY started_at ASC",
     [sessionId],
   )
   return result.values ?? []
@@ -214,7 +326,7 @@ export async function endSession(sessionId) {
 export async function getSessionEvents(sessionId) {
   const db = getDatabase()
   const result = await db.query(
-    `SELECT e.id, e.type, e.volume, e.note, e.timestamp, e.participant_id, p.name as participant_name
+    `SELECT e.id, e.type, e.volume, e.note, e.drink_id, e.timestamp, e.participant_id, p.name as participant_name
      FROM events e
      JOIN participants p ON p.id = e.participant_id
      WHERE e.session_id = ?
