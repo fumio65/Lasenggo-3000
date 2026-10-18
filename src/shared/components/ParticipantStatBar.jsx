@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { POUR_VOLUMES } from '../../features/pour/usePourVolume'
 import { formatVolumeMl } from '../../features/pour/volumeUnits'
 
@@ -29,6 +30,15 @@ export const PASS_COLOR = 'bg-smoke-light'
  * word spelled out.
  */
 export function ParticipantStatBar({ stat, maxActions, isCurrent = false, isPaused = false, pauseReason }) {
+  // app/drink-session-log (UX pass: long drink lists): with several
+  // different drinks possible per participant, showing every one inline
+  // doesn't scale in this already-compact panel — same problem the
+  // queue list had, same fix. Only the most recently poured drink shows
+  // by default; the rest collapse behind a "+N more drinks" toggle,
+  // local to this row (each participant's own expand/collapse, not
+  // shared across the roster).
+  const [drinksExpanded, setDrinksExpanded] = useState(false)
+
   const pourTotal = stat.byVolume.light + stat.byVolume.standard + stat.byVolume.heavy
   const actionTotal = pourTotal + stat.pass
   const widthPct =
@@ -87,41 +97,74 @@ export function ParticipantStatBar({ stat, maxActions, isCurrent = false, isPaus
           came from. In first-poured order; omitted entirely for a
           session with no drink tracking or a participant who hasn't
           poured anything with a drink attached yet. */}
-      {stat.drinkTotals?.length > 0 && (
-        <ul className="space-y-1">
-          {stat.drinkTotals.map((d) => {
-            // app/drink-session-log (pour-size per drink): the same
-            // Light/Standard/Heavy counts the dots above already show
-            // for the participant as a whole, but scoped to just this
-            // one drink — so "how much" (the mL) and "how" (the pour
-            // sizes that built it up) both read per-drink instead of
-            // the sizes only ever being shown in aggregate.
-            const drinkVolumes = POUR_VOLUMES.filter((v) => d.byVolume[v.id] > 0)
-            return (
-              <li key={d.name} className="space-y-0.5 text-xs text-paper-dim/80">
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="truncate">{d.name}</span>
-                  <span className="shrink-0 tabular-nums">~{formatVolumeMl(d.ml)}</span>
+      {stat.drinkTotals?.length > 0 && (() => {
+        // app/drink-session-log (pour-size per drink), then (UX pass:
+        // long drink lists): render one drink's row — the same
+        // Light/Standard/Heavy counts the dots above already show for
+        // the participant as a whole, but scoped to just this one
+        // drink, so "how much" and "how" both read per-drink. Pulled
+        // into a closure (not a module-level function) since it's only
+        // ever used for this one stat's drinkTotals and needs nothing
+        // from outside this render.
+        function renderDrinkRow(d) {
+          const drinkVolumes = POUR_VOLUMES.filter((v) => d.byVolume[v.id] > 0)
+          return (
+            <li key={d.name} className="space-y-0.5 text-xs text-paper-dim/80">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="truncate">{d.name}</span>
+                <span className="shrink-0 tabular-nums">~{formatVolumeMl(d.ml)}</span>
+              </div>
+              {drinkVolumes.length > 0 && (
+                <div className="flex items-center gap-2.5 text-paper-dim/60">
+                  {drinkVolumes.map((v) => (
+                    <span
+                      key={v.id}
+                      title={`${v.label}: ${d.byVolume[v.id]}`}
+                      className="flex items-center gap-1 tabular-nums"
+                    >
+                      <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${VOLUME_COLOR[v.id]}`} />
+                      {d.byVolume[v.id]}
+                    </span>
+                  ))}
                 </div>
-                {drinkVolumes.length > 0 && (
-                  <div className="flex items-center gap-2.5 text-paper-dim/60">
-                    {drinkVolumes.map((v) => (
-                      <span
-                        key={v.id}
-                        title={`${v.label}: ${d.byVolume[v.id]}`}
-                        className="flex items-center gap-1 tabular-nums"
-                      >
-                        <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${VOLUME_COLOR[v.id]}`} />
-                        {d.byVolume[v.id]}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </li>
-            )
-          })}
-        </ul>
-      )}
+              )}
+            </li>
+          )
+        }
+
+        // Most recently poured drink first (last in drinkTotals' first-
+        // poured insertion order) — that's the one still relevant right
+        // now. Everything earlier collapses behind the toggle, most-
+        // recent-of-the-rest first, same reverse-chronological
+        // convention the Switch dialog's past-drinks picker already uses.
+        const latest = stat.drinkTotals[stat.drinkTotals.length - 1]
+        const earlier = stat.drinkTotals.slice(0, -1).reverse()
+
+        return (
+          <ul className="space-y-1">
+            {renderDrinkRow(latest)}
+            {earlier.length > 0 && (
+              <>
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => setDrinksExpanded((v) => !v)}
+                    className="flex items-center gap-1 text-xs font-medium text-paper-dim/70 transition hover:text-paper-dim"
+                  >
+                    {drinksExpanded ? 'Hide' : `+${earlier.length} more drink${earlier.length === 1 ? '' : 's'}`}
+                    <span
+                      className={`inline-block transition-transform ${drinksExpanded ? 'rotate-180' : ''}`}
+                    >
+                      ▾
+                    </span>
+                  </button>
+                </li>
+                {drinksExpanded && earlier.map(renderDrinkRow)}
+              </>
+            )}
+          </ul>
+        )
+      })()}
       {/* UX pass (round 2, app/volume-breakdown-stat): spelling out "1
           Light · 1 Standard · 1 Heavy poured" read as a dense sentence that
           wrapped awkwardly and duplicated the colored bar directly below

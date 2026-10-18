@@ -867,3 +867,20 @@ and once a participant has had more than one drink, that composition is
 exactly the kind of thing that stops being obvious from the aggregate
 bar above. Folded into the same per-drink line rather than a second
 stacked bar, to avoid piling on more UI chrome per drink.
+
+---
+
+### A participant's drink list collapses behind a "+N more drinks" toggle too
+**Decision**: Only the most recently poured drink shows by default in a
+participant's breakdown now. Once they've had a second drink, a
+"+N more drinks" toggle appears below it (local to that participant's
+row); tapping it expands the rest, most-recent-of-the-earlier-ones first
+("Hide" to collapse again). Given the same three options as the earlier
+queue-list decision (cap-and-scroll; collapse-to-count; show only the
+top 2 by volume), the user again picked collapse-to-count, for
+consistency with the queue.
+**Why**: Raised proactively — with mL and pour-size now broken out per
+drink (two prior entries), a participant who'd had several different
+drinks would stack an increasingly tall block in an already-compact,
+height-capped panel. The same fix already proven for the queue list
+applied directly here.

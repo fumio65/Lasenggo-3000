@@ -1186,6 +1186,26 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
     changed files cleanly; a full `vite build` succeeded in 10.10s. No
     live click-through in an actual browser this session — same
     device-bridge dev-server gap noted in earlier entries.
+- [x] Collapse a participant's long drink list behind a count toggle —
+      Owner: fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: Raised proactively (asked what to do once a participant has
+    several different drinks logged, same shape of problem the queue
+    list had). Given the same three options via AskUserQuestion as the
+    earlier queue-list decision, the user again chose collapse-to-count,
+    for consistency. `ParticipantStatBar.jsx`: added local
+    `drinksExpanded` state (per participant row, not shared across the
+    roster); pulled the per-drink `<li>` markup into a `renderDrinkRow`
+    closure so it can be called for both the always-visible row and the
+    collapsed ones. Only `stat.drinkTotals[length - 1]` (the most
+    recently poured drink) always renders; the rest
+    (`drinkTotals.slice(0, -1).reverse()`, most-recent-of-the-earlier-ones
+    first) collapse behind a "+N more drinks" toggle and only render once
+    tapped.
+    Verified: `node_modules/.bin/rolldown` syntax-checked the file
+    cleanly; a full `vite build` succeeded in 11.30s, and the compiled
+    bundle was grepped for "more drink" and "Hide" to confirm the labels
+    shipped. No live click-through in an actual browser this session —
+    same device-bridge dev-server gap noted in earlier entries.
 - [ ] Multiple pour stations (v2 scalability — architecture TBD, see `tagaybox_spec.md`)
 - [ ] Real browser back/forward support for in-app screens (participants/session/
       history currently switch via local React state only, per EXAMPLES.md's
