@@ -57,16 +57,24 @@ export async function pullSessions() {
 
     const missingIds = missingSessions.map((s) => s.id)
 
-    const [{ data: remoteParticipants, error: participantsError }, { data: remoteEvents, error: eventsError }] =
-      await Promise.all([
-        supabase.from('participants').select('id, session_id, name, person_id').in('session_id', missingIds),
-        supabase
-          .from('events')
-          .select('id, session_id, participant_id, type, volume, note, timestamp')
-          .in('session_id', missingIds),
-      ])
+    const [
+      { data: remoteParticipants, error: participantsError },
+      { data: remoteEvents, error: eventsError },
+      { data: remoteDrinks, error: drinksError },
+    ] = await Promise.all([
+      supabase.from('participants').select('id, session_id, name, person_id').in('session_id', missingIds),
+      supabase
+        .from('events')
+        .select('id, session_id, participant_id, type, volume, note, timestamp')
+        .in('session_id', missingIds),
+      // app/drink-tracking: pulled alongside participants/events for the
+      // same missing sessions — same "only ever filling in what's not
+      // already local" rule as everything else in this function.
+      supabase.from('drinks').select('id, session_id, name, volume_ml, started_at').in('session_id', missingIds),
+    ])
     if (participantsError) throw participantsError
     if (eventsError) throw eventsError
+    if (drinksError) throw drinksError
 
     const now = new Date().toISOString()
     const set = [
@@ -84,6 +92,11 @@ export async function pullSessions() {
         statement:
           'INSERT OR IGNORE INTO events (id, session_id, participant_id, type, volume, note, timestamp, synced) VALUES (?, ?, ?, ?, ?, ?, ?, 1)',
         values: [e.id, e.session_id, e.participant_id, e.type, e.volume, e.note, e.timestamp],
+      })),
+      ...(remoteDrinks ?? []).map((d) => ({
+        statement:
+          'INSERT OR IGNORE INTO drinks (id, session_id, name, volume_ml, started_at, synced) VALUES (?, ?, ?, ?, ?, 1)',
+        values: [d.id, d.session_id, d.name, d.volume_ml, d.started_at],
       })),
     ]
     await db.executeSet(set, false)

@@ -56,6 +56,23 @@ const SCHEMA = `
     timestamp TEXT NOT NULL,
     synced INTEGER NOT NULL DEFAULT 0
   );
+
+  -- app/drink-tracking: manual log of what's being served this session —
+  -- not a depletion calculator. One row per "serving period": the first is
+  -- inserted by createSession (if a drink was given at Start Session), and
+  -- each later "ran out, same drink" or "switching drinks" tap inserts
+  -- another row rather than mutating the last one, so the history is a
+  -- real log (what was served, and when it changed) instead of a single
+  -- mutable "current drink" field. The row with the latest started_at for
+  -- a session is simply "what's being served now".
+  CREATE TABLE IF NOT EXISTS drinks (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions(id),
+    name TEXT NOT NULL,
+    volume_ml INTEGER,
+    started_at TEXT NOT NULL,
+    synced INTEGER NOT NULL DEFAULT 0
+  );
 `
 
 const sqlite = new SQLiteConnection(CapacitorSQLite)

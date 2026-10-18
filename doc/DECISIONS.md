@@ -479,3 +479,42 @@ already returned `null` for a blank name) so every caller's existing `if (id && 
 guard handles it with no further plumbing — "Who's joining" additionally surfaces an
 inline message, since silently doing nothing there would look like a bug rather than
 a rejection.
+
+---
+
+### Drink tracking is a manual log, not a depletion calculator
+**Decision**: Logging what's being served (name + mL) and logging a change ("ran
+out, same drink" or "ran out, different drink") are both deliberately manual taps —
+the app never tries to infer remaining volume from the pour volumes already being
+logged (Light/Standard/Heavy) against the stated mL.
+**Why**: Decided with the user up front, as the first of three clarifying questions
+before writing any code. Real pour volumes are rough presets, not a true flow
+measurement (no hardware meters it yet), so a computed "X mL left" readout would be
+confidently wrong more often than it'd be useful. Keeping it a log — what was served,
+and when someone says it changed — stays honest about what the app actually knows,
+and is also simply what was asked for ("I can log what is the next drink").
+
+---
+
+### Drink log syncs to Supabase and shows in session history, like the rest of a session's data
+**Decision**: The `drinks` table follows the exact same sync shape as `participants`/
+`events` — no `device_id` column on the table itself, RLS scoped by an `EXISTS`
+subquery joining back to `sessions.device_id` — rather than staying local-only.
+**Why**: Decided with the user (second of the three questions) specifically so a
+past session's drink log survives a reinstall/new-device pull (`pull.js`) and shows
+up on `HistoryDetail`, the same as everything else that happened that night. Local-
+only would have been simpler to ship but would silently vanish on exactly the
+devices/situations sync already exists to protect against.
+
+---
+
+### "Now serving" lives on ActiveSessionScreen itself, not inside "Manage participants"
+**Decision**: The current drink + Switch control is a row near the top of
+`ActiveSessionScreen`, directly below the session name — not a field inside the
+`ParticipantManagerSheet` (which only ever dealt with people, not what's being
+poured).
+**Why**: Decided with the user (third of the three questions). What's being served
+is read far more often than it's changed, and it's relevant to everyone at the table,
+not just whoever happens to open the participants sheet — so it's placed where
+everyone already looks (right under the session name), rather than one tap deeper
+inside a sheet about a different kind of thing (people, not drinks).
