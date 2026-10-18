@@ -15,6 +15,9 @@ import {
   addSessionParticipant,
   getCurrentDrink,
   addDrink,
+  getQueuedDrink,
+  promoteQueuedDrink,
+  cancelQueuedDrink,
 } from '../storage/sessionQueries'
 import { findOrCreatePerson } from '../storage/peopleQueries'
 import { VolumeInput } from '../../shared/components/VolumeInput'
@@ -68,11 +71,24 @@ export function ActiveSessionScreen({
   const [switchVolumeInput, setSwitchVolumeInput] = useState('')
   const [switchVolumeUnit, setSwitchVolumeUnit] = useState('ml')
 
+  // app/drink-queue: a drink staged ahead of time ("set this up now, switch
+  // to it once the current one's empty") — separate from currentDrink/
+  // switching above, which is the immediate "switch right now" path.
+  const [queuedDrink, setQueuedDrink] = useState(null)
+  const [queueName, setQueueName] = useState('')
+  const [queueVolumeInput, setQueueVolumeInput] = useState('')
+  const [queueVolumeUnit, setQueueVolumeUnit] = useState('ml')
+
   function refreshCurrentDrink() {
     if (sessionId) getCurrentDrink(sessionId).then(setCurrentDrink)
   }
 
+  function refreshQueuedDrink() {
+    if (sessionId) getQueuedDrink(sessionId).then(setQueuedDrink)
+  }
+
   useEffect(refreshCurrentDrink, [sessionId])
+  useEffect(refreshQueuedDrink, [sessionId])
 
   // app/drink-tracking (depletion follow-up): remaining volume is derived,
   // never stored — it's the declared volume_ml for the current "serving
@@ -90,6 +106,15 @@ export function ActiveSessionScreen({
     : 0
   const remainingMl =
     currentDrink?.volume_ml != null ? currentDrink.volume_ml - pouredMlSinceCurrentDrink : null
+  // isEmpty gates both the "X mL left" deficit styling and the "Up next"
+  // banner's quiet-vs-urgent state; barWidthPct is the same fraction
+  // clamped into a drawable [0, 100] range (the deficit itself is still
+  // shown as a negative number in the text, just not as a negative bar).
+  const isEmpty = remainingMl != null && remainingMl <= 0
+  const barWidthPct =
+    currentDrink?.volume_ml != null
+      ? Math.max(0, Math.min(100, (remainingMl / currentDrink.volume_ml) * 100))
+      : 0
 
   function handleSwitchSameDrink() {
     if (!sessionId || !currentDrink) return
@@ -115,6 +140,44 @@ export function ActiveSessionScreen({
       .then(refreshCurrentDrink)
       .catch((err) => console.error('Failed to log drink', err))
     setSwitching(false)
+  }
+
+  // app/drink-queue: "Queue next drink" — stages a drink without touching
+  // what's currently being served. Separate submit handler from the
+  // "switch now" form above since this one passes status 'queued' and
+  // refreshes queuedDrink, not currentDrink.
+  function handleQueueSubmit(e) {
+    e.preventDefault()
+    const trimmed = queueName.trim()
+    if (!sessionId || !trimmed) return
+    const volumeMl = parseVolumeToMl(queueVolumeInput, queueVolumeUnit)
+    addDrink(sessionId, trimmed, volumeMl, 'queued')
+      .then(refreshQueuedDrink)
+      .catch((err) => console.error('Failed to queue drink', err))
+    setQueueName('')
+    setQueueVolumeInput('')
+    setQueueVolumeUnit('ml')
+    setSwitching(false)
+  }
+
+  // app/drink-queue: the one-tap confirm that actually switches to the
+  // queued drink — never automatic (see DECISIONS.md). Refreshes both
+  // currentDrink (now the promoted one) and queuedDrink (now empty).
+  function handlePromoteQueuedDrink() {
+    if (!queuedDrink) return
+    promoteQueuedDrink(queuedDrink.id)
+      .then(() => {
+        refreshCurrentDrink()
+        refreshQueuedDrink()
+      })
+      .catch((err) => console.error('Failed to switch to queued drink', err))
+  }
+
+  function handleCancelQueuedDrink() {
+    if (!queuedDrink) return
+    cancelQueuedDrink(queuedDrink.id)
+      .then(refreshQueuedDrink)
+      .catch((err) => console.error('Failed to cancel queued drink', err))
   }
 
   // app/undo-last-action: the event this device most recently logged, kept
@@ -419,67 +482,163 @@ export function ActiveSessionScreen({
             </h1>
           )}
 
-          {/* app/drink-tracking: "Now serving" sits right below the session
-              name, before the status pill — this is a manual log, not a
-              depletion gauge, so it only ever shows what was last logged
-              and lets you log a change, nothing more. Hidden entirely if
-              drink tracking wasn't used at Start Session (currentDrink
-              stays null). */}
+          {/* app/drink-tracking (+ app/drink-queue follow-ups): "Now
+              serving" sits right below the session name, before the status
+              pill. Hidden entirely if drink tracking wasn't used at Start
+              Session (currentDrink stays null). */}
           {currentDrink && (
             <div className="w-full max-w-md space-y-2">
-              <div className="flex flex-wrap items-center justify-center gap-2 rounded-full bg-smoke px-4 py-2 text-sm text-paper-dim ring-1 ring-smoke-light">
-                <span className="text-paper">
-                  Now serving: {currentDrink.name}
-                  {remainingMl != null && (
-                    <span className={remainingMl <= 0 ? 'text-ember' : ''}>
-                      {' '}· {remainingMl}mL left
-                    </span>
-                  )}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => (switching ? setSwitching(false) : setSwitching(true))}
-                  className="rounded-full bg-smoke-light px-2.5 py-1 text-xs font-medium text-paper transition hover:bg-ember hover:text-ink active:scale-95"
-                >
-                  Switch
-                </button>
-              </div>
-
-              {switching && (
-                <div className="space-y-2 rounded-2xl bg-smoke/60 p-3 ring-1 ring-smoke-light">
-                  <p className="px-1 text-xs text-paper-dim">Ran out? Log what's next.</p>
+              <div className="space-y-1.5 rounded-2xl bg-smoke px-4 py-2.5 ring-1 ring-smoke-light">
+                <div className="flex flex-wrap items-center justify-center gap-2 text-sm text-paper-dim">
+                  <span className="text-paper">
+                    Now serving: {currentDrink.name}
+                    {remainingMl != null && (
+                      <span className={isEmpty ? 'text-maroon-dim' : ''}>
+                        {' '}· {remainingMl}mL left
+                      </span>
+                    )}
+                  </span>
                   <button
                     type="button"
-                    onClick={handleSwitchSameDrink}
-                    className="w-full rounded-xl px-4 py-2 text-sm font-medium text-paper ring-1 ring-smoke-light transition hover:bg-smoke-light active:scale-95"
+                    onClick={() => (switching ? setSwitching(false) : setSwitching(true))}
+                    className="rounded-full bg-smoke-light px-2.5 py-1 text-xs font-medium text-paper transition hover:bg-ember hover:text-ink active:scale-95"
                   >
-                    Same drink{currentDrink.volume_ml ? ` · ${currentDrink.volume_ml}mL` : ''} (new bottle)
+                    Switch
                   </button>
-                  <form onSubmit={handleSwitchSubmit} className="flex gap-2">
-                    <input
-                      type="text"
-                      value={switchName}
-                      onChange={(e) => setSwitchName(e.target.value)}
-                      placeholder="Different drink"
-                      aria-label="Different drink name"
-                      className="flex-1 rounded-xl bg-ink px-3 py-2 text-sm text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
+                </div>
+                {/* app/drink-queue: visual depletion bar — only drawn when
+                    a volume was actually declared (remainingMl null means
+                    the drink was logged without one, so there's nothing to
+                    show a fraction of). Clamped to [0, 100]% for the bar
+                    width itself even though remainingMl can go negative —
+                    the number next to "Now serving" above is what carries
+                    the deficit, the bar just reads as "empty" at that point
+                    rather than trying to draw a negative-width sliver. */}
+                {currentDrink.volume_ml != null && (
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-ink">
+                    <div
+                      className={`h-full rounded-full transition-[width] duration-500 ease-out ${isEmpty ? 'bg-maroon' : 'bg-ember'}`}
+                      style={{ width: `${barWidthPct}%` }}
                     />
-                    <VolumeInput
-                      idPrefix="switch-drink-volume"
-                      label="Different drink volume"
-                      amount={switchVolumeInput}
-                      unit={switchVolumeUnit}
-                      onAmountChange={setSwitchVolumeInput}
-                      onUnitChange={setSwitchVolumeUnit}
-                    />
+                  </div>
+                )}
+              </div>
+
+              {/* app/drink-queue: "Up next" — a drink staged ahead of time,
+                  separate from the immediate "switch now" panel below.
+                  Quiet (smoke-toned) while the current drink still has
+                  volume left; switches to the maroon-toned empty state
+                  once isEmpty, since that's the moment "Switch now" here
+                  actually matters — still just a passive row, never a
+                  popup (see DECISIONS.md), so nothing happens without the
+                  tap. */}
+              {queuedDrink && (
+                <div
+                  className={`flex flex-wrap items-center justify-center gap-2 rounded-full px-4 py-2 text-sm ring-1 ${
+                    isEmpty
+                      ? 'bg-maroon/15 text-maroon-dim ring-maroon/40'
+                      : 'bg-smoke/60 text-paper-dim ring-smoke-light'
+                  }`}
+                >
+                  <span>
+                    {isEmpty ? `${currentDrink.name} is empty · switch to` : 'Up next:'}{' '}
+                    <span className={isEmpty ? 'text-paper' : 'text-paper'}>
+                      {queuedDrink.name}
+                    </span>
+                    {queuedDrink.volume_ml ? ` · ${queuedDrink.volume_ml}mL` : ''}
+                    {isEmpty ? '?' : ''}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handlePromoteQueuedDrink}
+                    className={`rounded-full px-2.5 py-1 text-xs font-semibold transition active:scale-95 ${
+                      isEmpty ? 'bg-maroon text-paper' : 'bg-smoke-light text-paper hover:bg-ember hover:text-ink'
+                    }`}
+                  >
+                    Switch now
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCancelQueuedDrink}
+                    className="rounded-full px-2 py-1 text-xs text-paper-dim/70 transition hover:text-paper"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+
+              {switching && (
+                <div className="space-y-3 rounded-2xl bg-smoke/60 p-3 ring-1 ring-smoke-light">
+                  <div className="space-y-2">
+                    <p className="px-1 text-xs text-paper-dim">Ran out right now? Switch immediately.</p>
                     <button
-                      type="submit"
-                      disabled={!switchName.trim()}
-                      className="rounded-xl bg-ember px-3 py-2 text-sm font-semibold text-ink transition active:scale-95 disabled:opacity-30"
+                      type="button"
+                      onClick={handleSwitchSameDrink}
+                      className="w-full rounded-xl px-4 py-2 text-sm font-medium text-paper ring-1 ring-smoke-light transition hover:bg-smoke-light active:scale-95"
                     >
-                      Log
+                      Same drink{currentDrink.volume_ml ? ` · ${currentDrink.volume_ml}mL` : ''} (new bottle)
                     </button>
-                  </form>
+                    <form onSubmit={handleSwitchSubmit} className="flex gap-2">
+                      <input
+                        type="text"
+                        value={switchName}
+                        onChange={(e) => setSwitchName(e.target.value)}
+                        placeholder="Different drink"
+                        aria-label="Different drink name"
+                        className="flex-1 rounded-xl bg-ink px-3 py-2 text-sm text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
+                      />
+                      <VolumeInput
+                        idPrefix="switch-drink-volume"
+                        label="Different drink volume"
+                        amount={switchVolumeInput}
+                        unit={switchVolumeUnit}
+                        onAmountChange={setSwitchVolumeInput}
+                        onUnitChange={setSwitchVolumeUnit}
+                      />
+                      <button
+                        type="submit"
+                        disabled={!switchName.trim()}
+                        className="rounded-xl bg-ember px-3 py-2 text-sm font-semibold text-ink transition active:scale-95 disabled:opacity-30"
+                      >
+                        Log
+                      </button>
+                    </form>
+                  </div>
+
+                  {/* app/drink-queue: stage a drink ahead of time instead of
+                      switching to it right now — doesn't touch currentDrink
+                      at all, just shows up as "Up next" above until
+                      promoted (one tap) or cancelled. */}
+                  <div className="space-y-2 border-t border-smoke-light pt-3">
+                    <p className="px-1 text-xs text-paper-dim">
+                      Not empty yet? Set up the next one for later.
+                    </p>
+                    <form onSubmit={handleQueueSubmit} className="flex gap-2">
+                      <input
+                        type="text"
+                        value={queueName}
+                        onChange={(e) => setQueueName(e.target.value)}
+                        placeholder="Next drink"
+                        aria-label="Next drink name"
+                        className="flex-1 rounded-xl bg-ink px-3 py-2 text-sm text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
+                      />
+                      <VolumeInput
+                        idPrefix="queue-drink-volume"
+                        label="Next drink volume"
+                        amount={queueVolumeInput}
+                        unit={queueVolumeUnit}
+                        onAmountChange={setQueueVolumeInput}
+                        onUnitChange={setQueueVolumeUnit}
+                      />
+                      <button
+                        type="submit"
+                        disabled={!queueName.trim()}
+                        className="rounded-xl px-3 py-2 text-sm font-semibold text-paper ring-1 ring-smoke-light transition hover:bg-smoke-light active:scale-95 disabled:opacity-30"
+                      >
+                        Queue
+                      </button>
+                    </form>
+                  </div>
                 </div>
               )}
             </div>

@@ -374,6 +374,60 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
     pass: an earlier edit referenced `drinkVolumeUnit` in "Who's joining"
     without ever declaring its `useState` — crashed `ParticipantList` on
     load; fixed by adding the missing state line.)
+- [x] Drink depletion bar + drink queue ("Up next", one-tap switch)
+  - Owner: fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-requested follow-up, same day. Two asks: (1) a visual bar
+    on "Now serving" instead of just the mL text, and (2) staging a drink
+    ahead of time ("like a reserve") instead of only being able to switch
+    right now. Confirmed understanding first, then one clarifying question
+    (recommended option chosen) on whether the queued drink should take
+    over automatically at 0 or wait for a tap — the latter, matching the
+    earlier "no popup, passive" convention.
+    Bar: a track + fill under the "Now serving" pill, same visual language
+    as `ParticipantStatBar`'s pour-composition bars (`h-2`/`h-2.5`
+    `overflow-hidden rounded-full bg-ink` track, animated-width fill) —
+    width is `remainingMl / volume_ml` clamped to [0, 100]% (the mL text
+    beside it still shows the real, possibly-negative number). Only drawn
+    when a volume was actually declared. Also switched the "X mL left"
+    deficit color from `text-ember` to `text-maroon-dim`/`bg-maroon` — this
+    app's existing warning/danger color (duplicate-name errors, the "End
+    session" confirm) — since ember is the plain accent color used
+    everywhere else on this pill.
+    Queue: `drinks` gained a `status` column (`'serving'` | `'queued'`,
+    default `'serving'`) — a genuine migration this time (`columnExists` +
+    `ALTER TABLE`), not just a CREATE TABLE edit, since the table was
+    already created in the dev DB by the earlier browser verification pass
+    before this column existed. New `getQueuedDrink`/`promoteQueuedDrink`/
+    `cancelQueuedDrink` in `sessionQueries.js`; `getCurrentDrink` and
+    `getSessionDrinks` now filter to `status = 'serving'` so a queued row
+    (which can have a later `started_at` than the row actually being
+    served) never gets picked up as current or shown in the history log.
+    `addDrink` gained a `status` param — queuing a new drink first deletes
+    any existing queued row for that session (one meaningful "up next" at
+    a time), in the same `executeSet` transaction as the insert.
+    UI: the "Switch" panel on `ActiveSessionScreen` now has two sections —
+    the existing "switch now" form (relabeled "Ran out right now?") and a
+    new "Queue next drink" form below it ("Not empty yet? Set up the next
+    one for later"). An "Up next" row appears once something's queued:
+    quiet (smoke-toned) while the current drink still has volume, switches
+    to the maroon empty-state styling and wording ("`<current>` is empty ·
+    switch to `<queued>`?") once `remainingMl <= 0` — same "Switch now"
+    button underneath both states, just restyled, so there's one code path
+    for both the quiet and urgent cases rather than two different banners.
+    A "Cancel" link drops the queued row entirely (hard DELETE — a queued
+    row was never actually served, so there's no history to preserve).
+    Verified live in-browser end to end: started a session with Red Horse ·
+    50mL; confirmed the bar rendered full; queued Tanduay · 750mL and
+    confirmed the quiet "Up next: Tanduay · 750mL" row appeared without
+    touching "Now serving"; poured Heavy (~50mL) for Juan and confirmed
+    the bar drained to empty, the mL text turned the warning color, and
+    the "Up next" row escalated to "Red Horse is empty · switch to
+    Tanduay · 750mL?" in the maroon state; tapped "Switch now" and
+    confirmed it promoted cleanly — "Now serving: Tanduay · 750mL left",
+    full bar, "Up next" row gone. No console errors throughout. Confirmed
+    the dev DB's pre-existing `drinks` table (created before this
+    migration existed, by the earlier verification pass) picked up the new
+    `status` column cleanly on next load with no errors.
 - [x] Split roster names into first/last, block duplicate participants, allow
       editing a name on "Who's joining" before Start session
   - Owner: fumio65 · Branch: `app/participant-first-last-name` · Done: 2026-10-12

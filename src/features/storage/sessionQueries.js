@@ -41,7 +41,7 @@ export async function createSession(participants, name = '', drinkName = '', dri
       ? [
           {
             statement:
-              'INSERT INTO drinks (id, session_id, name, volume_ml, started_at, synced) VALUES (?, ?, ?, ?, ?, 0)',
+              "INSERT INTO drinks (id, session_id, name, volume_ml, started_at, status, synced) VALUES (?, ?, ?, ?, ?, 'serving', 0)",
             values: [crypto.randomUUID(), sessionId, trimmedDrinkName, drinkVolumeMl ?? null, startedAt],
           },
         ]
@@ -102,30 +102,79 @@ export async function renameParticipant(participantId, name) {
   await db.run('UPDATE participants SET name = ? WHERE id = ?', [name, participantId], false)
 }
 
-/** app/drink-tracking: logs a new "serving period" row — called once at
- * Start Session (if a drink was given; see createSession) and again every
- * time someone taps "Same drink" (a fresh bottle/batch of the same thing)
- * or submits a different drink name/mL after running out. Manual log only
- * — this never calculates remaining volume from pours, it just records
- * what was being served and when that changed. Returns the new row's id. */
-export async function addDrink(sessionId, name, volumeMl = null) {
+/** app/drink-tracking (+ app/drink-queue): logs a drink row — called once
+ * at Start Session (if a drink was given; see createSession), every time
+ * someone taps "Same drink" (a fresh bottle/batch of the same thing), and
+ * for both "switch now" and "queue for later" in the UI. `status` is
+ * 'serving' for the first three (it's immediately what's being served) and
+ * 'queued' for the last (staged ahead of time, not yet active — see
+ * db.js's drinks table notes and DECISIONS.md). Queuing a new drink
+ * replaces any existing queued one for this session, since only one
+ * "what's coming up next" makes sense at a time. Returns the new row's id. */
+export async function addDrink(sessionId, name, volumeMl = null, status = 'serving') {
   const db = getDatabase()
   const id = crypto.randomUUID()
-  await db.run(
-    'INSERT INTO drinks (id, session_id, name, volume_ml, started_at, synced) VALUES (?, ?, ?, ?, ?, 0)',
-    [id, sessionId, name.trim(), volumeMl ?? null, new Date().toISOString()],
-    false,
-  )
+  const set = [
+    ...(status === 'queued'
+      ? [{ statement: "DELETE FROM drinks WHERE session_id = ? AND status = 'queued'", values: [sessionId] }]
+      : []),
+    {
+      statement:
+        'INSERT INTO drinks (id, session_id, name, volume_ml, started_at, status, synced) VALUES (?, ?, ?, ?, ?, ?, 0)',
+      values: [id, sessionId, name.trim(), volumeMl ?? null, new Date().toISOString(), status],
+    },
+  ]
+  await db.executeSet(set, true)
   return id
 }
 
+/** app/drink-queue: promotes a queued drink (see addDrink) to 'serving' —
+ * the one-tap confirm once the current drink hits 0 (never automatic, see
+ * DECISIONS.md). `started_at` is reset to now rather than kept at queue
+ * time, so the depletion math on ActiveSessionScreen starts counting this
+ * drink's pours from the moment it actually started being served, not
+ * from whenever it happened to be staged. */
+export async function promoteQueuedDrink(drinkId) {
+  const db = getDatabase()
+  await db.run(
+    "UPDATE drinks SET status = 'serving', started_at = ? WHERE id = ?",
+    [new Date().toISOString(), drinkId],
+    false,
+  )
+}
+
+/** app/drink-queue: drops a queued drink that was never served — a queued
+ * row never represents anything that actually happened, so a hard DELETE
+ * (not a status change) is the correct "undo" here, same reasoning as
+ * deleteEvent's undo. */
+export async function cancelQueuedDrink(drinkId) {
+  const db = getDatabase()
+  await db.run('DELETE FROM drinks WHERE id = ?', [drinkId], false)
+}
+
 /** Whatever's being served *right now* for this session — the most
- * recently started drink row, or null if none was ever logged (drink
- * tracking is optional). Backs ActiveSessionScreen's "Now serving" row. */
+ * recently started 'serving' drink row, or null if none was ever logged
+ * (drink tracking is optional). Backs ActiveSessionScreen's "Now serving"
+ * row. Filtered to status = 'serving' (app/drink-queue) so a queued row —
+ * which can have a later started_at than the row actually being served —
+ * never gets picked up as "current" by mistake. */
 export async function getCurrentDrink(sessionId) {
   const db = getDatabase()
   const result = await db.query(
-    'SELECT id, name, volume_ml, started_at FROM drinks WHERE session_id = ? ORDER BY started_at DESC LIMIT 1',
+    "SELECT id, name, volume_ml, started_at FROM drinks WHERE session_id = ? AND status = 'serving' ORDER BY started_at DESC LIMIT 1",
+    [sessionId],
+  )
+  return result.values?.[0] ?? null
+}
+
+/** app/drink-queue: the drink staged to serve next, if any — backs the
+ * "Up next" row on ActiveSessionScreen and its one-tap "Switch now"
+ * confirm. addDrink only ever leaves one 'queued' row per session (it
+ * deletes any existing one first), so this is just that row, or null. */
+export async function getQueuedDrink(sessionId) {
+  const db = getDatabase()
+  const result = await db.query(
+    "SELECT id, name, volume_ml, started_at FROM drinks WHERE session_id = ? AND status = 'queued' ORDER BY started_at DESC LIMIT 1",
     [sessionId],
   )
   return result.values?.[0] ?? null
@@ -133,11 +182,13 @@ export async function getCurrentDrink(sessionId) {
 
 /** The full drink log for one session, oldest first — backs
  * `app/history-detail`'s drink-log section, same "show the whole log, not
- * just the latest" idea as getSessionEvents' Activity log. */
+ * just the latest" idea as getSessionEvents' Activity log. Filtered to
+ * status = 'serving' (app/drink-queue) — a queued-but-never-promoted row
+ * was never actually served, so it doesn't belong in "what was served". */
 export async function getSessionDrinks(sessionId) {
   const db = getDatabase()
   const result = await db.query(
-    'SELECT id, name, volume_ml, started_at FROM drinks WHERE session_id = ? ORDER BY started_at ASC',
+    "SELECT id, name, volume_ml, started_at FROM drinks WHERE session_id = ? AND status = 'serving' ORDER BY started_at ASC",
     [sessionId],
   )
   return result.values ?? []

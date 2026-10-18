@@ -57,20 +57,28 @@ const SCHEMA = `
     synced INTEGER NOT NULL DEFAULT 0
   );
 
-  -- app/drink-tracking: manual log of what's being served this session —
-  -- not a depletion calculator. One row per "serving period": the first is
+  -- app/drink-tracking: log of what's being served this session, plus a
+  -- live depletion readout derived from pour events (see DECISIONS.md —
+  -- "manual log only" was the original call, reversed same day once the
+  -- user asked for it). One row per "serving period": the first is
   -- inserted by createSession (if a drink was given at Start Session), and
-  -- each later "ran out, same drink" or "switching drinks" tap inserts
-  -- another row rather than mutating the last one, so the history is a
-  -- real log (what was served, and when it changed) instead of a single
-  -- mutable "current drink" field. The row with the latest started_at for
-  -- a session is simply "what's being served now".
+  -- each later "ran out, same drink" tap or a queued drink being promoted
+  -- inserts/updates another row rather than mutating history, so the log
+  -- stays a real record of what was served and when.
+  -- status (app/drink-queue): 'serving' is the one row getCurrentDrink
+  -- picks up (latest started_at among 'serving' rows); 'queued' is staged
+  -- ahead of time ("set up the next drink before this one's empty") and
+  -- only becomes 'serving' when promoteQueuedDrink runs (one-tap confirm
+  -- from the UI once the current drink hits 0 — never automatic, see
+  -- DECISIONS.md). At most one queued row is meaningful per session at a
+  -- time; queuing a new one replaces the old one (see addDrink).
   CREATE TABLE IF NOT EXISTS drinks (
     id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL REFERENCES sessions(id),
     name TEXT NOT NULL,
     volume_ml INTEGER,
     started_at TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'serving',
     synced INTEGER NOT NULL DEFAULT 0
   );
 `
@@ -103,6 +111,7 @@ export async function initDatabase() {
   await migrateAddParticipantPersonId()
   await migrateAddPersonDeviceId()
   await migrateAddPersonNameParts()
+  await migrateAddDrinkStatus()
   return db
 }
 
@@ -186,6 +195,18 @@ async function migrateAddPersonNameParts() {
     await db.execute('ALTER TABLE people ADD COLUMN last_name TEXT')
   }
   await db.execute('UPDATE people SET first_name = name WHERE first_name IS NULL')
+}
+
+/** app/drink-queue: adds `drinks.status` — the `drinks` table itself was
+ * only added earlier today (app/drink-tracking), so this only matters for
+ * installs/dev DBs that already ran that CREATE TABLE before this column
+ * existed (its `CREATE TABLE IF NOT EXISTS` is a no-op once the table is
+ * there). Existing rows all predate the queue feature, so they were all
+ * actively "being served" — backfilled to 'serving', same as the column
+ * default. Same idempotent pattern as the other migrations above. */
+async function migrateAddDrinkStatus() {
+  if (await columnExists('drinks', 'status')) return
+  await db.execute("ALTER TABLE drinks ADD COLUMN status TEXT NOT NULL DEFAULT 'serving'")
 }
 
 /** Returns the open connection. Throws if `initDatabase()` hasn't run yet. */

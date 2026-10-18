@@ -566,3 +566,41 @@ closer to what actually happened. At exactly/below 0 the row also switches to th
 ember accent color as a passive visual cue; nothing interrupts the session or
 forces a decision — the user separately chose "no popup" when asked, so it's the
 existing "Switch" button that remains how a drink change gets logged.
+
+---
+
+### "Up next" is a passive queue, never an automatic switch
+**Decision**: Staging a drink ahead of time ("Queue next drink") never changes
+what's being served by itself. "Now serving" keeps showing the current drink,
+with its remaining volume continuing to go negative past 0 if pours keep
+happening, until the user taps "Switch now" on the "Up next" row.
+**Why**: Asked directly, after confirming understanding of the request (a
+two-part ask: a visual depletion bar, and a way to pre-stage the next drink
+rather than typing it from scratch the moment the current one runs out). The
+user picked "prompt to confirm, one tap" over switching automatically —
+consistent with the earlier "no popup, passive" decision on auto-depletion
+itself: nothing about serving a different drink should happen without someone
+at the table actually doing it, even once the data says the bottle's empty.
+"Up next" is visible (and cancelable) the whole time a drink is queued, not
+just once the current one hits 0 — the only thing that changes at 0 is its
+styling (quiet smoke tone → maroon, with wording that makes the empty state
+explicit), which is purely a visual nudge toward the button that was already
+there.
+
+---
+
+### Queued drinks live in the same `drinks` table, as a `status` column
+**Decision**: A staged-but-not-yet-served drink is a row in the existing
+`drinks` table with `status = 'queued'`, rather than a separate table or
+purely client-side (React-state-only) concept. `getCurrentDrink` and
+`getSessionDrinks` both filter to `status = 'serving'`; `getQueuedDrink` filters
+to `'queued'`; `promoteQueuedDrink` just flips the status and resets
+`started_at` (so depletion math starts counting the newly-current drink's
+pours from the moment it actually took over, not from whenever it was staged).
+**Why**: A session can run for hours and the app can be backgrounded or
+reloaded mid-session (web especially); keeping the queue in memory only would
+silently lose it on a refresh — the same reasoning that already applies to
+everything else in this session. Reusing the one `drinks` table (new column,
+not a new table) keeps "what was served" and "what's coming up" as two states
+of the same kind of row, so the existing sync shape (syncJob.js/pull.js) only
+needed the one extra column added, not a second sync path.
