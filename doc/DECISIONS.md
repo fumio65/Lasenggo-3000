@@ -939,3 +939,26 @@ volume left (app/drink-switchback) — a drink genuinely poured from
 earlier in the session could land back in `'queued'` and then silently
 disappear from history the moment the session ended before it was
 promoted again.
+
+---
+
+### History's Drinks section becomes a small-multiples bar chart
+**Decision**: Each drink with a declared volume now gets a thin
+horizontal bar — poured mL filled left-to-right against the declared
+volume as the baseline — stacked oldest-first (small multiples, one bar
+per drink, read top-to-bottom as reading forward through the session).
+Reuses the live session's own depletion-bar convention exactly (same
+track/fill markup, same ember = "has volume left" / maroon = "empty"
+coloring from ActiveSessionScreen) rather than inventing a new visual
+language for history. Every figure (poured, declared, remaining) stays
+as a direct text label alongside the bar — color is never the only way
+to read the amount. A drink with no declared volume has no baseline to
+bar against, so it falls back to the plain status line with no
+poured/declared figure.
+**Why**: User-reported the Drinks section's UI/UX "doesn't look good"
+and asked for a graph, since it's a history view. A small-multiples bar
+chart is the right form here — magnitude comparison (poured vs.
+declared) across a set of categorical rows (drinks), not a trend over
+time or a single headline number — and reusing the live view's existing
+color/track convention keeps history visually consistent with the live
+session instead of introducing a second, unrelated chart language.

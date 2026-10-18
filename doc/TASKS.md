@@ -1283,6 +1283,32 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
     strings to confirm they shipped. No live click-through in an actual
     browser this session — same device-bridge dev-server gap noted in
     earlier entries.
+- [x] History's Drinks section: small-multiples bar chart instead of
+      plain text rows — Owner: fumio65 · Branch: `app/drink-tracking` ·
+      Done: 2026-10-18
+  - Notes: User-reported the Drinks section's UI/UX didn't look good and
+    asked for a graph, given it's a history view. Loaded the project's
+    dataviz skill before building: picked the form (magnitude comparison
+    across categorical rows = small-multiples bars, not a line/trend or a
+    single stat) and deliberately reused an *existing*, already-shipped
+    color convention rather than introducing a new categorical palette —
+    the live session's own depletion bar (ActiveSessionScreen: track
+    `bg-ink`, fill `bg-ember`/`bg-maroon` for has-volume/empty) — so no
+    new palette validation was needed; it's the same two-state status
+    encoding already in use. `HistoryDetail.jsx`: each drink with a
+    declared volume gets that track+fill bar, width = poured/declared
+    clamped to [0, 100]%, stacked oldest-first; poured/declared/remaining
+    stay as direct text labels under the bar so the numbers are never
+    only readable from color. A drink with no declared volume (nothing
+    to bar against) falls back to the plain status line alone.
+    Verified: `node_modules/.bin/rolldown` syntax-checked the file
+    cleanly; a full `vite build` succeeded in 4.65s, and the compiled
+    bundle/CSS were grepped for "poured of" and `.bg-maroon` to confirm
+    the new markup and the reused color class both shipped. No live
+    click-through in an actual browser this session — same device-bridge
+    dev-server gap noted in earlier entries; worth eyeballing the bar
+    widths on a real past session once that's checked live, per the
+    dataviz skill's own "render it and look at it" step.
 - [ ] Multiple pour stations (v2 scalability — architecture TBD, see `tagaybox_spec.md`)
 - [ ] Real browser back/forward support for in-app screens (participants/session/
       history currently switch via local React state only, per EXAMPLES.md's
