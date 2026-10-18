@@ -1230,6 +1230,25 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
     cleanly; a full `vite build` succeeded in 10.54s. No live
     click-through in an actual browser this session — same device-bridge
     dev-server gap noted in earlier entries.
+- [x] Fix: Activity log never named which drink was poured — Owner:
+      fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-reported the Activity log "didn't even log it properly" —
+    every pour row still only said "poured (Standard)", with no drink
+    name, even though `getSessionEvents` has carried `drink_name` (via
+    its LEFT JOIN onto `drinks`) since the earlier per-participant-
+    breakdown work. `ActivityFeed.jsx` is shared between the live
+    session's Activity log and HistoryDetail's past-session one, so one
+    fix covers both: appends `` · ${event.drink_name}`` after the
+    pour-size label, only when `drink_name` is present (null for a
+    session that never used drink tracking, so nothing grows a stray
+    " · " for those rows).
+    Verified: `node_modules/.bin/rolldown` syntax-checked the file
+    cleanly; a full `vite build` succeeded in 9.14s, and the compiled
+    bundle was grepped for `drink_name` to confirm the field is actually
+    referenced in the shipped code (the interpolated template literal
+    itself isn't a greppable literal string once minified). No live
+    click-through in an actual browser this session — same device-bridge
+    dev-server gap noted in earlier entries.
 - [ ] Multiple pour stations (v2 scalability — architecture TBD, see `tagaybox_spec.md`)
 - [ ] Real browser back/forward support for in-app screens (participants/session/
       history currently switch via local React state only, per EXAMPLES.md's

@@ -900,3 +900,18 @@ object's insertion order therefore comes out newest-drink-first, not
 first-poured as the comments (now corrected) had assumed. Taking the
 *last* array entry as "the current drink" was picking the oldest one
 instead.
+
+---
+
+### The Activity log now names which drink was poured
+**Decision**: `ActivityFeed.jsx`'s POUR line gained `· <drink name>` when
+`event.drink_name` is present, appended after the pour-size label (e.g.
+"Juan poured (Standard) · Tanduay"). Omitted entirely for a session that
+never used drink tracking (`drink_name` is null), so no row grows a
+stray " · " for nothing.
+**Why**: User-reported the Activity log "didn't even log it properly" —
+every other part of the session log (per-participant breakdown, the
+Drinks section) now names drinks and splits mL/pour-counts per drink, but
+the raw chronological Activity feed, shared between the live session and
+HistoryDetail's past-session view, still only ever said "poured
+(Standard)" with no way to tell which drink that pour came from.

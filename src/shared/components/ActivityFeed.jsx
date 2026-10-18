@@ -55,7 +55,14 @@ export function ActivityFeed({
                 <span className="text-paper-dim">
                   {' '}
                   {event.type === 'POUR' &&
-                    `poured${event.volume ? ` (${VOLUME_BY_ID[event.volume]?.label ?? event.volume})` : ''}`}
+                    // app/drink-session-log (fix: Activity log never
+                    // named which drink was poured, only the pour size)
+                    // — drink_name comes from getSessionEvents' LEFT
+                    // JOIN onto `drinks` and is null for a session that
+                    // never used drink tracking, so it's appended only
+                    // when present rather than leaving a stray " · " for
+                    // every row of an untracked session.
+                    `poured${event.volume ? ` (${VOLUME_BY_ID[event.volume]?.label ?? event.volume})` : ''}${event.drink_name ? ` · ${event.drink_name}` : ''}`}
                   {event.type === 'PASS' && 'passed'}
                   {event.type === 'PAUSE' && `paused${event.note ? ` (${event.note})` : ''}`}
                   {event.type === 'RESUME' && 'resumed'}
