@@ -3,7 +3,7 @@ import { useTurnManager } from './useTurnManager'
 import { TurnRing } from './TurnRing'
 import { SessionLog } from './SessionLog'
 import { ParticipantManagerSheet } from './ParticipantManagerSheet'
-import { usePourVolume } from '../pour/usePourVolume'
+import { usePourVolume, POUR_VOLUMES } from '../pour/usePourVolume'
 import { BackIcon } from '../../shared/components/BackIcon'
 import { HistoryIcon } from '../../shared/components/HistoryIcon'
 import { PourVolumeSelector } from '../pour/PourVolumeSelector'
@@ -17,6 +17,8 @@ import {
   addDrink,
 } from '../storage/sessionQueries'
 import { findOrCreatePerson } from '../storage/peopleQueries'
+import { VolumeInput } from '../../shared/components/VolumeInput'
+import { parseVolumeToMl } from '../pour/volumeUnits'
 
 /**
  * Active session screen.
@@ -64,12 +66,30 @@ export function ActiveSessionScreen({
   const [switching, setSwitching] = useState(false)
   const [switchName, setSwitchName] = useState('')
   const [switchVolumeInput, setSwitchVolumeInput] = useState('')
+  const [switchVolumeUnit, setSwitchVolumeUnit] = useState('ml')
 
   function refreshCurrentDrink() {
     if (sessionId) getCurrentDrink(sessionId).then(setCurrentDrink)
   }
 
   useEffect(refreshCurrentDrink, [sessionId])
+
+  // app/drink-tracking (depletion follow-up): remaining volume is derived,
+  // never stored — it's the declared volume_ml for the current "serving
+  // period" (see getCurrentDrink) minus every POUR event logged since that
+  // drink's started_at, mapped through POUR_VOLUMES the same way the
+  // session log's own mL totals already are. Deliberately allowed to go
+  // negative (Light/Standard/Heavy are approximations, so the last pour
+  // can overshoot what's left) rather than clamped at 0 — see DECISIONS.md.
+  // null (not 0) when the drink was logged without a volume, so the "Now
+  // serving" row can tell "no volume given" apart from "exactly empty".
+  const pouredMlSinceCurrentDrink = currentDrink
+    ? events
+        .filter((e) => e.type === 'POUR' && e.timestamp >= currentDrink.started_at)
+        .reduce((sum, e) => sum + (POUR_VOLUMES.find((v) => v.id === e.volume)?.approxMl ?? 0), 0)
+    : 0
+  const remainingMl =
+    currentDrink?.volume_ml != null ? currentDrink.volume_ml - pouredMlSinceCurrentDrink : null
 
   function handleSwitchSameDrink() {
     if (!sessionId || !currentDrink) return
@@ -82,6 +102,7 @@ export function ActiveSessionScreen({
   function openSwitchDifferentDrink() {
     setSwitchName('')
     setSwitchVolumeInput('')
+    setSwitchVolumeUnit('ml')
     setSwitching(true)
   }
 
@@ -89,8 +110,7 @@ export function ActiveSessionScreen({
     e.preventDefault()
     const trimmed = switchName.trim()
     if (!sessionId || !trimmed) return
-    const parsedVolume = parseInt(switchVolumeInput, 10)
-    const volumeMl = Number.isInteger(parsedVolume) && parsedVolume > 0 ? parsedVolume : null
+    const volumeMl = parseVolumeToMl(switchVolumeInput, switchVolumeUnit)
     addDrink(sessionId, trimmed, volumeMl)
       .then(refreshCurrentDrink)
       .catch((err) => console.error('Failed to log drink', err))
@@ -410,7 +430,11 @@ export function ActiveSessionScreen({
               <div className="flex flex-wrap items-center justify-center gap-2 rounded-full bg-smoke px-4 py-2 text-sm text-paper-dim ring-1 ring-smoke-light">
                 <span className="text-paper">
                   Now serving: {currentDrink.name}
-                  {currentDrink.volume_ml ? ` · ${currentDrink.volume_ml}mL` : ''}
+                  {remainingMl != null && (
+                    <span className={remainingMl <= 0 ? 'text-ember' : ''}>
+                      {' '}· {remainingMl}mL left
+                    </span>
+                  )}
                 </span>
                 <button
                   type="button"
@@ -440,15 +464,13 @@ export function ActiveSessionScreen({
                       aria-label="Different drink name"
                       className="flex-1 rounded-xl bg-ink px-3 py-2 text-sm text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
                     />
-                    <input
-                      type="number"
-                      min="1"
-                      inputMode="numeric"
-                      value={switchVolumeInput}
-                      onChange={(e) => setSwitchVolumeInput(e.target.value)}
-                      placeholder="mL"
-                      aria-label="Different drink volume in mL"
-                      className="w-20 rounded-xl bg-ink px-3 py-2 text-sm text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none focus:ring-2 focus:ring-ember"
+                    <VolumeInput
+                      idPrefix="switch-drink-volume"
+                      label="Different drink volume"
+                      amount={switchVolumeInput}
+                      unit={switchVolumeUnit}
+                      onAmountChange={setSwitchVolumeInput}
+                      onUnitChange={setSwitchVolumeUnit}
                     />
                     <button
                       type="submit"

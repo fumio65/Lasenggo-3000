@@ -334,6 +334,46 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
     `HistoryDetail` gets a new "Drinks" section (hidden if the session never
     used tracking) — the full log, oldest first, same "show everything, not
     just latest" idea as the existing Activity log.
+- [x] Drink volume: mL/L unit toggle, live remaining-volume readout from pours
+  - Owner: fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-requested follow-up to the drink tracking above, same day —
+    reverses that task's "manual log only, no depletion math" decision (see
+    DECISIONS.md). Two asks: (1) let the drink volume field take more than a
+    bare mL number, and (2) make the "Now serving" row show a live remaining
+    volume as pours happen. Confirmed understanding with the user first, then
+    three clarifying questions (all answered with the recommended option)
+    before writing code.
+    New `VolumeInput` component (`src/shared/components/VolumeInput.jsx`) +
+    `parseVolumeToMl`/`VOLUME_UNITS` (`src/features/pour/volumeUnits.js`):
+    pairs the existing number input with an mL/L segmented toggle, converting
+    to a whole-number mL value at input time — the field stays numeric (so
+    the depletion math below has something real to subtract from), the unit
+    toggle is what satisfies "let me type more than a bare mL count" (e.g.
+    "1" + "L" for a 1L bottle). No schema change — `drinks.volume_ml` still
+    stores a plain integer mL, unit is purely an input-time convenience, never
+    persisted. Swapped into both volume inputs: "Who's joining"'s Drink field
+    and ActiveSessionScreen's "different drink" switch form.
+    Remaining volume (`remainingMl` in `ActiveSessionScreen`) is derived, not
+    stored: the current drink's `volume_ml` minus every POUR event logged
+    since that drink's `started_at`, mapped through `POUR_VOLUMES`'
+    Light/Standard/Heavy mL presets, computed client-side from the `events`
+    list the session log already fetches — no new query, no risk of the
+    number drifting out of sync with its inputs. Shown as "Now serving:
+    `<drink>` · `<remaining>`mL left"; allowed to go negative (shown as a
+    deficit, e.g. "-45mL left", in the ember accent color) rather than
+    clamped at 0, since Light/Standard/Heavy are approximations and the pour
+    that empties a bottle rarely lands exactly on 0. "Same drink" naturally
+    resets the remaining count to the full declared volume, since it inserts
+    a fresh `drinks` row with a new `started_at` the depletion math starts
+    counting from zero against.
+    Verified live in-browser end to end: started a session with Red Horse ·
+    1 L (confirmed the L input converts and displays as "1000mL left");
+    poured Standard (~30mL) for Juan and confirmed the row updated to
+    "970mL left"; tapped Switch → "Same drink" and confirmed it reset to
+    "1000mL left"; no console errors. (One bug caught and fixed during this
+    pass: an earlier edit referenced `drinkVolumeUnit` in "Who's joining"
+    without ever declaring its `useState` — crashed `ParticipantList` on
+    load; fixed by adding the missing state line.)
 - [x] Split roster names into first/last, block duplicate participants, allow
       editing a name on "Who's joining" before Start session
   - Owner: fumio65 · Branch: `app/participant-first-last-name` · Done: 2026-10-12

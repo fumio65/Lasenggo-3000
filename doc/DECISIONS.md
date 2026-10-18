@@ -518,3 +518,51 @@ is read far more often than it's changed, and it's relevant to everyone at the t
 not just whoever happens to open the participants sheet — so it's placed where
 everyone already looks (right under the session name), rather than one tap deeper
 inside a sheet about a different kind of thing (people, not drinks).
+
+---
+
+### Drink tracking gained auto-depletion after all — the earlier "manual log only" decision was reversed
+**Decision**: `ActiveSessionScreen`'s "Now serving" row now shows a live remaining
+volume ("Red Horse · 970mL left"), computed as the current drink's declared
+`volume_ml` minus every POUR event logged since that drink's `started_at` (mapped
+through `POUR_VOLUMES`' Light/Standard/Heavy mL presets). This directly reverses
+"Drink tracking is a manual log, not a depletion calculator" above.
+**Why**: The user asked for it explicitly in a follow-up ("is there possible that
+the drink content reduce when pour... based on how many ml has been pour"), after
+confirming they understood the trade-off. The original decision's concern — that
+Light/Standard/Heavy are rough presets, not a true flow measurement — still holds,
+so this is framed to the user as an estimate, not a precise reading, but a rough
+live number was judged more useful than none now that it's explicitly wanted.
+Nothing is written to the `drinks` table to support this — `remainingMl` is derived
+client-side on every render from the existing `events` list already being fetched
+for the session log, so there's no new migration and no risk of the derived number
+drifting from its inputs.
+
+---
+
+### Drink volume is a number + unit toggle (mL/L), not free text
+**Decision**: The drink volume field pairs a numeric input with an mL/L segmented
+toggle (`VolumeInput`, `volumeUnits.js`) rather than accepting arbitrary text like
+"1 jug". The unit conversion happens at input time; only a plain integer mL value
+is ever stored in `drinks.volume_ml` or compared against pour totals.
+**Why**: The user's original ask was two-part — allow non-numeric input *and* make
+pours deplete the volume. Those two are in tension: depletion math needs a real
+number to subtract from, and "1 jug" has no defined mL. Asked directly, the user
+picked "number required, with a unit toggle" over free text, which satisfies the
+spirit of "let me type more than a bare mL count" (you can now type "1" + "L" for a
+1L bottle) without breaking the arithmetic the same request also asked for.
+
+---
+
+### Remaining drink volume is allowed to go negative
+**Decision**: Once a drink's remaining volume reaches 0, further pours keep
+subtracting — the UI shows a deficit ("-45mL") rather than clamping the display
+at 0.
+**Why**: Asked directly; the user picked allowing negative over clamping. Light/
+Standard/Heavy are approximations (see above), so the pour that empties the bottle
+will almost never land exactly on 0 — clamping would quietly hide that the last
+pour(s) technically exceeded what was declared, where showing the overshoot is
+closer to what actually happened. At exactly/below 0 the row also switches to the
+ember accent color as a passive visual cue; nothing interrupts the session or
+forces a decision — the user separately chose "no popup" when asked, so it's the
+existing "Switch" button that remains how a drink change gets logged.

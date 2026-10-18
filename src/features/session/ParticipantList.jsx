@@ -2,6 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { HistoryIcon } from '../../shared/components/HistoryIcon'
 import { PeopleIcon } from '../../shared/components/PeopleIcon'
 import { getPeople } from '../storage/peopleQueries'
+import { VolumeInput } from '../../shared/components/VolumeInput'
+import { parseVolumeToMl } from '../pour/volumeUnits'
 
 function ParticipantRow({
   participant,
@@ -200,6 +202,7 @@ export function ParticipantList({
   // a name was actually given.
   const [drinkName, setDrinkName] = useState('')
   const [drinkVolumeInput, setDrinkVolumeInput] = useState('')
+  const [drinkVolumeUnit, setDrinkVolumeUnit] = useState('ml')
 
   // app/people-roster: the name field's autocomplete options, sourced from
   // the recurring "people" roster (most-recently-used first - see
@@ -384,10 +387,10 @@ export function ParticipantList({
     // (null), matching useTurnManager's `passLimit` contract.
     const parsedLimit = parseInt(passLimitInput, 10)
     const passLimit = Number.isInteger(parsedLimit) && parsedLimit > 0 ? parsedLimit : null
-    // app/drink-tracking: same blank/invalid/non-positive -> null contract
+    // app/drink-tracking (volume unit follow-up): amount + unit ->
+    // whole mL via parseVolumeToMl, same blank/invalid -> null contract
     // as pass limit above.
-    const parsedVolume = parseInt(drinkVolumeInput, 10)
-    const drinkVolumeMl = Number.isInteger(parsedVolume) && parsedVolume > 0 ? parsedVolume : null
+    const drinkVolumeMl = parseVolumeToMl(drinkVolumeInput, drinkVolumeUnit)
     onStartSession(sessionName, passLimit, drinkName, drinkVolumeMl)
   }
 
@@ -618,16 +621,13 @@ export function ParticipantList({
                 placeholder="e.g. Red Horse"
                 className="flex-1 rounded-xl bg-ink px-4 py-2 text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
               />
-              <input
-                id="drink-volume"
-                type="number"
-                min="1"
-                inputMode="numeric"
-                value={drinkVolumeInput}
-                onChange={(e) => setDrinkVolumeInput(e.target.value)}
-                placeholder="mL"
-                aria-label="Drink volume in mL"
-                className="w-24 rounded-xl bg-ink px-4 py-2 text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none focus:ring-2 focus:ring-ember"
+              <VolumeInput
+                idPrefix="drink-volume"
+                label="Drink volume"
+                amount={drinkVolumeInput}
+                unit={drinkVolumeUnit}
+                onAmountChange={setDrinkVolumeInput}
+                onUnitChange={setDrinkVolumeUnit}
               />
             </div>
           </div>
