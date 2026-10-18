@@ -604,3 +604,24 @@ everything else in this session. Reusing the one `drinks` table (new column,
 not a new table) keeps "what was served" and "what's coming up" as two states
 of the same kind of row, so the existing sync shape (syncJob.js/pull.js) only
 needed the one extra column added, not a second sync path.
+
+---
+
+### Switch drink is a modal dialog, always mounted and class-toggled for animation
+**Decision**: The "switch now" / "queue next" forms now live in a proper dialog
+(backdrop + panel, bottom sheet on phone width via `items-end`, centered on
+larger screens via `sm:items-center` — same responsive convention
+`ParticipantManagerSheet` already uses) instead of an inline-expanding
+section. The dialog element is always in the DOM; `switching` toggles CSS
+classes (opacity/transform) rather than mounting/unmounting it, with `inert`
+gating keyboard/screen-reader access while closed.
+**Why**: User-requested, specifically asking for a dialog, mobile
+responsiveness, and a smooth animation in and out. A conditionally-rendered
+element (`{switching && (...)}`, the previous approach) can't animate its own
+*exit* — React removes it from the DOM the instant the condition flips, before
+any CSS transition has a chance to run. Keeping it always mounted and driving
+visibility through classes is the same technique this screen's exit-confirm
+bar already uses, so this isn't a new pattern for the codebase. `inert` (one
+attribute on the outer container) was chosen over manually gating `tabIndex`
+on every field — the dialog has two multi-field forms including `VolumeInput`
+internals, and `inert` covers all of it, including focus, in one line.

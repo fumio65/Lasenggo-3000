@@ -567,26 +567,69 @@ export function ActiveSessionScreen({
                 </div>
               )}
 
-              {switching && (
-                <div className="space-y-3 rounded-2xl bg-smoke/60 p-3 ring-1 ring-smoke-light">
-                  <div className="space-y-2">
-                    <p className="px-1 text-xs text-paper-dim">Ran out right now? Switch immediately.</p>
-                    <button
-                      type="button"
-                      onClick={handleSwitchSameDrink}
-                      className="w-full rounded-xl px-4 py-2 text-sm font-medium text-paper ring-1 ring-smoke-light transition hover:bg-smoke-light active:scale-95"
-                    >
-                      Same drink{currentDrink.volume_ml ? ` · ${currentDrink.volume_ml}mL` : ''} (new bottle)
-                    </button>
-                    <form onSubmit={handleSwitchSubmit} className="flex gap-2">
-                      <input
-                        type="text"
-                        value={switchName}
-                        onChange={(e) => setSwitchName(e.target.value)}
-                        placeholder="Different drink"
-                        aria-label="Different drink name"
-                        className="flex-1 rounded-xl bg-ink px-3 py-2 text-sm text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
-                      />
+            </div>
+          )}
+
+          {/* app/drink-queue (UX pass: dialog + animation): the "switch
+              now" / "queue next" forms used to be an inline-expanding
+              section. Rebuilt as a proper modal dialog — bottom sheet on
+              phone-width screens, centered on larger ones (same responsive
+              convention ParticipantManagerSheet already uses), with a
+              smooth fade+scale/slide transition in both directions.
+              Deliberately always mounted (never `{switching && (...)}`) —
+              that's what makes the *closing* transition possible at all;
+              an unmounted element can't animate out. Visibility is driven
+              entirely by the `switching` boolean toggling classes instead,
+              the same technique this screen's exit-confirm bar already
+              uses. `inert` (not manual tabIndex/aria-hidden per field)
+              keeps every input unreachable by keyboard/screen reader while
+              closed, in one line, covering VolumeInput's internal controls
+              too without threading a prop through it. Backdrop click and
+              the header's Done button both close it. */}
+          {currentDrink && (
+            <div
+              className={`fixed inset-0 z-20 flex items-end justify-center bg-ink/70 p-4 backdrop-blur-sm transition-opacity duration-300 ease-out sm:items-center ${
+                switching ? 'opacity-100' : 'pointer-events-none opacity-0'
+              }`}
+              inert={!switching}
+              onClick={() => setSwitching(false)}
+            >
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className={`w-full max-w-md space-y-3 rounded-2xl bg-smoke p-5 ring-1 ring-smoke-light transition-all duration-300 ease-out ${
+                  switching ? 'translate-y-0 scale-100 opacity-100' : 'translate-y-6 scale-95 opacity-0 sm:translate-y-0'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <h2 className="font-display text-base font-semibold text-paper">Switch drink</h2>
+                  <button
+                    type="button"
+                    onClick={() => setSwitching(false)}
+                    className="rounded-full px-2 py-1 text-sm text-paper-dim transition hover:text-paper active:scale-95"
+                  >
+                    Done
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="px-1 text-xs text-paper-dim">Ran out right now? Switch immediately.</p>
+                  <button
+                    type="button"
+                    onClick={handleSwitchSameDrink}
+                    className="w-full rounded-xl px-4 py-2 text-sm font-medium text-paper ring-1 ring-smoke-light transition hover:bg-smoke-light active:scale-95"
+                  >
+                    Same drink{currentDrink.volume_ml ? ` · ${currentDrink.volume_ml}mL` : ''} (new bottle)
+                  </button>
+                  <form onSubmit={handleSwitchSubmit} className="space-y-2">
+                    <input
+                      type="text"
+                      value={switchName}
+                      onChange={(e) => setSwitchName(e.target.value)}
+                      placeholder="Different drink"
+                      aria-label="Different drink name"
+                      className="w-full rounded-xl bg-ink px-3 py-2 text-sm text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
+                    />
+                    <div className="flex gap-2">
                       <VolumeInput
                         idPrefix="switch-drink-volume"
                         label="Different drink volume"
@@ -598,30 +641,32 @@ export function ActiveSessionScreen({
                       <button
                         type="submit"
                         disabled={!switchName.trim()}
-                        className="rounded-xl bg-ember px-3 py-2 text-sm font-semibold text-ink transition active:scale-95 disabled:opacity-30"
+                        className="flex-1 rounded-xl bg-ember px-3 py-2 text-sm font-semibold text-ink transition active:scale-95 disabled:opacity-30"
                       >
                         Log
                       </button>
-                    </form>
-                  </div>
+                    </div>
+                  </form>
+                </div>
 
-                  {/* app/drink-queue: stage a drink ahead of time instead of
-                      switching to it right now — doesn't touch currentDrink
-                      at all, just shows up as "Up next" above until
-                      promoted (one tap) or cancelled. */}
-                  <div className="space-y-2 border-t border-smoke-light pt-3">
-                    <p className="px-1 text-xs text-paper-dim">
-                      Not empty yet? Set up the next one for later.
-                    </p>
-                    <form onSubmit={handleQueueSubmit} className="flex gap-2">
-                      <input
-                        type="text"
-                        value={queueName}
-                        onChange={(e) => setQueueName(e.target.value)}
-                        placeholder="Next drink"
-                        aria-label="Next drink name"
-                        className="flex-1 rounded-xl bg-ink px-3 py-2 text-sm text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
-                      />
+                {/* app/drink-queue: stage a drink ahead of time instead of
+                    switching to it right now — doesn't touch currentDrink
+                    at all, just shows up as "Up next" above until promoted
+                    (one tap) or cancelled. */}
+                <div className="space-y-2 border-t border-smoke-light pt-3">
+                  <p className="px-1 text-xs text-paper-dim">
+                    Not empty yet? Set up the next one for later.
+                  </p>
+                  <form onSubmit={handleQueueSubmit} className="space-y-2">
+                    <input
+                      type="text"
+                      value={queueName}
+                      onChange={(e) => setQueueName(e.target.value)}
+                      placeholder="Next drink"
+                      aria-label="Next drink name"
+                      className="w-full rounded-xl bg-ink px-3 py-2 text-sm text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
+                    />
+                    <div className="flex gap-2">
                       <VolumeInput
                         idPrefix="queue-drink-volume"
                         label="Next drink volume"
@@ -633,14 +678,14 @@ export function ActiveSessionScreen({
                       <button
                         type="submit"
                         disabled={!queueName.trim()}
-                        className="rounded-xl px-3 py-2 text-sm font-semibold text-paper ring-1 ring-smoke-light transition hover:bg-smoke-light active:scale-95 disabled:opacity-30"
+                        className="flex-1 rounded-xl px-3 py-2 text-sm font-semibold text-paper ring-1 ring-smoke-light transition hover:bg-smoke-light active:scale-95 disabled:opacity-30"
                       >
                         Queue
                       </button>
-                    </form>
-                  </div>
+                    </div>
+                  </form>
                 </div>
-              )}
+              </div>
             </div>
           )}
 

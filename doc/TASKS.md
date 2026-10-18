@@ -428,6 +428,49 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
     the dev DB's pre-existing `drinks` table (created before this
     migration existed, by the earlier verification pass) picked up the new
     `status` column cleanly on next load with no errors.
+- [x] Switch drink as a modal dialog (mobile-responsive, animated in/out)
+  - Owner: fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-requested follow-up, same day — explicitly asked for a
+    dialog, mobile responsiveness, and smooth enter/exit animation.
+    The "switch now"/"queue next" forms moved from an inline-expanding
+    section into a real dialog: backdrop (`fixed inset-0 bg-ink/70
+    backdrop-blur-sm`) + panel, bottom sheet on phone width
+    (`items-end`) and centered on larger screens (`sm:items-center`) —
+    the same responsive convention `ParticipantManagerSheet` already
+    uses, so this doesn't introduce a second dialog pattern.
+    Animation: the dialog is always mounted (never
+    `{switching && (...)}`) with `switching` toggling opacity/transform
+    classes (`transition-opacity`/`transition-all duration-300`) instead
+    — a conditionally-rendered element can't animate its own exit, since
+    React removes it before any CSS transition runs. Same technique this
+    screen's exit-confirm bar already uses for its own in-place
+    expand/collapse, so it's consistent with the rest of the file rather
+    than a new pattern. Backdrop fades; panel slides up + scales in from
+    `translate-y-6 scale-95 opacity-0` (desktop skips the vertical slide,
+    `sm:translate-y-0`, since it's centered there, not sheet-like).
+    `inert={!switching}` on the backdrop container keeps every field
+    (both forms, including `VolumeInput`'s internal number input + mL/L
+    toggle buttons) out of the tab order and hidden from assistive tech
+    while closed, in one attribute rather than threading tabIndex through
+    every element. Backdrop click and the dialog's "Done" button both
+    close it (`stopPropagation` on the panel itself so clicking inside
+    it doesn't bubble to the backdrop's close handler). Form layout also
+    changed from a single `flex gap-2` row to name-input-on-its-own-line
+    + a second row for volume+submit, so neither form overflows a narrow
+    phone width.
+    Verified live in-browser: opened the dialog (backdrop dims/blurs,
+    panel appears centered, both form sections render without overflow);
+    clicked the backdrop and confirmed it closes; reopened, queued
+    "Lambanog" through the dialog, confirmed it submitted correctly
+    (dialog closed itself, "Up next: Lambanog" appeared on the main
+    screen) — same underlying `handleQueueSubmit` as before, now just
+    reached through the dialog. No console errors throughout. (Resizing
+    the automation browser's window didn't actually shrink the page's
+    rendered viewport in this environment, so the `sm:` bottom-sheet
+    behavior itself — as opposed to the stacked, non-overflowing form
+    layout, which doesn't depend on viewport width at all — wasn't
+    directly screenshotted at phone width; worth a quick look on an
+    actual phone or devtools device toolbar.)
 - [x] Split roster names into first/last, block duplicate participants, allow
       editing a name on "Who's joining" before Start session
   - Owner: fumio65 · Branch: `app/participant-first-last-name` · Done: 2026-10-12
