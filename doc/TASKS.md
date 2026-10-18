@@ -1096,6 +1096,19 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
     an actual browser this session — same device-bridge dev-server gap
     noted in earlier entries; worth confirming the floating panel doesn't
     get clipped by any `overflow-hidden` ancestor once it's checked live.
+- [x] Fix: "Switch" button was misleading (also queues a drink) — Owner:
+      fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-reported the "Switch" label next to "Now serving" didn't
+    say it also opens the queue-a-drink-for-later form. Relabeled both
+    the trigger button and the dialog's `<h2>` from "Switch drink"/"Switch"
+    to "Switch / Queue drink"/"Switch / Queue", and added an `aria-label`
+    on the button spelling out both actions for screen readers, since the
+    visible label is now a slash-separated pair rather than one plain verb.
+    Verified: `node_modules/.bin/rolldown` syntax-checked the file cleanly;
+    a full `vite build` succeeded in 10.05s, and the compiled bundle was
+    grepped for "Switch / Queue" and "Switch / Queue drink" to confirm
+    both strings shipped. No live click-through in an actual browser this
+    session — same device-bridge dev-server gap noted in earlier entries.
 - [ ] Multiple pour stations (v2 scalability — architecture TBD, see `tagaybox_spec.md`)
 - [ ] Real browser back/forward support for in-app screens (participants/session/
       history currently switch via local React state only, per EXAMPLES.md's

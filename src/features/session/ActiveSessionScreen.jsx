@@ -899,9 +899,10 @@ export function ActiveSessionScreen({
                     <button
                       type="button"
                       onClick={() => (switching ? setSwitching(false) : openSwitchDifferentDrink())}
+                      aria-label="Switch drink now or queue a different drink for later"
                       className="rounded-full bg-smoke-light px-2.5 py-1 text-xs font-medium text-paper transition hover:bg-ember hover:text-ink active:scale-95"
                     >
-                      Switch
+                      Switch / Queue
                     </button>
                   </div>
                 )}
@@ -1021,7 +1022,7 @@ export function ActiveSessionScreen({
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <h2 className="font-display text-base font-semibold text-paper">Switch drink</h2>
+                  <h2 className="font-display text-base font-semibold text-paper">Switch / Queue drink</h2>
                   <button
                     type="button"
                     onClick={() => setSwitching(false)}

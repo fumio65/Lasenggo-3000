@@ -797,3 +797,16 @@ turn-order circle, rendered further down the same column) down the page
 every time it opened. Floating the dropdown over the rest of the screen
 instead of inserting it into the flow keeps everything else's position
 fixed regardless of how many rows are expanded.
+
+---
+
+### The "Switch" button is now labeled "Switch / Queue"
+**Decision**: The trigger button next to "Now serving" and the dialog it
+opens were both just "Switch", even though the dialog has always had two
+separate sections — switch immediately, or queue a drink for later. Both
+now read "Switch / Queue".
+**Why**: User-reported the "Switch" label was misleading given the
+dialog's queuing feature. Asked which exact wording to use; the user
+said to just pick one rather than choose between options, so this went
+with the most literal, unambiguous label rather than a shorter one that
+would still require the dialog's subtext to disambiguate.
