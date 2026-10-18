@@ -192,19 +192,20 @@ export async function addDrink(sessionId, name, volumeMl = null, status = 'servi
   return id
 }
 
-/** app/drink-queue-list: edits a queued drink's name and/or volume in
- * place — the "edit" action on an "Up next" row. Scoped to `status =
- * 'queued'` in the WHERE clause rather than trusting the caller: once a
- * drink has actually been served (promoted to 'serving', or demoted to
- * 'served'), it may already have real pours tagged against its id, and
- * silently changing its declared volume at that point would be
- * rewriting history rather than editing a still-pending plan. Renaming
- * a drink that's already being poured is a different, not-yet-asked-for
- * feature. */
-export async function updateQueuedDrink(drinkId, name, volumeMl = null) {
+/** app/drink-queue-list (+ app/drink-edit-current): edits a drink's name
+ * and/or volume in place — the "edit" action on an "Up next" row, and
+ * (now) on "Now serving" too, for fixing a typo'd name or a mistyped mL
+ * right after logging it. Scoped to `status IN ('queued', 'serving')` in
+ * the WHERE clause rather than trusting the caller: once a drink has been
+ * demoted to `'served'`, it's past history, and may already have real
+ * pours tagged against its id — silently changing its declared volume at
+ * that point would be rewriting history rather than fixing a live
+ * mistake. A past drink's name/volume staying fixed once it's no longer
+ * current or queued is deliberate, not an oversight. */
+export async function updateDrink(drinkId, name, volumeMl = null) {
   const db = getDatabase()
   await db.run(
-    "UPDATE drinks SET name = ?, volume_ml = ? WHERE id = ? AND status = 'queued'",
+    "UPDATE drinks SET name = ?, volume_ml = ? WHERE id = ? AND status IN ('queued', 'serving')",
     [name.trim(), volumeMl ?? null, drinkId],
     false,
   )

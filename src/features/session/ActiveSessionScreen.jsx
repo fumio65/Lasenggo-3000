@@ -18,7 +18,7 @@ import {
   addSessionParticipant,
   getCurrentDrink,
   addDrink,
-  updateQueuedDrink,
+  updateDrink,
   getQueuedDrinks,
   switchToDrink,
   cancelQueuedDrink,
@@ -321,9 +321,16 @@ export function ActiveSessionScreen({
     const trimmed = editName.trim()
     const volumeMl = parseVolumeToMl(editVolumeInput, editVolumeUnit)
     if (!editingQueuedId || !trimmed || volumeMl == null) return
-    updateQueuedDrink(editingQueuedId, trimmed, volumeMl)
-      .then(refreshQueuedDrinks)
-      .catch((err) => console.error('Failed to edit queued drink', err))
+    // app/drink-edit-current: this form now edits either a queued row or
+    // "Now serving" (same drinks-table row, same validation) — refresh
+    // both lists rather than branching on which one it was, since only
+    // one of the two will actually contain a row with this id.
+    updateDrink(editingQueuedId, trimmed, volumeMl)
+      .then(() => {
+        refreshQueuedDrinks()
+        refreshCurrentDrink()
+      })
+      .catch((err) => console.error('Failed to edit drink', err))
     closeEditQueuedDrink()
   }
 
@@ -671,23 +678,81 @@ export function ActiveSessionScreen({
           {currentDrink && (
             <div className="w-full max-w-md space-y-2">
               <div className="space-y-1.5 rounded-2xl bg-smoke px-4 py-2.5 ring-1 ring-smoke-light">
-                <div className="flex flex-wrap items-center justify-center gap-2 text-sm text-paper-dim">
-                  <span className="text-paper">
-                    Now serving: {currentDrink.name}
-                    {remainingMl != null && (
-                      <span className={isEmpty ? 'text-maroon-dim' : ''}>
-                        {' '}· {remainingMl}mL left
-                      </span>
-                    )}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => (switching ? setSwitching(false) : openSwitchDifferentDrink())}
-                    className="rounded-full bg-smoke-light px-2.5 py-1 text-xs font-medium text-paper transition hover:bg-ember hover:text-ink active:scale-95"
+                {/* app/drink-edit-current: fixes a typo'd name or a
+                    mistyped mL on "Now serving" without having to switch
+                    away and back. Same inline form, same editingQueuedId/
+                    editName state and the same "volume required once a
+                    name is given" validation as an "Up next" row's edit
+                    — just targeting currentDrink.id instead of a queued
+                    row's id. */}
+                {editingQueuedId === currentDrink.id ? (
+                  <form
+                    onSubmit={handleEditQueuedSubmit}
+                    className="flex flex-wrap items-center justify-center gap-2 text-sm"
                   >
-                    Switch
-                  </button>
-                </div>
+                    <input
+                      type="text"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      placeholder="Drink name"
+                      autoFocus
+                      className="min-w-0 flex-1 rounded-xl bg-ink px-3 py-2 text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
+                    />
+                    <VolumeInput
+                      amount={editVolumeInput}
+                      unit={editVolumeUnit}
+                      onAmountChange={setEditVolumeInput}
+                      onUnitChange={setEditVolumeUnit}
+                      idPrefix="edit-current-drink"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!editName.trim() || editVolumeMissing}
+                      className="rounded-full bg-ember px-3 py-1.5 text-xs font-semibold text-ink transition active:scale-95 disabled:opacity-40"
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      onClick={closeEditQueuedDrink}
+                      className="rounded-full px-3 py-1.5 text-xs font-medium text-paper-dim transition hover:text-paper"
+                    >
+                      Cancel
+                    </button>
+                    {editVolumeMissing && (
+                      <p className="w-full px-1 text-center text-xs text-maroon-dim">
+                        Add a volume, or clear the name.
+                      </p>
+                    )}
+                  </form>
+                ) : (
+                  <div className="flex flex-wrap items-center justify-center gap-2 text-sm text-paper-dim">
+                    <span className="text-paper">
+                      Now serving: {currentDrink.name}
+                      {remainingMl != null && (
+                        <span className={isEmpty ? 'text-maroon-dim' : ''}>
+                          {' '}· {remainingMl}mL left
+                        </span>
+                      )}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => openEditQueuedDrink(currentDrink)}
+                      aria-label={`Edit ${currentDrink.name}`}
+                      title="Edit"
+                      className="rounded-full p-1.5 text-paper-dim/80 transition hover:bg-smoke-light hover:text-paper active:scale-95"
+                    >
+                      <EditIcon className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => (switching ? setSwitching(false) : openSwitchDifferentDrink())}
+                      className="rounded-full bg-smoke-light px-2.5 py-1 text-xs font-medium text-paper transition hover:bg-ember hover:text-ink active:scale-95"
+                    >
+                      Switch
+                    </button>
+                  </div>
+                )}
                 {/* app/drink-queue: visual depletion bar — only drawn when
                     a volume was actually declared (remainingMl null means
                     the drink was logged without one, so there's nothing to

@@ -1024,6 +1024,27 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
     live click-through in an actual browser this session — same
     device-bridge dev-server gap noted in the previous entry, not
     attempted again here since the pattern is already established.
+- [x] Edit "Now serving" in place (not just queued drinks) — Owner:
+      fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-reported no way to fix a misspelled name or wrong mL on
+    the drink currently being served — only "Up next" rows had an Edit
+    action. `sessionQueries.js`: `updateQueuedDrink` renamed to
+    `updateDrink`, WHERE clause widened from `status = 'queued'` to
+    `status IN ('queued', 'serving')` — a `'served'` (past/history) row
+    still can't be edited, deliberately, since it may already have real
+    pours tagged against its id. `ActiveSessionScreen.jsx`: "Now serving"
+    gained a small Edit icon that reuses the exact same inline edit form,
+    state (`editingQueuedId`/`editName`/`editVolumeInput`), and "volume
+    required once a name is given" validation already built for queued
+    rows — just targeting `currentDrink.id` instead. Saving refreshes both
+    `currentDrink` and `queuedDrinks` rather than branching on which one
+    the id belonged to.
+    Verified: `node_modules/.bin/rolldown` syntax-checked the file cleanly;
+    a full `vite build` succeeded in 8.26s, and the compiled bundle was
+    grepped for "Now serving:" and the new "edit-current-drink" id prefix
+    to confirm the right code shipped. No live click-through in an actual
+    browser this session — same device-bridge dev-server gap noted in
+    earlier entries.
 - [ ] Multiple pour stations (v2 scalability — architecture TBD, see `tagaybox_spec.md`)
 - [ ] Real browser back/forward support for in-app screens (participants/session/
       history currently switch via local React state only, per EXAMPLES.md's

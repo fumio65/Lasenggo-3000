@@ -737,3 +737,20 @@ held up once more than one item was queued — a centered pill of wrapped
 text and text-buttons read fine for a single row but became cramped and
 hard to scan once several were stacked. The confirm stays inline rather
 than a popup/dialog, consistent with the rest of this list.
+
+---
+
+### "Now serving" can be edited in place too, not just queued drinks
+**Decision**: The edit affordance added for "Up next" rows now also
+applies to the current drink — a small Edit icon next to "Now serving"
+opens the same inline name+volume form in place. The backing query,
+renamed from `updateQueuedDrink` to `updateDrink`, is scoped to
+`status IN ('queued', 'serving')` rather than `'queued'` only; a drink
+that's already been demoted to `'served'` stays fixed, since it's past
+history and may already have real pours tagged against its id.
+**Why**: User-reported: there was no way to fix a misspelled drink name or
+a mistyped mL on the drink actually being served — only queued ("Up next")
+drinks could be corrected. Switching away and back just to fix a typo
+would also wrongly re-queue/re-serve the drink and disturb its
+started_at, so this needed to be a true in-place edit, not a workaround
+through Switch.
