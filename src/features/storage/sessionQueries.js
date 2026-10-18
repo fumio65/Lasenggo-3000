@@ -301,16 +301,26 @@ export async function getSessionDrinkHistory(sessionId) {
 
 /** The full drink log for one session, oldest first — backs
  * `app/history-detail`'s drink-log section, same "show the whole log, not
- * just the latest" idea as getSessionEvents' Activity log. Filtered to
- * status IN ('serving', 'served') (app/drink-switchback) — a
- * queued-but-never-promoted row was never actually served, so it doesn't
- * belong in "what was served"; 'served' rows (drinks switched away from,
- * whether finished or still mid-session) belong in the log just as much
- * as the one still 'serving'. */
+ * just the latest" idea as getSessionEvents' Activity log.
+ *
+ * Fix (app/drink-session-log): this used to filter to
+ * `status IN ('serving', 'served')`, on the reasoning that a queued row
+ * was "never actually served". That reasoning doesn't hold once a drink
+ * can be *re*-queued: demoteCurrentDrink re-queues (not "serves") a drink
+ * switched away from while it still has volume left (app/drink-
+ * switchback), so a drink genuinely poured from earlier in the session
+ * could end up back in `'queued'` and then silently vanish from history
+ * the moment the session ends before it's promoted again — reported as
+ * "it just records the last drink", since everything re-queued along the
+ * way got filtered out. No status filter at all now: every drink row the
+ * session ever created belongs in its history, including one still
+ * sitting in `'queued'` (never promoted, or re-queued and never promoted
+ * back) when the session ended — HistoryDetail is responsible for
+ * labeling those appropriately, not this query for hiding them. */
 export async function getSessionDrinks(sessionId) {
   const db = getDatabase()
   const result = await db.query(
-    "SELECT id, name, volume_ml, started_at FROM drinks WHERE session_id = ? AND status IN ('serving', 'served') ORDER BY started_at ASC",
+    'SELECT id, name, volume_ml, started_at, status FROM drinks WHERE session_id = ? ORDER BY started_at ASC',
     [sessionId],
   )
   return result.values ?? []

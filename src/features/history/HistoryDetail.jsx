@@ -4,6 +4,7 @@ import { HistoryIcon } from '../../shared/components/HistoryIcon'
 import { ParticipantStatBar, VolumeLegend, VOLUME_BY_ID } from '../../shared/components/ParticipantStatBar'
 import { ScrollFadeBox } from '../../shared/components/ScrollFadeBox'
 import { ActivityFeed } from '../../shared/components/ActivityFeed'
+import { formatVolumeMl } from '../pour/volumeUnits'
 
 function formatDate(isoString) {
   return new Date(isoString).toLocaleString(undefined, {
@@ -62,6 +63,33 @@ function buildPausedAtEnd(events) {
  * session's "Activity log" — just the complete history instead of a
  * capped recent slice, since there's nothing new to scroll to here).
  */
+/** app/drink-session-log (same formula ActiveSessionScreen's live
+ * remainingForDrink uses, computed here from the already-loaded past-
+ * session `events` instead of a live list): a drink's remaining volume —
+ * its declared volume_ml minus every POUR event tagged with its id — or
+ * null if no volume was declared. */
+function remainingForDrink(drink, events) {
+  if (drink.volume_ml == null) return null
+  const pouredMl = events
+    .filter((e) => e.type === 'POUR' && e.drink_id === drink.id)
+    .reduce((sum, e) => sum + (VOLUME_BY_ID[e.volume]?.approxMl ?? 0), 0)
+  return drink.volume_ml - pouredMl
+}
+
+/** app/drink-session-log (fix: queued-but-never-promoted/re-queued
+ * drinks used to be filtered out of history entirely, see
+ * getSessionDrinks): a drink's status alone doesn't say enough once a
+ * session has ended — `'queued'` covers both "staged but never touched"
+ * and "was poured from earlier, then re-queued and never promoted back"
+ * (demoteCurrentDrink re-queues a non-empty drink on every switch-away).
+ * Whether it has any POUR events disambiguates the two. */
+function drinkStatusLabel(drink, events) {
+  if (drink.status === 'serving') return 'Serving when ended'
+  const wasPoured = events.some((e) => e.type === 'POUR' && e.drink_id === drink.id)
+  if (drink.status === 'queued') return wasPoured ? 'Served, then re-queued' : 'Queued, never served'
+  return 'Served'
+}
+
 export function HistoryDetail({ sessionId, onBack }) {
   const { detail, events, drinks, loading } = useSessionDetail(sessionId)
 
@@ -142,16 +170,40 @@ export function HistoryDetail({ sessionId, onBack }) {
             {drinks.length > 0 && (
               <section className="rounded-2xl bg-smoke/60 p-4 ring-1 ring-smoke-light">
                 <h2 className="font-display text-xs font-semibold text-paper-dim">Drinks</h2>
+                {/* app/drink-session-log (fix: a drink re-queued after
+                    being switched away from — still non-empty at the
+                    time — used to vanish from this list entirely once
+                    the session ended before it was promoted again, since
+                    getSessionDrinks filtered to 'serving'/'served' only;
+                    see that function's comment). Now shows every drink
+                    row the session ever created, labeled by what
+                    actually happened to it (drinkStatusLabel) rather
+                    than assuming status alone tells the story, plus how
+                    much was left in it (remainingForDrink, same formula
+                    the live session uses) alongside the declared
+                    volume — both via formatVolumeMl so a liter bottle
+                    reads as "1.5L left", not "1500mL left". */}
                 <ul className="mt-2 space-y-1.5">
-                  {drinks.map((drink) => (
-                    <li key={drink.id} className="flex items-baseline justify-between gap-3 text-sm">
-                      <span className="text-paper">
-                        {drink.name}
-                        {drink.volume_ml ? ` · ${drink.volume_ml}mL` : ''}
-                      </span>
-                      <span className="shrink-0 text-xs text-paper-dim">{formatDate(drink.started_at)}</span>
-                    </li>
-                  ))}
+                  {drinks.map((drink) => {
+                    const remaining = remainingForDrink(drink, events)
+                    return (
+                      <li key={drink.id} className="space-y-0.5 text-sm">
+                        <div className="flex items-baseline justify-between gap-3">
+                          <span className="truncate text-paper">
+                            {drink.name}
+                            {drink.volume_ml != null && (
+                              <span className="text-paper-dim"> · {formatVolumeMl(drink.volume_ml)}</span>
+                            )}
+                          </span>
+                          <span className="shrink-0 text-xs text-paper-dim">{formatDate(drink.started_at)}</span>
+                        </div>
+                        <p className="text-xs text-paper-dim">
+                          {drinkStatusLabel(drink, events)}
+                          {remaining != null && ` · ${formatVolumeMl(Math.max(remaining, 0))} left`}
+                        </p>
+                      </li>
+                    )
+                  })}
                 </ul>
               </section>
             )}

@@ -1249,6 +1249,40 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
     itself isn't a greppable literal string once minified). No live
     click-through in an actual browser this session — same device-bridge
     dev-server gap noted in earlier entries.
+- [x] Fix: Session History dropped re-queued drinks, showed no
+      remaining volume — Owner: fumio65 · Branch: `app/drink-tracking` ·
+      Done: 2026-10-18
+  - Notes: User-reported History "didn't record all the drinks from
+    current to que... it just records the last alcohol drink", and
+    didn't show how much mL/L was left in each. Root cause:
+    `getSessionDrinks` filtered to `status IN ('serving', 'served')` —
+    written back when `'queued'` only ever meant "staged, never
+    touched." That broke once `demoteCurrentDrink` started *re*-queuing a
+    drink switched away from while it still had volume (not marking it
+    `'served'`) — a drink that genuinely had real pours earlier in the
+    session could land back in `'queued'` and vanish from history
+    entirely if the session ended before it was promoted again.
+    `sessionQueries.js`: dropped the status filter from `getSessionDrinks`
+    completely — every drink row now comes back, plus its `status`
+    column (previously unselected there). `HistoryDetail.jsx`: new
+    `drinkStatusLabel(drink, events)` disambiguates `'queued'` by
+    checking whether the drink has any POUR events against it ("Served,
+    then re-queued" vs. "Queued, never served"), and a ported
+    `remainingForDrink` (same declared-minus-poured formula
+    ActiveSessionScreen's live version uses, computed from the already-
+    loaded past-session `events`) shows each drink's remaining volume
+    next to its declared one, both via `formatVolumeMl`.
+    Verified: hand-traced both helpers in an isolated `node` script with
+    a drink that was poured from, switched away from while non-empty
+    (status left at `'queued'` — the actual bug scenario), and a second
+    drink still `'serving'` at session end — confirmed the first came
+    back labeled "Served, then re-queued" with its correct remaining mL,
+    not silently dropped. `node_modules/.bin/rolldown` syntax-checked
+    both changed files cleanly; a full `vite build` succeeded in 4.13s,
+    and the compiled bundle was grepped for all three new status-label
+    strings to confirm they shipped. No live click-through in an actual
+    browser this session — same device-bridge dev-server gap noted in
+    earlier entries.
 - [ ] Multiple pour stations (v2 scalability — architecture TBD, see `tagaybox_spec.md`)
 - [ ] Real browser back/forward support for in-app screens (participants/session/
       history currently switch via local React state only, per EXAMPLES.md's

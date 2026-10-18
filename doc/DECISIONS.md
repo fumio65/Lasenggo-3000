@@ -915,3 +915,27 @@ Drinks section) now names drinks and splits mL/pour-counts per drink, but
 the raw chronological Activity feed, shared between the live session and
 HistoryDetail's past-session view, still only ever said "poured
 (Standard)" with no way to tell which drink that pour came from.
+
+---
+
+### Fix: a re-queued drink silently vanished from Session History
+**Decision**: `getSessionDrinks` no longer filters by status at all —
+every drink row the session ever created is included in a past session's
+"Drinks" log now, regardless of what status it ended in. `HistoryDetail`
+labels each one by what actually happened to it (`drinkStatusLabel`):
+"Serving when ended", "Served", "Served, then re-queued" (status
+`'queued'` with real POUR events against it), or "Queued, never served"
+(status `'queued'`, no pours at all) — and shows each drink's remaining
+volume (`remainingForDrink`, the same declared-minus-poured formula the
+live session uses, computed from the already-loaded past-session
+`events`) alongside its declared volume, both through `formatVolumeMl`.
+**Why**: User-reported Session History "didn't record all the drinks
+from current to queue... it just records the last alcohol drink." Root
+cause: `getSessionDrinks` filtered to `status IN ('serving', 'served')`
+on the old assumption that `'queued'` only ever meant "staged, never
+touched." That assumption broke once `demoteCurrentDrink` started
+re-queuing (not serving) a drink switched away from while it still had
+volume left (app/drink-switchback) — a drink genuinely poured from
+earlier in the session could land back in `'queued'` and then silently
+disappear from history the moment the session ended before it was
+promoted again.
