@@ -1309,6 +1309,29 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
     dev-server gap noted in earlier entries; worth eyeballing the bar
     widths on a real past session once that's checked live, per the
     dataviz skill's own "render it and look at it" step.
+- [x] Fix: History's drink bar filled with poured amount, inconsistent
+      with the live view's draining bar — Owner: fumio65 · Branch:
+      `app/drink-tracking` · Done: 2026-10-18
+  - Notes: Asked directly which direction (fill with poured vs. drain
+    with remaining) was more user-friendly; picked drain/remaining, both
+    because it matches the live session's existing "Now serving" bar
+    (`barWidthPct = remainingMl / declared` in ActiveSessionScreen,
+    checked directly rather than assumed) and because a draining gauge
+    is the more familiar convention for "how much is left" on its own.
+    The commit that introduced the History bar had actually claimed
+    parity with the live bar in its own commit message while being the
+    opposite direction — caught here, not before.
+    `HistoryDetail.jsx`: `widthPct` changed from
+    `pouredMl / drink.volume_ml` to `max(remaining, 0) / drink.volume_ml`.
+    The poured/declared/remaining text labels underneath are unchanged —
+    only the bar's fill direction moved.
+    Verified: hand-computed the width for a 700mL drink with 520mL
+    poured (180mL remaining) — confirmed it comes out ~26% (mostly
+    drained), matching the live bar's behavior for a mostly-finished
+    drink instead of the previous ~74%. `node_modules/.bin/rolldown`
+    syntax-checked the file cleanly; a full `vite build` succeeded in
+    4.04s. No live click-through in an actual browser this session —
+    same device-bridge dev-server gap noted in earlier entries.
 - [ ] Multiple pour stations (v2 scalability — architecture TBD, see `tagaybox_spec.md`)
 - [ ] Real browser back/forward support for in-app screens (participants/session/
       history currently switch via local React state only, per EXAMPLES.md's

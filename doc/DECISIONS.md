@@ -962,3 +962,21 @@ declared) across a set of categorical rows (drinks), not a trend over
 time or a single headline number — and reusing the live view's existing
 color/track convention keeps history visually consistent with the live
 session instead of introducing a second, unrelated chart language.
+
+---
+
+### Fix: History's drink bar should drain (remaining), not fill (poured)
+**Decision**: The just-added History bar now fills with *remaining*
+volume and drains as more gets poured — `widthPct = remaining / declared`
+— instead of filling up with the poured amount. Matches the live
+session's own "Now serving" depletion bar exactly (`barWidthPct =
+remainingMl / declared` in ActiveSessionScreen).
+**Why**: Asked directly which direction was more user-friendly. The
+first version filled up with poured amount, which was consistent with
+nothing — not the live bar, which already drains. A draining gauge is
+also the more familiar convention on its own (fuel/battery indicators
+drain, not fill, as they're used up), and "how much is left" is closer
+to the question a drink log actually answers than "how much is done".
+Matching the live bar's direction means a drink's bar behaves the same
+way whether the session is happening now or being looked back on,
+instead of requiring a different mental model for each.

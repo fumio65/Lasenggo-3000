@@ -171,35 +171,39 @@ export function HistoryDetail({ sessionId, onBack }) {
               <section className="rounded-2xl bg-smoke/60 p-4 ring-1 ring-smoke-light">
                 <h2 className="font-display text-xs font-semibold text-paper-dim">Drinks</h2>
                 {/* app/drink-session-log (UX pass: small-multiples bar
-                    chart instead of plain text rows): each drink with a
-                    declared volume gets a thin horizontal bar — how much
-                    of it got poured, filled left-to-right against its
-                    declared volume as the baseline, oldest drink on top
-                    (drinks is already ASC by started_at, so reading
-                    top-to-bottom reads as reading forward through the
-                    session). Same track/fill convention and ember/maroon
-                    "has volume left vs. empty" coloring the live
-                    session's own depletion bar already uses (see
-                    ActiveSessionScreen), so a past session's Drinks
-                    section reads consistently with the live one instead
-                    of introducing a new visual language just for
-                    history. Every number is also a direct text label
-                    (poured/declared, remaining) — the bar is a
-                    magnitude cue on top of the numbers, never the only
-                    way to read them. A drink logged with no declared
-                    volume has no baseline to fill against, so it falls
-                    back to the plain status line alone (no bar, no
-                    poured/declared figure — there's nothing to compare
-                    it to). */}
+                    chart instead of plain text rows; fix: bar direction
+                    inverted from the live view): each drink with a
+                    declared volume gets a thin horizontal bar, oldest
+                    drink on top (drinks is already ASC by started_at,
+                    so reading top-to-bottom reads as reading forward
+                    through the session). The bar fills with *remaining*
+                    volume and drains as more gets poured — not the
+                    other way around — specifically to match the live
+                    session's own "Now serving" depletion bar
+                    (ActiveSessionScreen: barWidthPct = remainingMl /
+                    declared), so a drink reads the same way whether the
+                    session is happening now or being looked back on. An
+                    earlier version of this bar filled *up* with poured
+                    amount instead, which was consistent with nothing —
+                    not the live bar, and arguably the less intuitive
+                    direction anyway (a draining gauge is the familiar
+                    "how much is left" convention; a filling-up progress
+                    bar reads as "how much is done", which isn't the
+                    question history answers). Every number is also a
+                    direct text label (poured/declared, remaining) — the
+                    bar is a magnitude cue on top of the numbers, never
+                    the only way to read them. A drink logged with no
+                    declared volume has no baseline to bar against, so
+                    it falls back to the plain status line alone. */}
                 <ul className="mt-3 space-y-3">
                   {drinks.map((drink) => {
                     const remaining = remainingForDrink(drink, events)
                     const hasVolume = drink.volume_ml != null
                     const pouredMl = hasVolume ? drink.volume_ml - Math.max(remaining, 0) : null
-                    const widthPct = hasVolume && drink.volume_ml > 0
-                      ? Math.min(Math.max((pouredMl / drink.volume_ml) * 100, 0), 100)
-                      : 0
                     const isEmpty = remaining != null && remaining <= 0
+                    const widthPct = hasVolume && drink.volume_ml > 0
+                      ? Math.min(Math.max((Math.max(remaining, 0) / drink.volume_ml) * 100, 0), 100)
+                      : 0
                     return (
                       <li key={drink.id} className="space-y-1">
                         <div className="flex items-baseline justify-between gap-3 text-sm">
