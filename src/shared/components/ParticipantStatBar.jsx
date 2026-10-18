@@ -76,17 +76,26 @@ export function ParticipantStatBar({ stat, maxActions, isCurrent = false, isPaus
           </span>
         )}
       </div>
-      {/* app/drink-session-log: which drink(s) this person has actually
-          poured from this session, by name — the Light/Standard/Heavy
-          breakdown below says how much they drank, never what. Only
-          drinks they poured show up here (not every drink the session
-          has had), deduped, in the order they were first poured. Omitted
-          entirely for a session with no drink tracking or a participant
-          who hasn't poured anything with a drink attached yet. */}
-      {stat.drinkNames?.length > 0 && (
-        <p className="truncate text-xs text-paper-dim/80" title={stat.drinkNames.join(', ')}>
-          {stat.drinkNames.join(', ')}
-        </p>
+      {/* app/drink-session-log (fix: switching drinks lumped everyone's
+          mL into one combined total, with no way to tell how much came
+          from which drink): which drink(s) this person has actually
+          poured from this session, each with its *own* running mL/L
+          total — not just the drink's name, and not one combined number
+          either. A participant who had 150mL of one drink then switched
+          to another and had 300mL of it shows both lines separately
+          rather than a single "~450mL" that erases which drink any of it
+          came from. In first-poured order; omitted entirely for a
+          session with no drink tracking or a participant who hasn't
+          poured anything with a drink attached yet. */}
+      {stat.drinkTotals?.length > 0 && (
+        <ul className="space-y-0.5">
+          {stat.drinkTotals.map((d) => (
+            <li key={d.name} className="flex items-baseline justify-between gap-2 text-xs text-paper-dim/80">
+              <span className="truncate">{d.name}</span>
+              <span className="shrink-0 tabular-nums">~{formatVolumeMl(d.ml)}</span>
+            </li>
+          ))}
+        </ul>
       )}
       {/* UX pass (round 2, app/volume-breakdown-stat): spelling out "1
           Light · 1 Standard · 1 Heavy poured" read as a dense sentence that

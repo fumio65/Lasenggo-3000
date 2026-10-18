@@ -1140,6 +1140,30 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
     confirm the right code shipped. No live click-through in an actual
     browser this session — same device-bridge dev-server gap noted in
     earlier entries.
+- [x] Fix: a participant's mL across a drink switch was one lumped
+      total, not separated per drink — Owner: fumio65 · Branch:
+      `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-reported: poured everyone the current drink, switched to
+    a different one, and each participant's mL just kept accumulating
+    into one combined number with no way to tell how much came from
+    which drink. The previous entry's `drinkNames` (names only, no
+    amounts) didn't actually fix this. `SessionLog.jsx`: `buildStats`
+    replaced the name-only `Set` with `drinkTotalsByName`, a running mL
+    total keyed by drink name, built the same way `totalMl` always was
+    (`VOLUME_BY_ID[event.volume].approxMl` per POUR) but added to its own
+    drink's bucket instead of one shared pot. Exposed as `stat.drinkTotals`
+    (`[{ name, ml }]`, first-poured order). `ParticipantStatBar.jsx`:
+    renders each drink with its own `~mL`/`L` line (via `formatVolumeMl`);
+    the existing combined `~totalMl` line stays as the grand total below
+    it, now also through `formatVolumeMl`.
+    Verified: hand-traced `buildStats` in an isolated `node` script with
+    two drinks (2× standard pour of "Tanduay" + 1× heavy pour of "Red
+    Horse") — confirmed `drinkTotals` came back as `Tanduay: 120`, `Red
+    Horse: 90` separately, with `totalMl: 210` matching their sum.
+    `node_modules/.bin/rolldown` syntax-checked both changed files
+    cleanly; a full `vite build` succeeded in 10.91s. No live
+    click-through in an actual browser this session — same device-bridge
+    dev-server gap noted in earlier entries.
 - [ ] Multiple pour stations (v2 scalability — architecture TBD, see `tagaybox_spec.md`)
 - [ ] Real browser back/forward support for in-app screens (participants/session/
       history currently switch via local React state only, per EXAMPLES.md's

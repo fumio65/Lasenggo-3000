@@ -19,12 +19,15 @@ function buildStats(participants, events) {
         pass: 0,
         totalMl: 0,
         byVolume: { light: 0, standard: 0, heavy: 0 },
-        // app/drink-session-log: which drinks (by name) this person has
-        // actually poured, in first-poured order. A Set first so repeats
-        // across many pours of the same drink only count once; turned
-        // into an array at the end since that's what ParticipantStatBar
-        // renders.
-        drinkNameSet: new Set(),
+        // app/drink-session-log (fix: switching drinks lumped everyone's
+        // mL into one combined total, with no way to tell how much came
+        // from the drink before a switch vs. the one after): a running
+        // mL total *per drink name* rather than one combined number, in
+        // first-poured order (a plain object preserves insertion order
+        // for string keys, same guarantee a Map would give here). Each
+        // pour's approxMl is added to its own drink's bucket, not to a
+        // single pot every pour shares.
+        drinkTotalsByName: {},
       },
     ]),
   )
@@ -36,14 +39,20 @@ function buildStats(participants, events) {
       row.pass += 1
     } else if (event.type === 'POUR' && row.byVolume[event.volume] !== undefined) {
       row.byVolume[event.volume] += 1
-      row.totalMl += VOLUME_BY_ID[event.volume]?.approxMl ?? 0
-      if (event.drink_name) row.drinkNameSet.add(event.drink_name)
+      const ml = VOLUME_BY_ID[event.volume]?.approxMl ?? 0
+      row.totalMl += ml
+      if (event.drink_name) {
+        row.drinkTotalsByName[event.drink_name] = (row.drinkTotalsByName[event.drink_name] ?? 0) + ml
+      }
     }
   }
 
   return participants.map((p) => {
-    const { drinkNameSet, ...rest } = base[p.id]
-    return { ...rest, drinkNames: [...drinkNameSet] }
+    const { drinkTotalsByName, ...rest } = base[p.id]
+    return {
+      ...rest,
+      drinkTotals: Object.entries(drinkTotalsByName).map(([name, ml]) => ({ name, ml })),
+    }
   })
 }
 

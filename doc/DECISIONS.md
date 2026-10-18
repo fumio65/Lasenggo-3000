@@ -834,3 +834,18 @@ actually drinking, and the session log didn't account for alcohol that
 was current or queued — only completed history. Both gaps come from the
 same root cause: the data already existed (drink_id on every pour; status
 on every drink row) but was never surfaced in the live session's own log.
+
+---
+
+### A participant's mL is split per drink, not lumped into one combined number
+**Decision**: `SessionLog.jsx`'s `buildStats` now keeps a running mL total
+*per drink name* per participant (`drinkTotalsByName`), not a single
+combined total. `ParticipantStatBar` renders each drink the person poured
+with its own `~mL`/`L` line; the single combined `~totalMl` line (now via
+`formatVolumeMl`) stays below it as the grand total across every drink.
+**Why**: User-reported: pouring everyone the current drink, then
+switching to a different one, showed each participant's updated mL as one
+combined number — no way to tell how much came from the drink before the
+switch vs. the one after. This was the previous entry's `drinkNames` list
+(names only, no amounts) not actually solving the problem it was meant
+to — separating *how much*, not just listing *which*.
