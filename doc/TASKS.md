@@ -300,6 +300,40 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
     same roster person (no duplicate created) when starting a session; ran a full
     session (pour + end) with both participants with no console errors from the
     current module version.
+- [x] Drink + mL tracking per session (manual log, not a depletion gauge)
+  - Owner: fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-requested. New `drinks` table (`id`, `session_id`, `name`,
+    `volume_ml`, `started_at`, `synced`) — a brand-new table, so it needed no
+    `columnExists`/`ALTER TABLE` migration, just a `CREATE TABLE IF NOT
+    EXISTS` entry in `db.js`'s `SCHEMA`. One row per "serving period": the
+    first (if a drink was given) is inserted by `createSession`; every later
+    "ran out" tap inserts another row rather than mutating the last one, so
+    the table is a real log, not a single mutable field — "what's being
+    served now" is just the row with the latest `started_at` for that
+    session (`getCurrentDrink`). Decided with the user up front (three
+    questions, all answered with the recommended option):
+    manual log only (no depletion math from pour volumes — pours and drinks
+    are deliberately unrelated data); sync to Supabase and show in session
+    history, not local-only; and the "Now serving" control sits near the top
+    of `ActiveSessionScreen`, just below the session name, not tucked into
+    the "Manage participants" sheet.
+    "Who's joining" gained two optional fields in Session settings — Drink
+    name + mL — same optional convention as session name/pass limit (blank
+    name = nothing logged at all). `ActiveSessionScreen` shows "Now serving:
+    `<drink>` · `<mL>`mL [Switch]" (hidden entirely if drink tracking wasn't
+    used); Switch opens a one-tap "Same drink" button (new bottle/batch,
+    same name+mL, fresh timestamp) alongside a name+mL form for an actual
+    drink change — both just call the same `addDrink`.
+    Synced the same way `participants`/`events` already are: no `device_id`
+    column on `drinks` itself, RLS on the Supabase side scopes by an `EXISTS`
+    subquery joining back to `sessions.device_id` (new Supabase migration
+    `add_drinks_table`, policy copied verbatim from the `participants`/
+    `events` policies). `pull.js` pulls `drinks` alongside `participants`/
+    `events` for any session missing locally, same "only fills in what
+    isn't already here" rule as the rest of that function.
+    `HistoryDetail` gets a new "Drinks" section (hidden if the session never
+    used tracking) — the full log, oldest first, same "show everything, not
+    just latest" idea as the existing Activity log.
 - [x] Split roster names into first/last, block duplicate participants, allow
       editing a name on "Who's joining" before Start session
   - Owner: fumio65 · Branch: `app/participant-first-last-name` · Done: 2026-10-12

@@ -18,11 +18,12 @@ import { getDatabase } from './db'
  * the caller via `findOrCreatePerson`, since that needs its own query per
  * name) rides along in the same INSERT — nullable, so this still works for
  * any participant object that doesn't carry one. */
-export async function createSession(participants, name = '') {
+export async function createSession(participants, name = '', drinkName = '', drinkVolumeMl = null) {
   const db = getDatabase()
   const sessionId = crypto.randomUUID()
   const startedAt = new Date().toISOString()
   const trimmedName = name.trim() || null
+  const trimmedDrinkName = drinkName.trim()
 
   const set = [
     {
@@ -33,6 +34,18 @@ export async function createSession(participants, name = '') {
       statement: 'INSERT INTO participants (id, session_id, name, person_id, synced) VALUES (?, ?, ?, ?, 0)',
       values: [p.id, sessionId, p.name, p.personId ?? null],
     })),
+    // app/drink-tracking: the drink/mL fields on "Who's joining" are
+    // optional (same as session name/pass limit) — only logged at all if
+    // a drink name was actually given.
+    ...(trimmedDrinkName
+      ? [
+          {
+            statement:
+              'INSERT INTO drinks (id, session_id, name, volume_ml, started_at, synced) VALUES (?, ?, ?, ?, ?, 0)',
+            values: [crypto.randomUUID(), sessionId, trimmedDrinkName, drinkVolumeMl ?? null, startedAt],
+          },
+        ]
+      : []),
   ]
 
   await db.executeSet(set, true)
@@ -87,6 +100,47 @@ export async function addSessionParticipant(sessionId, participantId, name, pers
 export async function renameParticipant(participantId, name) {
   const db = getDatabase()
   await db.run('UPDATE participants SET name = ? WHERE id = ?', [name, participantId], false)
+}
+
+/** app/drink-tracking: logs a new "serving period" row — called once at
+ * Start Session (if a drink was given; see createSession) and again every
+ * time someone taps "Same drink" (a fresh bottle/batch of the same thing)
+ * or submits a different drink name/mL after running out. Manual log only
+ * — this never calculates remaining volume from pours, it just records
+ * what was being served and when that changed. Returns the new row's id. */
+export async function addDrink(sessionId, name, volumeMl = null) {
+  const db = getDatabase()
+  const id = crypto.randomUUID()
+  await db.run(
+    'INSERT INTO drinks (id, session_id, name, volume_ml, started_at, synced) VALUES (?, ?, ?, ?, ?, 0)',
+    [id, sessionId, name.trim(), volumeMl ?? null, new Date().toISOString()],
+    false,
+  )
+  return id
+}
+
+/** Whatever's being served *right now* for this session — the most
+ * recently started drink row, or null if none was ever logged (drink
+ * tracking is optional). Backs ActiveSessionScreen's "Now serving" row. */
+export async function getCurrentDrink(sessionId) {
+  const db = getDatabase()
+  const result = await db.query(
+    'SELECT id, name, volume_ml, started_at FROM drinks WHERE session_id = ? ORDER BY started_at DESC LIMIT 1',
+    [sessionId],
+  )
+  return result.values?.[0] ?? null
+}
+
+/** The full drink log for one session, oldest first — backs
+ * `app/history-detail`'s drink-log section, same "show the whole log, not
+ * just the latest" idea as getSessionEvents' Activity log. */
+export async function getSessionDrinks(sessionId) {
+  const db = getDatabase()
+  const result = await db.query(
+    'SELECT id, name, volume_ml, started_at FROM drinks WHERE session_id = ? ORDER BY started_at ASC',
+    [sessionId],
+  )
+  return result.values ?? []
 }
 
 /** Marks a session as ended (used when exiting back to the participant list). */

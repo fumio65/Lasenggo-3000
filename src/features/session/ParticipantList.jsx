@@ -195,6 +195,11 @@ export function ParticipantList({
   }
   const [sessionName, setSessionName] = useState('')
   const [passLimitInput, setPassLimitInput] = useState('')
+  // app/drink-tracking: optional, same as session name/pass limit above —
+  // only turns into a logged drinks row (sessionQueries.createSession) if
+  // a name was actually given.
+  const [drinkName, setDrinkName] = useState('')
+  const [drinkVolumeInput, setDrinkVolumeInput] = useState('')
 
   // app/people-roster: the name field's autocomplete options, sourced from
   // the recurring "people" roster (most-recently-used first - see
@@ -379,7 +384,11 @@ export function ParticipantList({
     // (null), matching useTurnManager's `passLimit` contract.
     const parsedLimit = parseInt(passLimitInput, 10)
     const passLimit = Number.isInteger(parsedLimit) && parsedLimit > 0 ? parsedLimit : null
-    onStartSession(sessionName, passLimit)
+    // app/drink-tracking: same blank/invalid/non-positive -> null contract
+    // as pass limit above.
+    const parsedVolume = parseInt(drinkVolumeInput, 10)
+    const drinkVolumeMl = Number.isInteger(parsedVolume) && parsedVolume > 0 ? parsedVolume : null
+    onStartSession(sessionName, passLimit, drinkName, drinkVolumeMl)
   }
 
   return (
@@ -589,6 +598,38 @@ export function ParticipantList({
               placeholder="No limit"
               className="w-full rounded-xl bg-ink px-4 py-2 text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none focus:ring-2 focus:ring-ember"
             />
+          </div>
+
+          {/* app/drink-tracking: what's being poured tonight — optional,
+              manual log only (no depletion math from pours). Logged once
+              here at Start Session, then the running session can log a
+              change (same drink restocked, or a different one) from the
+              "Now serving" row on ActiveSessionScreen. */}
+          <div className="space-y-1">
+            <label htmlFor="drink-name" className="text-xs text-paper-dim">
+              Drink
+            </label>
+            <div className="flex gap-2">
+              <input
+                id="drink-name"
+                type="text"
+                value={drinkName}
+                onChange={(e) => setDrinkName(e.target.value)}
+                placeholder="e.g. Red Horse"
+                className="flex-1 rounded-xl bg-ink px-4 py-2 text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
+              />
+              <input
+                id="drink-volume"
+                type="number"
+                min="1"
+                inputMode="numeric"
+                value={drinkVolumeInput}
+                onChange={(e) => setDrinkVolumeInput(e.target.value)}
+                placeholder="mL"
+                aria-label="Drink volume in mL"
+                className="w-24 rounded-xl bg-ink px-4 py-2 text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none focus:ring-2 focus:ring-ember"
+              />
+            </div>
           </div>
         </section>
 

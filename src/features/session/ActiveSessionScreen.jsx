@@ -7,7 +7,15 @@ import { usePourVolume } from '../pour/usePourVolume'
 import { BackIcon } from '../../shared/components/BackIcon'
 import { HistoryIcon } from '../../shared/components/HistoryIcon'
 import { PourVolumeSelector } from '../pour/PourVolumeSelector'
-import { logEvent, deleteEvent, getSessionEvents, renameParticipant, addSessionParticipant } from '../storage/sessionQueries'
+import {
+  logEvent,
+  deleteEvent,
+  getSessionEvents,
+  renameParticipant,
+  addSessionParticipant,
+  getCurrentDrink,
+  addDrink,
+} from '../storage/sessionQueries'
 import { findOrCreatePerson } from '../storage/peopleQueries'
 
 /**
@@ -46,6 +54,48 @@ export function ActiveSessionScreen({
   }
 
   useEffect(refreshEvents, [sessionId])
+
+  // app/drink-tracking: manual log only — no depletion math from pours.
+  // `currentDrink` is just "the most recently started row" (see
+  // getCurrentDrink); null if the session was started without one (the
+  // feature is optional). `switching` toggles the inline "same / different
+  // drink" panel below the "Now serving" row.
+  const [currentDrink, setCurrentDrink] = useState(null)
+  const [switching, setSwitching] = useState(false)
+  const [switchName, setSwitchName] = useState('')
+  const [switchVolumeInput, setSwitchVolumeInput] = useState('')
+
+  function refreshCurrentDrink() {
+    if (sessionId) getCurrentDrink(sessionId).then(setCurrentDrink)
+  }
+
+  useEffect(refreshCurrentDrink, [sessionId])
+
+  function handleSwitchSameDrink() {
+    if (!sessionId || !currentDrink) return
+    addDrink(sessionId, currentDrink.name, currentDrink.volume_ml)
+      .then(refreshCurrentDrink)
+      .catch((err) => console.error('Failed to log drink', err))
+    setSwitching(false)
+  }
+
+  function openSwitchDifferentDrink() {
+    setSwitchName('')
+    setSwitchVolumeInput('')
+    setSwitching(true)
+  }
+
+  function handleSwitchSubmit(e) {
+    e.preventDefault()
+    const trimmed = switchName.trim()
+    if (!sessionId || !trimmed) return
+    const parsedVolume = parseInt(switchVolumeInput, 10)
+    const volumeMl = Number.isInteger(parsedVolume) && parsedVolume > 0 ? parsedVolume : null
+    addDrink(sessionId, trimmed, volumeMl)
+      .then(refreshCurrentDrink)
+      .catch((err) => console.error('Failed to log drink', err))
+    setSwitching(false)
+  }
 
   // app/undo-last-action: the event this device most recently logged, kept
   // just long enough to undo it (one level only — cleared once undone or
@@ -347,6 +397,70 @@ export function ActiveSessionScreen({
             <h1 className="max-w-full truncate px-2 text-center font-display text-4xl font-semibold tracking-tight text-paper">
               {sessionName}
             </h1>
+          )}
+
+          {/* app/drink-tracking: "Now serving" sits right below the session
+              name, before the status pill — this is a manual log, not a
+              depletion gauge, so it only ever shows what was last logged
+              and lets you log a change, nothing more. Hidden entirely if
+              drink tracking wasn't used at Start Session (currentDrink
+              stays null). */}
+          {currentDrink && (
+            <div className="w-full max-w-md space-y-2">
+              <div className="flex flex-wrap items-center justify-center gap-2 rounded-full bg-smoke px-4 py-2 text-sm text-paper-dim ring-1 ring-smoke-light">
+                <span className="text-paper">
+                  Now serving: {currentDrink.name}
+                  {currentDrink.volume_ml ? ` · ${currentDrink.volume_ml}mL` : ''}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => (switching ? setSwitching(false) : setSwitching(true))}
+                  className="rounded-full bg-smoke-light px-2.5 py-1 text-xs font-medium text-paper transition hover:bg-ember hover:text-ink active:scale-95"
+                >
+                  Switch
+                </button>
+              </div>
+
+              {switching && (
+                <div className="space-y-2 rounded-2xl bg-smoke/60 p-3 ring-1 ring-smoke-light">
+                  <p className="px-1 text-xs text-paper-dim">Ran out? Log what's next.</p>
+                  <button
+                    type="button"
+                    onClick={handleSwitchSameDrink}
+                    className="w-full rounded-xl px-4 py-2 text-sm font-medium text-paper ring-1 ring-smoke-light transition hover:bg-smoke-light active:scale-95"
+                  >
+                    Same drink{currentDrink.volume_ml ? ` · ${currentDrink.volume_ml}mL` : ''} (new bottle)
+                  </button>
+                  <form onSubmit={handleSwitchSubmit} className="flex gap-2">
+                    <input
+                      type="text"
+                      value={switchName}
+                      onChange={(e) => setSwitchName(e.target.value)}
+                      placeholder="Different drink"
+                      aria-label="Different drink name"
+                      className="flex-1 rounded-xl bg-ink px-3 py-2 text-sm text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
+                    />
+                    <input
+                      type="number"
+                      min="1"
+                      inputMode="numeric"
+                      value={switchVolumeInput}
+                      onChange={(e) => setSwitchVolumeInput(e.target.value)}
+                      placeholder="mL"
+                      aria-label="Different drink volume in mL"
+                      className="w-20 rounded-xl bg-ink px-3 py-2 text-sm text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none focus:ring-2 focus:ring-ember"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!switchName.trim()}
+                      className="rounded-xl bg-ember px-3 py-2 text-sm font-semibold text-ink transition active:scale-95 disabled:opacity-30"
+                    >
+                      Log
+                    </button>
+                  </form>
+                </div>
+              )}
+            </div>
           )}
 
           {/* app/simulate-pour: no ESP32 to report a real STATUS yet

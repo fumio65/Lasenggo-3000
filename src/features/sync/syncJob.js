@@ -39,9 +39,10 @@ export async function runSync() {
     const sessionsPushed = await syncSessions(db, deviceId)
     const participantsPushed = await syncParticipants(db)
     const eventsPushed = await syncEvents(db)
+    const drinksPushed = await syncDrinks(db)
     return {
       ok: true,
-      pushed: { peoplePushed, sessionsPushed, participantsPushed, eventsPushed },
+      pushed: { peoplePushed, sessionsPushed, participantsPushed, eventsPushed, drinksPushed },
     }
   } catch (err) {
     if (isNetworkError(err)) {
@@ -179,3 +180,35 @@ async function syncEvents(db) {
   )
   return rows.length
 }
+
+/** app/drink-tracking: pushes unsynced `drinks` rows — same shape as
+ * `syncEvents` above (no `device_id` column on this table either; RLS on
+ * the Supabase side scopes by joining back to `sessions.device_id`, same
+ * as `participants`/`events`). */
+async function syncDrinks(db) {
+  const result = await db.query(
+    'SELECT id, session_id, name, volume_ml, started_at FROM drinks WHERE synced = 0',
+  )
+  const rows = result.values ?? []
+  if (rows.length === 0) return 0
+
+  const payload = rows.map((r) => ({
+    id: r.id,
+    session_id: r.session_id,
+    name: r.name,
+    volume_ml: r.volume_ml,
+    started_at: r.started_at,
+  }))
+  const { error } = await supabase.from('drinks').upsert(payload)
+  if (error) throw error
+
+  await db.executeSet(
+    rows.map((r) => ({
+      statement: 'UPDATE drinks SET synced = 1 WHERE id = ?',
+      values: [r.id],
+    })),
+    false,
+  )
+  return rows.length
+}
+

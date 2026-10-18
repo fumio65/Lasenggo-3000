@@ -63,7 +63,7 @@ function buildPausedAtEnd(events) {
  * capped recent slice, since there's nothing new to scroll to here).
  */
 export function HistoryDetail({ sessionId, onBack }) {
-  const { detail, events, loading } = useSessionDetail(sessionId)
+  const { detail, events, drinks, loading } = useSessionDetail(sessionId)
 
   const pausedAtEnd = buildPausedAtEnd(events)
   const stats = detail?.participants.map(toStat) ?? []
@@ -134,6 +134,27 @@ export function HistoryDetail({ sessionId, onBack }) {
               </ScrollFadeBox>
               <VolumeLegend />
             </section>
+
+            {/* app/drink-tracking: manual log, oldest first — what was served
+                and when it changed, same "show the full log" idea as the
+                Activity log below. Hidden entirely for a session that
+                never used drink tracking. */}
+            {drinks.length > 0 && (
+              <section className="rounded-2xl bg-smoke/60 p-4 ring-1 ring-smoke-light">
+                <h2 className="font-display text-xs font-semibold text-paper-dim">Drinks</h2>
+                <ul className="mt-2 space-y-1.5">
+                  {drinks.map((drink) => (
+                    <li key={drink.id} className="flex items-baseline justify-between gap-3 text-sm">
+                      <span className="text-paper">
+                        {drink.name}
+                        {drink.volume_ml ? ` · ${drink.volume_ml}mL` : ''}
+                      </span>
+                      <span className="shrink-0 text-xs text-paper-dim">{formatDate(drink.started_at)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
 
             <section className="rounded-2xl bg-smoke/60 p-4 ring-1 ring-smoke-light">
               <h2 className="font-display text-xs font-semibold text-paper-dim">Activity log</h2>

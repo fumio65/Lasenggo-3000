@@ -125,7 +125,7 @@ function App() {
   // have touched the roster at all; this is the one point where the list
   // is actually committed to, so it's the right point to commit to the
   // roster too.
-  async function handleStartSession(name, sessionPassLimit) {
+  async function handleStartSession(name, sessionPassLimit, drinkName = '', drinkVolumeMl = null) {
     setStarting(true)
     try {
       const resolvedParticipants = await Promise.all(
@@ -140,7 +140,7 @@ function App() {
           }
         }),
       )
-      const id = await createSession(resolvedParticipants, name)
+      const id = await createSession(resolvedParticipants, name, drinkName, drinkVolumeMl)
       setSessionId(id)
       setSessionName(name.trim())
       setPassLimit(sessionPassLimit)
