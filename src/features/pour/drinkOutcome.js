@@ -40,11 +40,12 @@ export function leftMlFor(outcome, pouredMl, fraction = 0) {
 }
 
 /** Short past-tense phrase for one pour's outcome, for the activity feed.
+ * Tapon isn't phrased here: the feed shows it as its own tag instead of
+ * appending it to an already long line that gets cut off.
  * Partial pours name the closest LEFT_AMOUNTS bucket rather than a raw mL
  * figure, since the mL is itself an estimate. */
 export function describeOutcome(event) {
   if (event.outcome === 'finished') return 'finished'
-  if (event.outcome === 'tapon') return 'tapon'
   if (event.outcome === 'partial') {
     const poured = approxMlForVolume(event.volume)
     const fraction = poured > 0 ? (event.left_ml ?? 0) / poured : 0
@@ -77,6 +78,9 @@ export function summarizeOutcomes(events) {
         unconfirmed: 0,
         partial: 0,
         tapon: 0,
+        // Tapon count per pour size, so the stat bar can carve tapon pours
+        // out of their Light/Standard/Heavy segment into a Tapon segment.
+        taponByVolume: { light: 0, standard: 0, heavy: 0 },
       })
     if (!event.outcome) {
       row.unconfirmed += 1
@@ -88,7 +92,10 @@ export function summarizeOutcomes(events) {
     row.confirmedPouredMl += poured
     row.drankMl += poured - left
     if (event.outcome === 'partial') row.partial += 1
-    if (event.outcome === 'tapon') row.tapon += 1
+    if (event.outcome === 'tapon') {
+      row.tapon += 1
+      if (row.taponByVolume[event.volume] !== undefined) row.taponByVolume[event.volume] += 1
+    }
   }
   return byParticipant
 }

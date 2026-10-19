@@ -10,6 +10,10 @@ export const VOLUME_BY_ID = Object.fromEntries(POUR_VOLUMES.map((v) => [v.id, v]
 // different amount, and were too hard to tell apart at a glance.
 export const VOLUME_COLOR = { light: 'bg-pour-light', standard: 'bg-ember', heavy: 'bg-pour-heavy' }
 export const PASS_COLOR = 'bg-smoke-light'
+// app/drink-outcome: tapon pours get their own segment/chip, in the app's
+// warning red (lighter variant so it reads apart from Heavy's red-orange).
+export const TAPON_COLOR = 'bg-maroon-dim'
+const NO_TAPON = { light: 0, standard: 0, heavy: 0 }
 
 /**
  * One participant's pour/pass composition as a stacked bar — how many
@@ -44,9 +48,22 @@ export function ParticipantStatBar({ stat, maxActions, isCurrent = false, isPaus
   const widthPct =
     maxActions > 0 ? Math.max((actionTotal / maxActions) * 100, actionTotal > 0 ? 6 : 0) : 0
 
-  // Which volumes this participant actually poured, in the same
-  // light→heavy order as the bar segments below and the shared legend.
-  const pouredVolumes = POUR_VOLUMES.filter((v) => stat.byVolume[v.id] > 0)
+  // app/drink-outcome: tapon pours move out of their Light/Standard/Heavy
+  // segment into a Tapon segment, so the bar shows what was thrown out at
+  // a glance instead of in a line of text. Every pour still counts toward
+  // the bar's length; only its color changes.
+  const taponByVolume = stat.outcome?.taponByVolume ?? NO_TAPON
+  const taponTotal = taponByVolume.light + taponByVolume.standard + taponByVolume.heavy
+  const keptByVolume = {
+    light: stat.byVolume.light - taponByVolume.light,
+    standard: stat.byVolume.standard - taponByVolume.standard,
+    heavy: stat.byVolume.heavy - taponByVolume.heavy,
+  }
+
+  // Which volumes this participant actually poured (and didn't throw
+  // out), in the same light→heavy order as the bar segments below and the
+  // shared legend.
+  const pouredVolumes = POUR_VOLUMES.filter((v) => keptByVolume[v.id] > 0)
 
   return (
     <li className={isPaused ? 'opacity-50' : ''}>
@@ -182,18 +199,24 @@ export function ParticipantStatBar({ stat, maxActions, isCurrent = false, isPaus
           the full word is still one hover/tap away via each chip's title,
           same as the bar segments always had. */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-paper-dim">
-        {pouredVolumes.length > 0 && (
+        {(pouredVolumes.length > 0 || taponTotal > 0) && (
           <span className="flex items-center gap-2.5">
             {pouredVolumes.map((v) => (
               <span
                 key={v.id}
-                title={`${v.label}: ${stat.byVolume[v.id]}`}
+                title={`${v.label}: ${keptByVolume[v.id]}`}
                 className="flex items-center gap-1.5 tabular-nums"
               >
                 <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${VOLUME_COLOR[v.id]}`} />
-                {stat.byVolume[v.id]}
+                {keptByVolume[v.id]}
               </span>
             ))}
+            {taponTotal > 0 && (
+              <span title={`Tapon: ${taponTotal}`} className="flex items-center gap-1.5 tabular-nums">
+                <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${TAPON_COLOR}`} />
+                {taponTotal}
+              </span>
+            )}
           </span>
         )}
         <span>
@@ -213,10 +236,6 @@ export function ParticipantStatBar({ stat, maxActions, isCurrent = false, isPaus
         <p className="text-xs text-paper-dim">
           Drank ~{formatVolumeMl(stat.outcome.drankMl)}
           <span className="text-paper-dim/70"> of ~{formatVolumeMl(stat.outcome.confirmedPouredMl)}</span>
-          {stat.outcome.partial > 0 && <span> · left some {stat.outcome.partial}×</span>}
-          {stat.outcome.tapon > 0 && (
-            <span className="text-maroon-dim"> · tapon {stat.outcome.tapon}×</span>
-          )}
           {stat.outcome.unconfirmed > 0 && (
             <span className="text-paper-dim/70"> · {stat.outcome.unconfirmed} not confirmed</span>
           )}
@@ -228,14 +247,21 @@ export function ParticipantStatBar({ stat, maxActions, isCurrent = false, isPaus
           style={{ width: `${widthPct}%` }}
         >
           {POUR_VOLUMES.map((v) =>
-            stat.byVolume[v.id] > 0 ? (
+            keptByVolume[v.id] > 0 ? (
               <div
                 key={v.id}
                 className={`h-full ${VOLUME_COLOR[v.id]}`}
-                style={{ width: `${(stat.byVolume[v.id] / actionTotal) * 100}%` }}
-                title={`${v.label}: ${stat.byVolume[v.id]}`}
+                style={{ width: `${(keptByVolume[v.id] / actionTotal) * 100}%` }}
+                title={`${v.label}: ${keptByVolume[v.id]}`}
               />
             ) : null,
+          )}
+          {taponTotal > 0 && (
+            <div
+              className={`h-full ${TAPON_COLOR}`}
+              style={{ width: `${(taponTotal / actionTotal) * 100}%` }}
+              title={`Tapon: ${taponTotal}`}
+            />
           )}
           {stat.pass > 0 && (
             <div
@@ -265,6 +291,9 @@ export function VolumeLegend() {
       </span>
       <span className="flex items-center gap-1">
         <span className="h-1.5 w-1.5 rounded-full bg-pour-light" /> Light
+      </span>
+      <span className="flex items-center gap-1">
+        <span className="h-1.5 w-1.5 rounded-full bg-maroon-dim" /> Tapon
       </span>
       <span className="flex items-center gap-1">
         <span className="h-1.5 w-1.5 rounded-full bg-smoke-light" /> Pass

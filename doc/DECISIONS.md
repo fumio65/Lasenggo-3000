@@ -1976,3 +1976,25 @@ Tapon button. Same dialog shape as History's delete confirm (backdrop tap
 cancels). It only renders while a pour is pending, so Undo, which clears
 the pending pour, also closes it. Verified with a syntax check, `vite
 build` (dialog text present in the bundle), and `npx cap sync android`.
+
+### Follow-up: tapon shown in the graph and as an activity tag
+User: tapon "doesn't look good" as text in the Session log, wanted it in
+the graph instead, and "tapon didn't even log at 'Activity log'".
+
+The Activity log bug: the outcome *was* saved and fetched, but it was
+appended to the end of the pour's text ("poured (Standard) · Gin ·
+tapon"), and that span truncates in the narrow session panel, so the
+word was cut off. Fixed by showing tapon as its own small "TAPON" tag
+outside the truncating text (plus a red dot instead of ember for that
+row). `describeOutcome` no longer phrases tapon at all.
+
+Graph: `ParticipantStatBar` now carves tapon pours out of their
+Light/Standard/Heavy segment into a Tapon segment (`TAPON_COLOR`,
+`bg-maroon-dim`), with a matching count chip, and the shared legend gained
+a Tapon entry. Every pour still counts toward the bar's length; only the
+color changes. `summarizeOutcomes` tracks `taponByVolume` to make that
+split. The "Drank ~X of ~Y" text line keeps only drunk/poured and "not
+confirmed"; the "tapon N×" and "left some N×" text was removed.
+
+Verified: syntax checks, node test of the per-size tapon split and the
+resulting bar segments, `vite build`, `npx cap sync android`.

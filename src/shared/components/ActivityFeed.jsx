@@ -44,7 +44,9 @@ export function ActivityFeed({
               <span
                 aria-hidden="true"
                 className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                  event.type === 'POUR'
+                  event.type === 'POUR' && event.outcome === 'tapon'
+                    ? 'bg-maroon-dim'
+                    : event.type === 'POUR'
                     ? 'bg-ember'
                     : event.type === 'PAUSE'
                       ? 'bg-maroon-dim'
@@ -72,6 +74,14 @@ export function ActivityFeed({
                   {event.type === 'RESUME' && 'resumed'}
                 </span>
               </span>
+              {/* app/drink-outcome: tapon gets its own tag outside the
+                  truncating text above, so it can't be cut off on a long
+                  "poured (Standard) · Gin" line. */}
+              {event.type === 'POUR' && event.outcome === 'tapon' && (
+                <span className="shrink-0 rounded-full bg-maroon/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-maroon-dim ring-1 ring-maroon/40">
+                  Tapon
+                </span>
+              )}
               <span className="shrink-0 text-xs text-paper-dim/70">
                 {formatClockTime(event.timestamp)}
               </span>
