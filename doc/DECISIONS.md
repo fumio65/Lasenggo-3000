@@ -2030,3 +2030,40 @@ row's width. Applies to the live session and History (shared
 app's compiled CSS (Playwright screenshot): before, four of five sample
 rows were cut off; after, all text is visible and wraps to two lines where
 needed.
+
+## Turn timer: clock ticking, and timeouts logged to the Activity log
+User: when the mid-session timer is on, "sound like the time is clocking",
+and when time's up, "log it on 'Activity log' to the current turn".
+
+**Ticking**: `playTick` in `src/shared/playBuzzer.js` plays one short
+synthesized click per second (Web Audio, no audio file, offline-safe like
+the buzzer). It alternates a higher tick and a lower tock so it reads as
+a clock, and gets higher and louder for the last 5 seconds to build
+tension; it's quieter than the buzzer so the buzzer still stands out. It
+skips 0, where the buzzer plays as before. `primeAudio()` is called from
+the timer duration buttons: Android's WebView keeps audio suspended until
+a user gesture, and the ticks fire from a timer rather than a tap, so the
+tap that turns the timer on is used to unlock sound.
+
+**Timeout log**: when the timer runs out, a new `TIMEOUT` event is logged
+for whoever's turn it is (note = the duration, e.g. "30s"). It shows in
+the Activity log as "<name> ran out of time (30s)" with a red TIME'S UP
+tag. It doesn't change the turn and isn't undoable: the timer stays a
+soft signal, same as before. It logs once per expiry because
+`useTurnTimer` only flips `expired` once per turn; current person and
+duration are read through refs so the effect depends only on the expiry.
+Stats, outcome math and History counts only look at POUR/PASS, so
+TIMEOUT rows don't affect them. If the timer runs out while someone is
+still drinking (outcome pending), it's logged against them, which is
+what "taking too long" means there.
+
+**Supabase**: the `events.type` CHECK only allowed POUR/PASS/PAUSE/
+RESUME, and sync pushes events in one batch, so one TIMEOUT row would
+have failed the whole push. Applied migration `allow_timeout_event_type`
+widening the CHECK to include TIMEOUT (verified the new definition
+afterwards). Local SQLite has no CHECK on type. ARCHITECTURE.md updated.
+
+Verified: syntax checks, `vite build` (strings present in bundle),
+`npx cap sync android`. Not verified: how the ticks sound on a real
+phone speaker and whether Android's WebView honors the gesture unlock;
+both need a device.

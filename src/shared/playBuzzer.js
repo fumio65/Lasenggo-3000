@@ -41,6 +41,40 @@ function beep(ctx, startTime, durationSeconds, frequencyHz) {
   oscillator.stop(startTime + durationSeconds)
 }
 
+/** app/turn-timer (ticking): one short clock tick per second while the
+ * turn timer runs. Alternates a higher "tick" and lower "tock" so it reads
+ * as a clock rather than a metronome beep. `urgent` (the last 5 seconds)
+ * makes it higher and louder to build tension before the buzzer. A sine
+ * wave with a very short decay sounds like a click, not a tone, and stays
+ * quieter than the buzzer so the buzzer still stands out. */
+export function playTick(isTock = false, urgent = false) {
+  const ctx = getAudioContext()
+  if (!ctx) return
+  ctx.resume().catch(() => {})
+  const now = ctx.currentTime
+  const oscillator = ctx.createOscillator()
+  const gain = ctx.createGain()
+  oscillator.type = 'sine'
+  oscillator.frequency.value = urgent ? (isTock ? 1500 : 1800) : isTock ? 900 : 1200
+  const peak = urgent ? 0.22 : 0.12
+  gain.gain.setValueAtTime(0, now)
+  gain.gain.linearRampToValueAtTime(peak, now + 0.004)
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.06)
+  oscillator.connect(gain)
+  gain.connect(ctx.destination)
+  oscillator.start(now)
+  oscillator.stop(now + 0.07)
+}
+
+/** Creates/resumes the shared AudioContext from inside a tap. Android's
+ * WebView (and mobile browsers) keep audio suspended until a user gesture,
+ * and the ticks themselves fire from a timer, not a tap. Calling this when
+ * the person picks a timer duration unlocks sound for the ticks after it. */
+export function primeAudio() {
+  const ctx = getAudioContext()
+  if (ctx) ctx.resume().catch(() => {})
+}
+
 /** Plays the two-beep buzzer. Silently does nothing if the Web Audio API
  * isn't available at all (very old/unusual browsers) — a missed sound
  * cue is a minor degradation, not worth a visible error for. */

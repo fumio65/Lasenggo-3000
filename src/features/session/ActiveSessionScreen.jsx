@@ -12,7 +12,7 @@ import { TrashIcon } from '../../shared/components/TrashIcon'
 import { SwitchIcon } from '../../shared/components/SwitchIcon'
 import { TimerIcon } from '../../shared/components/TimerIcon'
 import { PourVolumeSelector } from '../pour/PourVolumeSelector'
-import { playBuzzer } from '../../shared/playBuzzer'
+import { playBuzzer, playTick, primeAudio } from '../../shared/playBuzzer'
 import {
   logEvent,
   deleteEvent,
@@ -631,8 +631,33 @@ export function ActiveSessionScreen({
   // `timerExpired` stays true — `useTurnTimer` only flips `expired` to
   // true once per turn, so a plain effect on it already has that
   // guarantee without needing its own extra ref/flag here.
+  // app/turn-timer (ticking): a clock tick every second while the timer
+  // runs, alternating tick/tock, higher and louder for the last 5 seconds.
+  // Skips 0, where the buzzer plays instead.
+  const timerTargetRef = useRef(current)
+  timerTargetRef.current = current
+  const timerSecondsRef = useRef(timerSeconds)
+  timerSecondsRef.current = timerSeconds
   useEffect(() => {
-    if (timerExpired) playBuzzer()
+    if (timerSeconds == null || timerSecondsLeft == null || timerSecondsLeft <= 0) return
+    playTick(timerSecondsLeft % 2 === 1, timerSecondsLeft <= 5)
+  }, [timerSecondsLeft, timerSeconds])
+
+  useEffect(() => {
+    if (!timerExpired) return
+    playBuzzer()
+    // app/turn-timer (timeout log): record in the Activity log that this
+    // person's time ran out. Once per expiry: `expired` only flips true
+    // once per turn (see useTurnTimer). Read through refs so this effect
+    // only depends on the expiry itself. Not undoable and doesn't touch
+    // the turn: the timer stays a soft signal.
+    const who = timerTargetRef.current
+    const seconds = timerSecondsRef.current
+    if (sessionId && who) {
+      logEvent(sessionId, who.id, 'TIMEOUT', null, seconds != null ? `${seconds}s` : null)
+        .then(refreshEvents)
+        .catch((err) => console.error('Failed to log timeout event', err))
+    }
   }, [timerExpired])
 
   // app/simulate-pour: stands in for the real BLE round-trip (send POUR
@@ -1389,6 +1414,7 @@ export function ActiveSessionScreen({
                     key={s}
                     type="button"
                     onClick={() => {
+                      primeAudio()
                       setTimerSeconds(s)
                       setTimerPickerOpen(false)
                     }}

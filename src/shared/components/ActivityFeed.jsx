@@ -21,6 +21,7 @@ const TAG_STYLES = {
   heavy: 'bg-pour-heavy/20 text-pour-heavy ring-pour-heavy/40',
   tapon: 'bg-maroon/20 text-maroon-dim ring-maroon/40',
   pass: 'bg-smoke-light/60 text-paper-dim ring-smoke-light',
+  timeout: 'bg-maroon/20 text-maroon-dim ring-maroon/40',
 }
 
 const DOT_STYLES = {
@@ -29,10 +30,13 @@ const DOT_STYLES = {
   heavy: 'bg-pour-heavy',
   tapon: 'bg-maroon-dim',
   pass: 'bg-paper-dim/50',
+  timeout: 'bg-maroon-dim',
 }
 
 function tagFor(event) {
   if (event.type === 'PASS') return { key: 'pass', label: 'Pass' }
+  // app/turn-timer: logged when the turn timer runs out on someone.
+  if (event.type === 'TIMEOUT') return { key: 'timeout', label: "Time's up" }
   if (event.type !== 'POUR') return null
   if (event.outcome === 'tapon') return { key: 'tapon', label: 'Tapon' }
   const volume = VOLUME_BY_ID[event.volume]
@@ -53,6 +57,7 @@ function describe(event) {
   if (event.type === 'PASS') return 'passed'
   if (event.type === 'PAUSE') return `paused${event.note ? ` (${event.note})` : ''}`
   if (event.type === 'RESUME') return 'resumed'
+  if (event.type === 'TIMEOUT') return `ran out of time${event.note ? ` (${event.note})` : ''}`
   return ''
 }
 

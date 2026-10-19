@@ -107,7 +107,8 @@ events (
   id uuid primary key,
   session_id uuid references sessions(id),
   participant_id uuid references participants(id),
-  type text,                 -- 'POUR' | 'PASS' | 'PAUSE' | 'RESUME'
+  type text,                 -- 'POUR' | 'PASS' | 'PAUSE' | 'RESUME' | 'TIMEOUT'
+                               -- (TIMEOUT: turn timer ran out; note = '30s')
   volume text,                -- 'light' | 'standard' | 'heavy', POUR only, else null
   note text,                  -- pause reason (Drunk/Went home/Run away/Emergency/
                                -- Other), PAUSE only, else null
