@@ -117,7 +117,7 @@ export function HistoryList({ onBack, onSelect }) {
                         subline underneath it instead of disappearing. */}
                     {s.name && (
                       <span className="flex items-center gap-1.5 text-paper">
-                        <PartyIcon className="h-4 w-4 shrink-0 text-paper-dim" />
+                        <PartyIcon className="h-5 w-5 shrink-0 text-paper-dim" />
                         <span className="truncate">{s.name}</span>
                       </span>
                     )}

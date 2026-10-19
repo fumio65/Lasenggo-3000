@@ -1351,3 +1351,12 @@ matching how sessions actually get named in practice). Replaced
 Verified: rolldound syntax check on all touched/new/removed files, full
 `vite build`, grepped for stray `SparkleIcon` references (only the
 removal note in PartyIcon's own comment).
+
+## History list: party icon sizing (concept was already right)
+User: "change again" — asked what specifically was wrong this time
+rather than swapping the icon blind again. Answer: not the concept, not
+rendering — just "too small / hard to see". Bumped `PartyIcon` from
+`h-4 w-4` to `h-5 w-5`, keeping CalendarIcon/HistoryIcon/PeopleIcon at
+their existing sizes since those weren't flagged.
+
+Verified: rolldown syntax check, full `vite build`.
