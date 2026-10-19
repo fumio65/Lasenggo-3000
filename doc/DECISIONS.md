@@ -2249,3 +2249,60 @@ offline): start screen after the splash with Connect disabled and
 screen; the session pill reads "Manual · no device"; Pour reaches the
 Finished/Tapon step in ~100ms; History list and detail show the MANUAL
 badge; the start screen shows again after a reload; no page errors.
+
+## Start screen: big connect circle with a real Bluetooth search
+User proposed replacing the plain "Connect" option with a big circle made
+of the app's six-dot mark: tapping it turns on Bluetooth, the dots animate
+while pairing (like the splash) until it connects. Agreed: it reuses the
+brand mark, and a looping animation is right here because the app really
+is waiting on the device (the opposite of the splash, where a loop read
+as a loading screen and was removed).
+
+User chose a **real Bluetooth search** over an animation-only placeholder.
+So this is the first slice of app/ble-connect:
+- Added `@capacitor-community/bluetooth-le` ^8.3.0 (Capacitor 8 peer).
+  `npx cap sync` now lists it as the third Android plugin.
+- AndroidManifest: per the plugin README, location permissions capped at
+  maxSdkVersion 30 and BLUETOOTH_SCAN with `neverForLocation`, plus
+  `androidNeverForLocation: true` at init, so Android 12+ doesn't ask for
+  location just to find the device. (The plugin's own manifest adds
+  BLUETOOTH/BLUETOOTH_ADMIN ≤30, BLUETOOTH_CONNECT and the optional BLE
+  feature.)
+- `src/features/ble/connectDevice.js`: initialize; on Android, prompt to
+  turn Bluetooth on if it's off; scan for the advertised name
+  `Lasenggo3000` (ARCHITECTURE.md) for up to 12s; connect. In a browser,
+  Web Bluetooth shows its own picker instead of a silent scan. Failures
+  are typed: unsupported, bluetooth-off, permission, not-found,
+  connect-failed, cancelled. `cancelSearch()` stops a scan;
+  `disconnectDevice()` is used when switching modes.
+- No GATT work yet: POUR/TARE/STOP and STATUS need the firmware's
+  service/characteristic UUIDs, which don't exist. In device mode Pour is
+  still the simulated 900ms stand-in. Until the ESP32 exists, every
+  search ends in "Couldn't find Lasenggo 3000", which is the honest
+  result; the same code finds it once it advertises.
+
+**Circle states** (`data-state` on the wrapper drives the CSS in
+index.css): idle (dim dots, ring breathing, "Tap to connect"); searching
+(dots light one after another on a loop, "Looking for Lasenggo 3000…",
+tap again or Cancel to stop); connected (all dots lit, the glass fills,
+"Connected", then continues to participants in device mode after ~1.1s);
+failed (dots dimmer, red title, a plain reason per error code, tap to
+retry). The message area has a fixed min height so the circle doesn't
+jump between states. "Use without the device" stays underneath as a
+smaller option and also cancels a search in progress.
+
+**App wiring**: connecting sets mode 'hardware' and keeps the device id;
+if the device disconnects, mode falls back to 'manual' for what comes
+next (a session already started keeps its label). Change on the
+participants screen disconnects and returns to the start screen. Device
+mode's session pill now reads "Lasenggo 3000 connected".
+
+Verified in the real built app (headless Chromium, 360px) with a fake
+Web Bluetooth adapter injected before load, three cases: found (idle ->
+searching with the dot loop running -> asks only for a device named
+Lasenggo3000 -> Connected -> participants in device mode -> History
+marks the session LASENGGO 3000), not found ("Couldn't find", tap
+retries, manual still works mid-search), and no Bluetooth ("isn't
+available here"); 14/14 checks, no page errors. Not verified: an actual
+Android build/permission flow and a real scan; this environment has no
+Android SDK or Bluetooth radio, and there's no device to find yet.

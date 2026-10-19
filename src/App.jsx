@@ -6,6 +6,7 @@ import { HistoryScreen } from './features/history/HistoryScreen'
 import { PeopleScreen } from './features/session/PeopleScreen'
 import { DrinksScreen } from './features/session/DrinksScreen'
 import { StartScreen } from './features/session/StartScreen'
+import { disconnectDevice } from './features/ble/connectDevice'
 import { useParticipants } from './features/session/useParticipants'
 import { initDatabase } from './features/storage/db'
 import { createSession, endSession, resumeSession, getSessionForResume } from './features/storage/sessionQueries'
@@ -28,6 +29,10 @@ function App() {
   // app/session-mode: null until picked on StartScreen, which shows every
   // time the app opens. 'manual' today; 'hardware' once Bluetooth exists.
   const [mode, setMode] = useState(null)
+  // app/ble-connect: the connected device's id while in 'hardware' mode.
+  // If the device drops, the app falls back to manual for whatever comes
+  // next (agreed behavior); a session already started keeps its label.
+  const [bleDeviceId, setBleDeviceId] = useState(null)
 
   // UX fix: screen switches are local-state only (no router/page nav — see
   // doc/TASKS.md's Backlog "Real browser back/forward support" for the
@@ -248,6 +253,15 @@ function App() {
             setMode('manual')
             setScreen('participants')
           }}
+          onConnected={(deviceId) => {
+            setBleDeviceId(deviceId)
+            setMode('hardware')
+            setScreen('participants')
+          }}
+          onDeviceDisconnected={() => {
+            setBleDeviceId(null)
+            setMode((m) => (m === 'hardware' ? 'manual' : m))
+          }}
         />
       )}
       {/* UX fix: Session History used to be reachable only from the
@@ -305,7 +319,11 @@ function App() {
           onViewPeople={() => setScreen('people')}
           onViewDrinks={() => setScreen('drinks')}
           mode={mode}
-          onChangeMode={() => setMode(null)}
+          onChangeMode={() => {
+            disconnectDevice(bleDeviceId)
+            setBleDeviceId(null)
+            setMode(null)
+          }}
         />
       )}
       <div className="fixed bottom-2 right-2 flex flex-col items-end gap-1 text-[10px]">

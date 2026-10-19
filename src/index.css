@@ -196,3 +196,58 @@
     animation-delay: 0s !important;
   }
 }
+
+/* app/ble-connect: the start screen's connect circle (StartScreen.jsx).
+   The wrapper's data-state drives everything:
+   - idle: dots dim, a slow breathing glow on the ring invites a tap;
+   - searching: dots light up one after another around the ring on a loop.
+     Looping is right here (unlike the splash): the app really is waiting
+     on the device;
+   - connected: every dot lit and the glass fills, the splash's last frame;
+   - failed: dots dim further until the next try. */
+.connect-dot {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0.35;
+  transform: scale(0.85);
+  transition: opacity 300ms ease, transform 300ms ease;
+}
+[data-state='searching'] .connect-dot {
+  animation: connect-dot-search 1.4s ease-in-out infinite;
+}
+[data-state='connected'] .connect-dot {
+  opacity: 1;
+  transform: scale(1);
+}
+[data-state='failed'] .connect-dot {
+  opacity: 0.2;
+}
+.connect-ring {
+  opacity: 0.25;
+  transition: opacity 400ms ease;
+}
+[data-state='idle'] .connect-ring {
+  animation: connect-ring-breathe 2.8s ease-in-out infinite;
+}
+[data-state='searching'] .connect-ring,
+[data-state='connected'] .connect-ring {
+  opacity: 0.55;
+}
+.connect-liquid {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  transform: scaleY(0);
+  transition: transform 700ms cubic-bezier(0.33, 0, 0.2, 1) 150ms;
+}
+[data-state='connected'] .connect-liquid {
+  transform: scaleY(1);
+}
+@keyframes connect-dot-search {
+  0%, 100% { opacity: 0.25; transform: scale(0.8); }
+  15% { opacity: 1; transform: scale(1.12); }
+  40% { opacity: 0.4; transform: scale(0.9); }
+}
+@keyframes connect-ring-breathe {
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 0.45; }
+}

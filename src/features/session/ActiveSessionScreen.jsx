@@ -1432,7 +1432,7 @@ export function ActiveSessionScreen({
                 ? `${pendingPour.participant.name} is drinking`
                 : mode === 'manual'
                   ? 'Manual · no device'
-                  : 'Simulated — no hardware connected'}
+                  : 'Lasenggo 3000 connected'}
           </div>
 
           <TurnRing participants={participants} currentIndex={currentIndex} current={current} pausedIds={pausedIds} />

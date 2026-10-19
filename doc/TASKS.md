@@ -1485,6 +1485,9 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
       3000 marked "coming soon" until Bluetooth exists; Use without the
       device = manual mode), sessions.mode stored + synced, Manual /
       Lasenggo 3000 badge in History — see DECISIONS.md.
-- [ ] app/ble-connect follow-up: enable the start screen's Connect option,
-      create 'hardware' sessions, and fall back to manual mode for the
-      rest of a session if the device disconnects.
+- [~] app/ble-connect: start screen connect circle does a real Bluetooth
+      search + connect for "Lasenggo3000" (bluetooth-le plugin, Android
+      permissions), creates 'hardware' sessions, falls back to manual on
+      disconnect. Remaining: test on a real phone with the ESP32, and GATT
+      commands/status (app/ble-commands, app/ble-status-subscription) once
+      the firmware defines its UUIDs; Pour is still simulated in device mode.
