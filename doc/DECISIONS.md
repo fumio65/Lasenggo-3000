@@ -1963,3 +1963,16 @@ meantime a pour is simply marked Finished or Tapon.
 Verified: syntax check, node test of the outcome math (still passing,
 including phrasing a measured partial), `vite build` with the picker's
 text confirmed gone from the bundle, `npx cap sync android`.
+
+### Follow-up: confirm before Tapon
+User asked for a warning dialog on the outcome step and chose Tapon only
+(over Finished, or both). Tapon sits right next to Finished and marks the
+drink as thrown out in that person's stats and History, so a stray tap is
+costly; Finished is the common case and stays one tap.
+
+Tapping Tapon now opens a confirm dialog ("Mark this drink as tapon?",
+naming the person, the pour size and the drink) with Cancel and a maroon
+Tapon button. Same dialog shape as History's delete confirm (backdrop tap
+cancels). It only renders while a pour is pending, so Undo, which clears
+the pending pour, also closes it. Verified with a syntax check, `vite
+build` (dialog text present in the bundle), and `npx cap sync android`.

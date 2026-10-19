@@ -454,6 +454,10 @@ export function ActiveSessionScreen({
   // confirmed"). When the load cell exists, the cup returning at its
   // pre-pour weight can resolve this automatically instead of a tap.
   const [pendingPour, setPendingPour] = useState(null)
+  // Tapon asks first (a confirm dialog), since it marks the drink as thrown
+  // out rather than drunk and is easy to hit by mistake next to Finished.
+  // Finished stays one tap: it's the common case.
+  const [confirmingTapon, setConfirmingTapon] = useState(false)
 
   // app/confirm-exit-session: "Back" used to call onExit directly, which
   // ends the session in the DB right away — one stray tap during a round
@@ -599,6 +603,7 @@ export function ActiveSessionScreen({
     // just cancels the wait; undoing one that already has an outcome
     // deletes the whole POUR row (outcome included), same as before.
     setPendingPour(null)
+    setConfirmingTapon(false)
     undoTurn()
     deleteEvent(lastEvent.id)
       .then(refreshEvents)
@@ -662,6 +667,7 @@ export function ActiveSessionScreen({
       .catch((err) => console.error('Failed to save drink outcome', err))
     if (current?.id === pendingPour.participant.id) advanceTurn()
     setPendingPour(null)
+    setConfirmingTapon(false)
   }
   // app/drink-queue-list (UX pass: long queues): one row's markup, pulled
   // out of the JSX below so it can be called once for the always-visible
@@ -1460,7 +1466,7 @@ export function ActiveSessionScreen({
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleOutcome('tapon')}
+                  onClick={() => setConfirmingTapon(true)}
                   disabled={!pendingPour.eventId}
                   className="rounded-xl bg-smoke px-3 py-4 text-base font-display font-semibold text-maroon-dim ring-1 ring-smoke-light transition active:scale-95 disabled:opacity-40"
                 >
@@ -1527,6 +1533,51 @@ export function ActiveSessionScreen({
           drinks={allDrinksForLog}
         />
       </div>
+
+      {/* app/drink-outcome: Tapon confirm. Same dialog shape as History's
+          delete confirm. Rendered only while a pour is still pending, so an
+          Undo that clears the pending pour also closes it. */}
+      {confirmingTapon && pendingPour && (
+        <div
+          className="fixed inset-0 z-30 flex items-end justify-center bg-ink/70 p-4 backdrop-blur-sm sm:items-center"
+          onClick={() => setConfirmingTapon(false)}
+        >
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="tapon-confirm-title"
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md space-y-3 rounded-2xl bg-smoke p-5 ring-1 ring-smoke-light"
+          >
+            <h2 id="tapon-confirm-title" className="font-display text-base font-semibold text-paper">
+              Mark this drink as tapon?
+            </h2>
+            <p className="text-sm text-paper-dim">
+              <span className="text-paper">{pendingPour.participant.name}</span>'s ~
+              {approxMlForVolume(pendingPour.volumeId)} mL
+              {pendingPour.drinkName ? ` of ${pendingPour.drinkName}` : ''} will be logged as
+              thrown out, not drunk. It shows up in their stats and in History.
+            </p>
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                autoFocus
+                onClick={() => setConfirmingTapon(false)}
+                className="flex-1 rounded-xl px-3 py-2 text-sm font-semibold text-paper ring-1 ring-smoke-light transition hover:bg-smoke-light active:scale-95"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleOutcome('tapon')}
+                className="flex-1 rounded-xl bg-maroon px-3 py-2 text-sm font-semibold text-paper transition active:scale-95"
+              >
+                Tapon
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
