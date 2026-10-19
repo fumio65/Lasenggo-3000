@@ -1411,3 +1411,21 @@ when the date fallback is what's shown instead — the icon always matches
 what the h1 is actually displaying.
 
 Verified: rolldound syntax check, full `vite build`.
+
+## History detail: separate time icon alongside the date icon
+User: "you didn't put the time icon on it." `formatDate` bundled date+time
+into one string, so only one icon (CalendarIcon) could reasonably go in
+front of it — the time half had nothing of its own, unlike HistoryList's
+rows, which already split date and time with separate icons.
+
+Split `formatDate` into `formatDateOnly`/`formatTimeOnly` (same as
+HistoryList) and built a local `HistoryDateTime` component pairing each
+with its own icon (CalendarIcon / HistoryIcon's clock face). Used for:
+the named-session subline (now both date and time get icons, not just
+date), and the unnamed-session h1 itself, which now *is* the icon-led
+date/time line (at title size) instead of one calendar icon in front of
+a combined string.
+
+Verified: rolldown syntax check, full `vite build`. Confirmed `formatDate`
+(the combined version) is still used elsewhere in this file (the
+per-drink Drinks list rows) so it was kept, not removed.

@@ -16,6 +16,35 @@ function formatDate(isoString) {
   })
 }
 
+/** app/history-list (UX pass follow-up: separate time icon): formatDate
+ * above bundles date+time into one string, which only leaves room for
+ * one icon (CalendarIcon) in front of it - the time half had nothing of
+ * its own, reported as "you didn't put the time icon on it". Split out
+ * so HistoryDateTime below can give each half its own icon, same as
+ * HistoryList's SessionDateTime already does. */
+function formatDateOnly(isoString) {
+  return new Date(isoString).toLocaleDateString(undefined, { dateStyle: 'medium' })
+}
+
+function formatTimeOnly(isoString) {
+  return new Date(isoString).toLocaleTimeString(undefined, { timeStyle: 'short' })
+}
+
+function HistoryDateTime({ iso, size = 'h-4 w-4', className = 'text-sm text-paper-dim' }) {
+  return (
+    <span className={`flex flex-wrap items-center gap-x-2.5 gap-y-1 ${className}`}>
+      <span className="flex items-center gap-1.5">
+        <CalendarIcon className={`${size} shrink-0`} />
+        {formatDateOnly(iso)}
+      </span>
+      <span className="flex items-center gap-1.5">
+        <HistoryIcon className={`${size} shrink-0`} />
+        {formatTimeOnly(iso)}
+      </span>
+    </span>
+  )
+}
+
 /** Reshapes one SQL row from getSessionDetail (flat *_count columns) into
  * the { name, pass, totalMl, byVolume } shape ParticipantStatBar expects —
  * the same shape ActiveSessionScreen's SessionLog builds from raw events,
@@ -132,34 +161,33 @@ export function HistoryDetail({ sessionId, onBack }) {
             pieces of info, so this detail header picks up the same
             treatment instead of being the one screen left behind. */}
         <header className="space-y-2">
-          {/* app/history-list (UX pass follow-up): a session's icon
-              depends on whether this h1 is actually showing a name or
-              (no name given) falling back to the date — HashtagIcon only
-              made sense for the first case; an unnamed session got no
-              icon at all, the one spot in this header that still had
-              that gap. CalendarIcon covers the fallback case instead,
-              since that's genuinely what the h1 is displaying then. */}
-          <h1 className="flex items-center gap-2 font-display text-2xl font-semibold tracking-tight">
-            {!loading && detail?.session && (
-              detail.session.name ? (
+          {/* app/history-list (UX pass follow-up): a named session's
+              h1 gets HashtagIcon + the name, with the date/time as an
+              icon-led subline underneath (both halves now have their own
+              icon via HistoryDateTime, not just the date). An unnamed
+              session has no name to put in the h1 at all, so the h1
+              itself becomes the date/time line instead of falling back
+              to one plain icon + a combined string. */}
+          <h1 className="flex flex-wrap items-center gap-x-2 gap-y-1 font-display text-2xl font-semibold tracking-tight">
+            {loading || !detail?.session ? (
+              <span>Session</span>
+            ) : detail.session.name ? (
+              <>
                 <HashtagIcon className="h-5 w-5 shrink-0 text-paper-dim" />
-              ) : (
-                <CalendarIcon className="h-5 w-5 shrink-0 text-paper-dim" />
-              )
+                <span className="truncate">{detail.session.name}</span>
+              </>
+            ) : (
+              <HistoryDateTime
+                iso={detail.session.started_at}
+                size="h-5 w-5"
+                className="text-2xl font-semibold tracking-tight text-paper"
+              />
             )}
-            <span className="truncate">
-              {loading || !detail?.session
-                ? 'Session'
-                : detail.session.name || formatDate(detail.session.started_at)}
-            </span>
           </h1>
-          {/* app/session-naming: show the date as a subline too once a session
-              has a custom name, so it's not lost from view */}
+          {/* app/session-naming: show the date/time as a subline too once
+              a session has a custom name, so it's not lost from view. */}
           {!loading && detail?.session?.name && (
-            <p className="flex items-center gap-1.5 text-sm text-paper-dim">
-              <CalendarIcon className="h-4 w-4 shrink-0" />
-              {formatDate(detail.session.started_at)}
-            </p>
+            <HistoryDateTime iso={detail.session.started_at} />
           )}
           {!loading && participantCount > 0 && (
             <p className="flex items-center gap-1.5 text-sm text-paper-dim">
