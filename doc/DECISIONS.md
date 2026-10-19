@@ -1232,3 +1232,26 @@ shown only on rows where `s.name` is falsy, so named sessions are
 untouched.
 
 Verified: rolldown syntax check, full `vite build`.
+
+## History list: separate date/time icons, smaller "modern" row
+User follow-up: "I think it would be best if there is a date and a time
+icon on it and reduce the font size make it modern."
+
+Split the single combined `formatDate` into `formatDateOnly`/
+`formatTimeOnly` and built a small `SessionDateTime` component: a
+CalendarIcon next to the date, HistoryIcon's existing clock face next to
+the time (reused rather than drawing a near-duplicate clock glyph), both
+at `text-[11px]` — smaller than the old plain date string. Always
+rendered now (previously only shown as a subline for named sessions,
+folded into the primary text for unnamed ones) — a name, when present,
+stays the bold primary line; the date/time row sits underneath it either
+way, so both named and unnamed rows now share the same compact
+icon+text treatment instead of one looking "modern" and the other
+looking like plain text.
+
+Added `CalendarIcon.jsx` (new), reused the existing `HistoryIcon` for
+the time half rather than adding a redundant clock glyph.
+
+Verified: rolldown syntax check on both touched/new files, full `vite
+build`, grepped the built CSS for the new `11px` font-size utility to
+confirm it shipped.

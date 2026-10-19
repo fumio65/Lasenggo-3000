@@ -1,12 +1,41 @@
 import { useSessionHistory } from './useSessionHistory'
 import { BackIcon } from '../../shared/components/BackIcon'
 import { HistoryIcon } from '../../shared/components/HistoryIcon'
+import { CalendarIcon } from '../../shared/components/CalendarIcon'
 
-function formatDate(isoString) {
-  return new Date(isoString).toLocaleString(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  })
+/** app/history-list (UX pass: date/time icons): split out of the old
+ * single combined formatDate — date and time each get their own small
+ * icon now (CalendarIcon / HistoryIcon's clock face) instead of one
+ * plain string, so SessionDateTime below can label them separately. */
+function formatDateOnly(isoString) {
+  return new Date(isoString).toLocaleDateString(undefined, { dateStyle: 'medium' })
+}
+
+function formatTimeOnly(isoString) {
+  return new Date(isoString).toLocaleTimeString(undefined, { timeStyle: 'short' })
+}
+
+/** app/history-list (UX pass: "modern" compact row): a small, muted
+ * icon+text pairing for a session's date and time — smaller than the old
+ * plain-text date string, with a calendar/clock glyph in front of each
+ * so the two numbers read as "a date" and "a time" at a glance instead
+ * of one undifferentiated string. Used both as the primary line for an
+ * unnamed session (where there's no name to be the eye-catcher — see the
+ * icon-tile addition just above this) and as the subline under a named
+ * one. */
+function SessionDateTime({ iso }) {
+  return (
+    <span className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-paper-dim">
+      <span className="flex items-center gap-1">
+        <CalendarIcon className="h-3 w-3 shrink-0" />
+        {formatDateOnly(iso)}
+      </span>
+      <span className="flex items-center gap-1">
+        <HistoryIcon className="h-3 w-3 shrink-0" />
+        {formatTimeOnly(iso)}
+      </span>
+    </span>
+  )
 }
 
 /**
@@ -98,17 +127,15 @@ export function HistoryList({ onBack, onSelect }) {
                       <HistoryIcon className="h-4 w-4 text-paper-dim" />
                     </span>
                   )}
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-paper">
-                      {s.name || formatDate(s.started_at)}
-                    </span>
-                    {/* app/session-naming: show the date as a subline too once a
-                        session has a custom name, so it's not lost from view */}
+                  <span className="min-w-0 flex-1 space-y-0.5">
+                    {/* app/session-naming: a custom name is still the
+                        primary line when there is one — the date/time
+                        row (always shown now, named or not) demotes to a
+                        subline underneath it instead of disappearing. */}
                     {s.name && (
-                      <span className="block text-xs text-paper-dim">
-                        {formatDate(s.started_at)}
-                      </span>
+                      <span className="block truncate text-paper">{s.name}</span>
                     )}
+                    <SessionDateTime iso={s.started_at} />
                   </span>
                   <span className="shrink-0 pl-3 text-sm text-paper-dim">
                     {s.participant_count} participant{s.participant_count === 1 ? '' : 's'}
