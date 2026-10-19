@@ -1481,3 +1481,25 @@ past the max reveal) in an isolated node script before trusting it.
 Actual on-device touch feel (gesture responsiveness, whether `touch-action:
 pan-y` fully prevents scroll-fighting on a real phone) is not something I
 can verify from here — worth trying on your device before relying on it.
+
+## History detail: delete button in the overview, matching the list
+User: "inside the overview of that history session put a delete feature
+also" — the swipe-to-delete added to HistoryList only covers the list;
+a single session's own detail/overview screen had no way to delete it
+without going back to the list first. Added a plain "Delete" button
+(TrashIcon + label) to the sticky header bar, next to Back — no swipe
+gesture here since this screen shows one session, not a list of rows to
+swipe through.
+
+Same confirm-dialog copy and shape as HistoryList's own (deliberately
+duplicated inline rather than extracted into a shared component yet —
+both are small and this keeps each screen self-contained for now).
+Confirming calls the same `deleteSession(sessionId)` and then `onBack()`
+— navigates back to the list rather than trying to render a detail view
+for a session that no longer exists; the list remounts and re-fetches on
+that navigation, so it reflects the deletion immediately with no extra
+wiring needed.
+
+Verified: rolldound syntax check, full `vite build`, grepped the built
+bundle for the dialog copy to confirm it shipped (now appears twice —
+once for each screen's own copy of the dialog).

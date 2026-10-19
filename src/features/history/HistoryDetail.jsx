@@ -1,5 +1,8 @@
+import { useState } from 'react'
 import { useSessionDetail } from './useSessionDetail'
+import { deleteSession } from '../storage/sessionQueries'
 import { BackIcon } from '../../shared/components/BackIcon'
+import { TrashIcon } from '../../shared/components/TrashIcon'
 import { HistoryIcon } from '../../shared/components/HistoryIcon'
 import { ParticipantStatBar, VolumeLegend, VOLUME_BY_ID } from '../../shared/components/ParticipantStatBar'
 import { ScrollFadeBox } from '../../shared/components/ScrollFadeBox'
@@ -124,6 +127,25 @@ function drinkStatusLabel(drink, events) {
 
 export function HistoryDetail({ sessionId, onBack }) {
   const { detail, events, drinks, loading } = useSessionDetail(sessionId)
+  // app/history-swipe-delete (detail-screen follow-up): same confirm-
+  // then-delete pattern as HistoryList's swipe-to-delete, just reached
+  // via a plain button here instead of a swipe gesture — a single
+  // session's own overview isn't a list, so there's nothing to swipe.
+  // Deleting navigates back to the list (onBack) rather than trying to
+  // show an empty/broken detail view for a session that's gone.
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  async function handleConfirmDelete() {
+    setDeleting(true)
+    try {
+      await deleteSession(sessionId)
+      onBack()
+    } catch (err) {
+      console.error('Failed to delete session', err)
+      setDeleting(false)
+    }
+  }
 
   const pausedAtEnd = buildPausedAtEnd(events)
   const stats = detail?.participants.map(toStat) ?? []
@@ -143,7 +165,7 @@ export function HistoryDetail({ sessionId, onBack }) {
             pulled into its own sticky bar pinned to the top of the
             viewport, bleeding to the real page edges and painted over
             with `bg-ink` so scrolling content doesn't show through. */}
-        <div className="sticky top-0 z-10 -mx-6 -mt-6 bg-ink px-6 pb-3 pt-6">
+        <div className="sticky top-0 z-10 -mx-6 -mt-6 flex items-center justify-between bg-ink px-6 pb-3 pt-6">
           <button
             type="button"
             onClick={onBack}
@@ -151,6 +173,14 @@ export function HistoryDetail({ sessionId, onBack }) {
             className="flex items-center gap-1.5 rounded-full bg-smoke px-3 py-1.5 text-sm text-paper-dim ring-1 ring-smoke-light transition hover:bg-smoke-light hover:text-paper active:scale-95"
           >
             <BackIcon /> Back
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirmingDelete(true)}
+            aria-label="Delete this session"
+            className="flex items-center gap-1.5 rounded-full bg-smoke px-3 py-1.5 text-sm text-paper-dim ring-1 ring-smoke-light transition hover:bg-maroon/20 hover:text-paper active:scale-95"
+          >
+            <TrashIcon className="h-4 w-4" /> Delete
           </button>
         </div>
 
@@ -313,6 +343,47 @@ export function HistoryDetail({ sessionId, onBack }) {
           </>
         )}
       </div>
+
+      {/* app/history-swipe-delete (detail-screen follow-up): same warning
+          dialog copy/shape as HistoryList's, this screen's own trigger. */}
+      {confirmingDelete && (
+        <div
+          className="fixed inset-0 z-30 flex items-end justify-center bg-ink/70 p-4 backdrop-blur-sm sm:items-center"
+          onClick={() => !deleting && setConfirmingDelete(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md space-y-3 rounded-2xl bg-smoke p-5 ring-1 ring-smoke-light"
+          >
+            <h2 className="font-display text-base font-semibold text-paper">Delete this session?</h2>
+            <p className="text-sm text-paper-dim">
+              Permanently deletes{' '}
+              <span className="text-paper">
+                {detail?.session?.name || (detail?.session && formatDate(detail.session.started_at))}
+              </span>{' '}
+              and everything in it — participants, pours, drinks. This can't be undone.
+            </p>
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(false)}
+                disabled={deleting}
+                className="flex-1 rounded-xl px-3 py-2 text-sm font-semibold text-paper ring-1 ring-smoke-light transition hover:bg-smoke-light active:scale-95 disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={deleting}
+                className="flex-1 rounded-xl bg-maroon px-3 py-2 text-sm font-semibold text-paper transition active:scale-95 disabled:opacity-40"
+              >
+                {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
