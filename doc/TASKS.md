@@ -1480,3 +1480,11 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
       screen next to People to edit/remove; synced like People (Supabase
       table saved_drinks). Also fixed the squeezed name fields on phones
       — see DECISIONS.md.
+
+- [x] app/session-mode: start screen on every launch (Connect to Lasenggo
+      3000 marked "coming soon" until Bluetooth exists; Use without the
+      device = manual mode), sessions.mode stored + synced, Manual /
+      Lasenggo 3000 badge in History — see DECISIONS.md.
+- [ ] app/ble-connect follow-up: enable the start screen's Connect option,
+      create 'hardware' sessions, and fall back to manual mode for the
+      rest of a session if the device disconnects.

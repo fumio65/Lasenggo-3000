@@ -7,6 +7,7 @@ import { CalendarIcon } from '../../shared/components/CalendarIcon'
 import { PeopleIcon } from '../../shared/components/PeopleIcon'
 import { HashtagIcon } from '../../shared/components/HashtagIcon'
 import { TrashIcon } from '../../shared/components/TrashIcon'
+import { SessionModeBadge } from '../../shared/components/SessionModeBadge'
 
 /** app/history-list (UX pass: date/time icons): split out of the old
  * single combined formatDate — date and time each get their own small
@@ -176,9 +177,13 @@ function SwipeableSessionRow({ s, isOpen, onOpenChange, onSelect, onRequestDelet
             next to the now-compact date/time row. A PeopleIcon + bare
             count reads just as clearly at a glance and matches the
             icon-led style the date/time row already uses. */}
-        <span className="flex shrink-0 items-center gap-1 pl-3 text-sm text-paper-dim">
-          <PeopleIcon className="h-3.5 w-3.5 shrink-0" />
-          {s.participant_count}
+        {/* app/session-mode: Manual / Lasenggo 3000 badge above the count. */}
+        <span className="flex shrink-0 flex-col items-end gap-1 pl-3">
+          <SessionModeBadge mode={s.mode} />
+          <span className="flex items-center gap-1 text-sm text-paper-dim">
+            <PeopleIcon className="h-3.5 w-3.5 shrink-0" />
+            {s.participant_count}
+          </span>
         </span>
       </button>
     </li>

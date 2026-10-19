@@ -170,6 +170,8 @@ export function ParticipantList({
   onViewHistory,
   onViewPeople,
   onViewDrinks,
+  mode,
+  onChangeMode,
   dbReady = true,
 }) {
   const [firstName, setFirstName] = useState('')
@@ -417,6 +419,22 @@ export function ParticipantList({
           <p className="text-sm text-paper-dim">
             Add everyone joining this round before you start.
           </p>
+          {/* app/session-mode: which mode this round will run in, picked on
+              the start screen; Change goes back to it. */}
+          {mode && onChangeMode && (
+            <div className="flex justify-center pt-1">
+              <span className="flex items-center gap-2 rounded-full bg-smoke px-3 py-1 text-xs text-paper-dim ring-1 ring-smoke-light">
+                {mode === 'hardware' ? 'Lasenggo 3000 connected' : 'Manual · no device'}
+                <button
+                  type="button"
+                  onClick={onChangeMode}
+                  className="font-semibold text-ember transition hover:text-paper"
+                >
+                  Change
+                </button>
+              </span>
+            </div>
+          )}
           <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
             <button
               type="button"

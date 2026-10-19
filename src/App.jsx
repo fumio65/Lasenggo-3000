@@ -5,6 +5,7 @@ import { ActiveSessionScreen } from './features/session/ActiveSessionScreen'
 import { HistoryScreen } from './features/history/HistoryScreen'
 import { PeopleScreen } from './features/session/PeopleScreen'
 import { DrinksScreen } from './features/session/DrinksScreen'
+import { StartScreen } from './features/session/StartScreen'
 import { useParticipants } from './features/session/useParticipants'
 import { initDatabase } from './features/storage/db'
 import { createSession, endSession, resumeSession, getSessionForResume } from './features/storage/sessionQueries'
@@ -24,6 +25,9 @@ function App() {
     loadParticipants,
   } = useParticipants()
   const [screen, setScreen] = useState('participants') // 'participants' | 'session' | 'history' | 'people' | 'drinks'
+  // app/session-mode: null until picked on StartScreen, which shows every
+  // time the app opens. 'manual' today; 'hardware' once Bluetooth exists.
+  const [mode, setMode] = useState(null)
 
   // UX fix: screen switches are local-state only (no router/page nav — see
   // doc/TASKS.md's Backlog "Real browser back/forward support" for the
@@ -171,7 +175,7 @@ function App() {
           }
         }),
       )
-      const id = await createSession(resolvedParticipants, name, drinkName, drinkVolumeMl)
+      const id = await createSession(resolvedParticipants, name, drinkName, drinkVolumeMl, mode ?? 'manual')
       setSessionId(id)
       setSessionName(name.trim())
       setPassLimit(sessionPassLimit)
@@ -238,6 +242,14 @@ function App() {
   return (
     <>
       {showSplash && <AppSplash fading={splashFading} />}
+      {mode == null && (
+        <StartScreen
+          onChooseManual={() => {
+            setMode('manual')
+            setScreen('participants')
+          }}
+        />
+      )}
       {/* UX fix: Session History used to be reachable only from the
           participants screen, so checking it mid-round meant going through
           Back (which — even with its own confirm — ends the session). Now
@@ -247,13 +259,14 @@ function App() {
           in-memory turn order/pass-streak state — which has nowhere else
           to live — survives the trip and the session is exactly as it was
           when the person comes back. */}
-      {sessionId && (
+      {mode != null && sessionId && (
         <div className={screen === 'history' ? 'hidden' : undefined}>
           <ActiveSessionScreen
             participants={participants}
             sessionId={sessionId}
             sessionName={sessionName}
             passLimit={passLimit}
+            mode={mode}
             onExit={handleExitSession}
             onViewHistory={() => setScreen('history')}
             onRenameParticipant={renameParticipant}
@@ -261,7 +274,7 @@ function App() {
           />
         </div>
       )}
-      {screen === 'history' && (
+      {mode != null && screen === 'history' && (
         <HistoryScreen
           onExit={() => setScreen(sessionId ? 'session' : 'participants')}
           onResume={handleResumeSession}
@@ -272,11 +285,11 @@ function App() {
           browse the whole roster, and ActiveSessionScreen's own "Manage
           participants" sheet already covers renaming *this session's*
           people. */}
-      {screen === 'people' && <PeopleScreen onBack={() => setScreen('participants')} />}
+      {mode != null && screen === 'people' && <PeopleScreen onBack={() => setScreen('participants')} />}
       {/* app/saved-drinks: the saved drinks list, reached from the same
           header as People. */}
-      {screen === 'drinks' && <DrinksScreen onBack={() => setScreen('participants')} />}
-      {!sessionId && screen === 'participants' && (
+      {mode != null && screen === 'drinks' && <DrinksScreen onBack={() => setScreen('participants')} />}
+      {mode != null && !sessionId && screen === 'participants' && (
         <ParticipantList
           participants={participants}
           onAdd={addParticipant}
@@ -291,6 +304,8 @@ function App() {
           onViewHistory={() => setScreen('history')}
           onViewPeople={() => setScreen('people')}
           onViewDrinks={() => setScreen('drinks')}
+          mode={mode}
+          onChangeMode={() => setMode(null)}
         />
       )}
       <div className="fixed bottom-2 right-2 flex flex-col items-end gap-1 text-[10px]">

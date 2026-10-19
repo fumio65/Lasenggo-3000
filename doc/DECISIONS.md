@@ -2205,3 +2205,47 @@ removal survives a reload; name fields fit at 360px; no page errors. Plus
 syntax checks on every touched file and `npx cap sync android`. Cloud
 sync round-trip not exercised (no network to Supabase from the test
 environment).
+
+## Start screen and session mode: with the device, or manual
+User: the app opened straight into adding participants; asked for a
+screen that connects to Bluetooth first, while keeping the app usable
+without the hardware ("just record what drink, how many participants"),
+with History saying whether a session used the hardware.
+
+**Decision**: a start screen on every launch (user chose every time over
+remembering the last choice) with two options:
+- **Connect to Lasenggo 3000**: shown, disabled, marked "Coming soon".
+  There's no Bluetooth code (app/ble-connect is still open) and no
+  device; faking a connection would label sessions as device sessions
+  that never were. User chose this over hiding it or faking it.
+- **Use without the device** (manual mode): everything works as before;
+  Pour logs a drink poured by hand.
+Not a hard gate: manual rounds stay one tap away, since most rounds may
+never use the device.
+
+Details:
+- `sessions.mode` ('manual' | 'hardware', NOT NULL DEFAULT 'manual'),
+  locally via `migrateAddSessionMode` and in Supabase via migration
+  `add_session_mode` (with a CHECK). Every existing session predates any
+  hardware, so the default backfills them correctly (all 51 cloud
+  sessions verified as 'manual'). Pushed and pulled by sync.
+- `createSession` takes the mode; `App.jsx` holds it (null until picked,
+  which renders `StartScreen` instead of every other screen).
+- Participants screen shows a "Manual · no device" chip with Change (back
+  to the start screen). The session pill says "Manual · no device"
+  instead of "Simulated — no hardware connected".
+- Manual Pour is now immediate: the ~900ms "Pouring…" delay only stood in
+  for the device's pump, and stays for the future device path.
+- History: `SessionModeBadge` (MANUAL, neutral, glass glyph; LASENGGO 3000,
+  ember, Bluetooth glyph) on each list row above the participant count,
+  and in the session detail header.
+- Not done yet, for when Bluetooth exists: enabling Connect, and carrying
+  on in manual mode if the device disconnects mid-session (agreed in
+  discussion). Added to TASKS.md.
+
+Verified in the real built app (headless Chromium, 360px, real SQLite,
+offline): start screen after the splash with Connect disabled and
+"Coming soon"; manual choice shows the chip; Change returns to the start
+screen; the session pill reads "Manual · no device"; Pour reaches the
+Finished/Tapon step in ~100ms; History list and detail show the MANUAL
+badge; the start screen shows again after a reload; no page errors.

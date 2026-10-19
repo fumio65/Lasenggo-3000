@@ -55,6 +55,7 @@ export function ActiveSessionScreen({
   sessionId,
   sessionName,
   passLimit,
+  mode = 'manual',
   onExit,
   onViewHistory,
   onRenameParticipant,
@@ -687,6 +688,9 @@ export function ActiveSessionScreen({
     pourSeqRef.current += 1
     const key = pourSeqRef.current
     setIsPouring(true)
+    // app/session-mode: manual mode logs a pour done by hand, so there's
+    // nothing to wait for; the ~900ms "Pouring…" delay only stands in for
+    // the device's pump, until real Bluetooth replaces it.
     setTimeout(() => {
       setPendingPour({
         participant: pourer,
@@ -697,7 +701,7 @@ export function ActiveSessionScreen({
       })
       onPourConfirmed({ advance: false })
       setIsPouring(false)
-    }, 900)
+    }, mode === 'manual' ? 0 : 900)
   }
 
   // app/drink-outcome: records the outcome on the POUR row, then moves the
@@ -1426,7 +1430,9 @@ export function ActiveSessionScreen({
               ? 'Pouring…'
               : pendingPour
                 ? `${pendingPour.participant.name} is drinking`
-                : 'Simulated — no hardware connected'}
+                : mode === 'manual'
+                  ? 'Manual · no device'
+                  : 'Simulated — no hardware connected'}
           </div>
 
           <TurnRing participants={participants} currentIndex={currentIndex} current={current} pausedIds={pausedIds} />
@@ -1568,7 +1574,7 @@ export function ActiveSessionScreen({
                 type="button"
                 onClick={handlePour}
                 disabled={isPouring}
-                title="Simulated — no hardware connected yet"
+                title={mode === 'manual' ? 'Log a drink poured by hand' : 'Simulated — no hardware connected yet'}
                 className="rounded-xl bg-smoke px-6 py-5 text-lg font-display font-semibold text-paper ring-1 ring-smoke-light transition active:scale-95 disabled:opacity-60"
               >
                 {isPouring ? 'Pouring…' : 'Pour'}

@@ -125,7 +125,7 @@ async function syncSavedDrinks(db, deviceId) {
 
 async function syncSessions(db, deviceId) {
   const result = await db.query(
-    'SELECT id, name, started_at, ended_at FROM sessions WHERE synced_at IS NULL',
+    'SELECT id, name, started_at, ended_at, mode FROM sessions WHERE synced_at IS NULL',
   )
   const rows = result.values ?? []
   if (rows.length === 0) return 0
@@ -136,6 +136,7 @@ async function syncSessions(db, deviceId) {
     name: r.name,
     started_at: r.started_at,
     ended_at: r.ended_at,
+    mode: r.mode || 'manual', // app/session-mode
   }))
 
   const { error } = await supabase.from('sessions').upsert(payload)

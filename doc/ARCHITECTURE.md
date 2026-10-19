@@ -71,6 +71,8 @@ sessions (
                               -- null falls back to showing started_at in the UI
   started_at timestamptz,
   ended_at timestamptz,
+  mode text,                 -- 'manual' (logged by hand) | 'hardware' (ran with
+                              -- the Lasenggo 3000 device); default 'manual'
   synced_at timestamptz      -- null until successfully pushed to Supabase
 )
 

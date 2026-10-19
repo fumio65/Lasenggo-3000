@@ -13,6 +13,7 @@ import { CalendarIcon } from '../../shared/components/CalendarIcon'
 import { summarizeOutcomes } from '../pour/drinkOutcome'
 import { PeopleIcon } from '../../shared/components/PeopleIcon'
 import { HashtagIcon } from '../../shared/components/HashtagIcon'
+import { SessionModeBadge } from '../../shared/components/SessionModeBadge'
 
 function formatDate(isoString) {
   return new Date(isoString).toLocaleString(undefined, {
@@ -228,11 +229,17 @@ export function HistoryDetail({ sessionId, onBack, onResume }) {
           {!loading && detail?.session?.name && (
             <HistoryDateTime iso={detail.session.started_at} />
           )}
-          {!loading && participantCount > 0 && (
-            <p className="flex items-center gap-1.5 text-sm text-paper-dim">
-              <PeopleIcon className="h-4 w-4 shrink-0" />
-              {participantCount}
-            </p>
+          {!loading && detail?.session && (
+            <div className="flex flex-wrap items-center gap-3">
+              {participantCount > 0 && (
+                <p className="flex items-center gap-1.5 text-sm text-paper-dim">
+                  <PeopleIcon className="h-4 w-4 shrink-0" />
+                  {participantCount}
+                </p>
+              )}
+              {/* app/session-mode: whether this round used the device. */}
+              <SessionModeBadge mode={detail.session.mode} />
+            </div>
           )}
         </header>
 

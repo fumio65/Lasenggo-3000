@@ -20,7 +20,8 @@ import { POUR_VOLUMES } from '../pour/usePourVolume'
  * the caller via `findOrCreatePerson`, since that needs its own query per
  * name) rides along in the same INSERT — nullable, so this still works for
  * any participant object that doesn't carry one. */
-export async function createSession(participants, name = '', drinkName = '', drinkVolumeMl = null) {
+// app/session-mode: `mode` is 'manual' or 'hardware' (see db.js).
+export async function createSession(participants, name = '', drinkName = '', drinkVolumeMl = null, mode = 'manual') {
   const db = getDatabase()
   const sessionId = crypto.randomUUID()
   const startedAt = new Date().toISOString()
@@ -29,8 +30,8 @@ export async function createSession(participants, name = '', drinkName = '', dri
 
   const set = [
     {
-      statement: 'INSERT INTO sessions (id, device_id, name, started_at, ended_at, synced_at) VALUES (?, NULL, ?, ?, NULL, NULL)',
-      values: [sessionId, trimmedName, startedAt],
+      statement: 'INSERT INTO sessions (id, device_id, name, started_at, ended_at, synced_at, mode) VALUES (?, NULL, ?, ?, NULL, NULL, ?)',
+      values: [sessionId, trimmedName, startedAt, mode === 'hardware' ? 'hardware' : 'manual'],
     },
     ...participants.map((p) => ({
       statement: 'INSERT INTO participants (id, session_id, name, person_id, synced) VALUES (?, ?, ?, ?, 0)',
@@ -418,7 +419,7 @@ export async function getSessionEvents(sessionId) {
 export async function getSessionHistory() {
   const db = getDatabase()
   const result = await db.query(`
-    SELECT s.id, s.name, s.started_at, s.ended_at, COUNT(p.id) as participant_count
+    SELECT s.id, s.name, s.started_at, s.ended_at, s.mode, COUNT(p.id) as participant_count
     FROM sessions s
     LEFT JOIN participants p ON p.session_id = s.id
     GROUP BY s.id

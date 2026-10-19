@@ -161,6 +161,7 @@ export async function initDatabase() {
   await migrateAddDrinkStatus()
   await migrateAddEventDrinkId()
   await migrateAddEventOutcome()
+  await migrateAddSessionMode()
   return db
 }
 
@@ -287,6 +288,16 @@ async function migrateAddEventOutcome() {
   if (!(await columnExists('events', 'left_ml'))) {
     await db.execute('ALTER TABLE events ADD COLUMN left_ml INTEGER')
   }
+}
+
+/** app/session-mode: adds `sessions.mode` — 'manual' (logged by hand, no
+ * device) or 'hardware' (ran with the Lasenggo 3000 device). Every session
+ * recorded before this column existed predates any hardware, so the
+ * NOT NULL DEFAULT 'manual' backfills them correctly. History shows it as
+ * a badge per session. */
+async function migrateAddSessionMode() {
+  if (await columnExists('sessions', 'mode')) return
+  await db.execute("ALTER TABLE sessions ADD COLUMN mode TEXT NOT NULL DEFAULT 'manual'")
 }
 
 /** Returns the open connection. Throws if `initDatabase()` hasn't run yet. */
