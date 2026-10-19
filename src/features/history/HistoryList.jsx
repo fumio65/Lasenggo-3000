@@ -26,13 +26,13 @@ function formatTimeOnly(isoString) {
  * one. */
 function SessionDateTime({ iso }) {
   return (
-    <span className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-paper-dim">
+    <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm text-paper-dim">
       <span className="flex items-center gap-1">
-        <CalendarIcon className="h-3.5 w-3.5 shrink-0" />
+        <CalendarIcon className="h-4 w-4 shrink-0" />
         {formatDateOnly(iso)}
       </span>
       <span className="flex items-center gap-1">
-        <HistoryIcon className="h-3.5 w-3.5 shrink-0" />
+        <HistoryIcon className="h-4 w-4 shrink-0" />
         {formatTimeOnly(iso)}
       </span>
     </span>

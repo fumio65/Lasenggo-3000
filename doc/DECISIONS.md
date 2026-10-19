@@ -1284,3 +1284,21 @@ rather than another arbitrary value) and its two icons from `h-3 w-3` to
 previous pass instead of getting text-heavy relative to tiny icons.
 
 Verified: rolldown syntax check, full `vite build`.
+
+## History list: date/time text bumped to text-sm; confirmed name already shows
+User: "make it big and also if the session has a name put a name on it."
+Bumped the date/time line again, this time to `text-sm` (14px, same size
+already used for the participant count and the Back button) with its
+icons up to `h-4 w-4` (the app's default icon size everywhere else) —
+now matches the rest of this row's secondary text/icons instead of
+introducing its own smaller scale.
+
+The "put a name on it" half was already true going into this change — a
+named session's `s.name` has always been queried (`getSessionHistory`'s
+SQL selects `s.name`) and rendered as the bold primary line above the
+date/time subline since the first icon-tile pass. No code change needed
+there; left as-is after re-checking both the query and the render path.
+
+Verified: rolldound syntax check, full `vite build`. Confirmed via code
+read (not assumption) that getSessionHistory already selects `s.name`
+and HistoryList already conditionally renders it.
