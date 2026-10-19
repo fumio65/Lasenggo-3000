@@ -1454,3 +1454,9 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
       pops in, shot glass fills from a pour, wordmark arrives, then it
       holds still) instead of a looping pulse that read as a loading
       spinner — see DECISIONS.md.
+
+- [x] app/launcher-icon v2: icon redrawn to sit inside Android's
+      adaptive-icon safe zone (v1's dots got clipped on circle
+      launchers) and to match the splash's final frame: linked ring,
+      larger glass poured two-thirds full. Launcher PNGs, favicon and
+      static splash all regenerated — see DECISIONS.md.

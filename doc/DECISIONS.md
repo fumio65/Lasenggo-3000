@@ -1834,3 +1834,45 @@ bundle for the new class names; rewrote the file directly on the device.
 Verified: rolldown syntax check, full `vite build`, grepped the bundle
 for every new `splash-*` class and the compiled CSS for the new
 keyframes, `npx cap sync android`. Not verified on a real device.
+
+## App icon v2: fits the adaptive-icon safe zone, matches the splash
+User: "let's improve the icon of the app." Found a real defect while
+reviewing the v1 icon: Android only guarantees the inner 66 of the 108dp
+adaptive-icon canvas will be visible (a 33dp radius from center), and
+circle-masking launchers crop right around there. v1's dots reached 36dp
+from center, so their outer edges got shaved on circle launchers.
+
+Compared three options in an artifact, each shown under a circle mask, a
+rounded-square mask, and at home-screen size, next to v1 with the safe
+zone drawn on it. User picked option A: the splash's final frame as a
+still. A faint linking circle (opacity 0.3) joins the six dots, and a
+larger shot glass (the splash's own glass path, scaled 0.42) sits at the
+center, poured about two-thirds full. Ring radius 26dp, dot radius 4.5dp,
+so the outermost art sits at 30.5dp, inside the 33dp safe radius.
+
+Note this brings the liquid back after v1 deliberately removed it ("just
+only a glass"); the user chose the filled version knowingly from the
+side-by-side, where option B was the empty-glass equivalent.
+
+Assets regenerated with sharp from one shared SVG:
+- `mipmap-*/ic_launcher_foreground.png`: full 108dp canvas, transparent.
+- `mipmap-*/ic_launcher.png` and `ic_launcher_round.png` (pre-Android 8):
+  now rendered from the inner 72dp visible region, on a rounded-square
+  and a circle respectively. v1 rendered the full 108 canvas edge to
+  edge, which made the art smaller than on adaptive launchers, and used
+  the same square image for the round variant.
+- `public/favicon.svg`: same 72dp crop on a rounded square.
+- `drawable*/splash.png` (all 11): new art, cropped to its own bounds,
+  centered at 42% of the short edge on ink.
+
+Verification note: files copied to the device through the file-commit
+bridge come back with different byte checksums (the bridge adds content
+metadata), so compared decoded pixel data instead. All 26 PNGs matched
+pixel for pixel. Also `vite build` and `npx cap sync android`.
+
+Known, not addressed here: on Android 12+, the system splash shows the
+adaptive launcher icon by itself, then the web splash starts its reveal
+from an empty screen, so the mark briefly disappears before animating
+back in. Fixing that means either starting the web animation from the
+same frame the system shows or styling the Android 12 splash
+(windowSplashScreenAnimatedIcon); needs testing on a real device.
