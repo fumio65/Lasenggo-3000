@@ -1379,3 +1379,11 @@ enough to act on confidently.
 Verified: rolldound syntax check on all touched/new/removed files, full
 `vite build`, grepped for stray `PartyIcon` references (only the removal
 note in QuoteIcon's own comment).
+
+## History list: name icon, 5th swap (quote mark -> hashtag)
+User: "It doesn't fill [feel] like it thought." Asked what to do next
+rather than guess again; answer: "I think a tag would do but not the
+common tag" — a tag concept, but explicitly not the first attempt's
+price-tag/ticket shape. Swapped `QuoteIcon` for a new `HashtagIcon` (#)
+— the other common meaning of "tag" in modern UI (social-media labels),
+without the price-tag's commerce read. Deleted `QuoteIcon.jsx`.

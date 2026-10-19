@@ -3,7 +3,7 @@ import { BackIcon } from '../../shared/components/BackIcon'
 import { HistoryIcon } from '../../shared/components/HistoryIcon'
 import { CalendarIcon } from '../../shared/components/CalendarIcon'
 import { PeopleIcon } from '../../shared/components/PeopleIcon'
-import { QuoteIcon } from '../../shared/components/QuoteIcon'
+import { HashtagIcon } from '../../shared/components/HashtagIcon'
 
 /** app/history-list (UX pass: date/time icons): split out of the old
  * single combined formatDate — date and time each get their own small
@@ -117,7 +117,7 @@ export function HistoryList({ onBack, onSelect }) {
                         subline underneath it instead of disappearing. */}
                     {s.name && (
                       <span className="flex items-center gap-1.5 text-paper">
-                        <QuoteIcon className="h-5 w-5 shrink-0 text-paper-dim" />
+                        <HashtagIcon className="h-5 w-5 shrink-0 text-paper-dim" />
                         <span className="truncate">{s.name}</span>
                       </span>
                     )}
