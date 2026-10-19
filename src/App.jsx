@@ -57,12 +57,13 @@ function App() {
   // or error -- either way there's nothing left to wait on; a failed db
   // isn't recoverable by waiting longer) AND at least MIN_SPLASH_MS has
   // elapsed, whichever is later. The minimum exists so a fast local
-  // SQLite init (the common case) doesn't cut the ring animation off
-  // mid-cycle -- it needs a moment on screen to read as a deliberate
-  // splash rather than a flash. Auth (below) is deliberately NOT part of
+  // SQLite init (the common case) doesn't hide the splash
+  // before the pour finishes -- the reveal runs ~2.55s (see AppSplash.jsx
+  // and the .splash-* rules in index.css) and needs to complete to read as
+  // a deliberate splash rather than a flash. Auth (below) is deliberately NOT part of
   // this condition: it's non-blocking everywhere else in this app (see
   // its own comment), so the splash shouldn't block on it either.
-  const MIN_SPLASH_MS = 1600
+  const MIN_SPLASH_MS = 2600
   const [minSplashElapsed, setMinSplashElapsed] = useState(false)
   const [splashFading, setSplashFading] = useState(false)
   const [showSplash, setShowSplash] = useState(true)

@@ -2,45 +2,41 @@ import { useEffect } from 'react'
 
 /**
  * app/animated-splash: full-screen splash shown while App.jsx waits on
- * initDatabase() (and, non-blockingly, ensureAnonymousSession()) — a gap
- * that previously had no loading UI at all, just the Participants screen
- * rendering immediately with small status pills in the corner.
+ * initDatabase() — a gap that previously had no loading UI at all.
  *
- * Six dots light up in sequence around a ring — the turn order coming
- * alive — looping for as long as `fading` is false. App.jsx owns the
- * actual show/hide timing: it flips `fading` to true once the app is
- * ready AND the animation has had time to read as intentional (not just
- * a flash), waits for the fade-out transition below to finish, then
- * unmounts this component entirely.
+ * A one-shot reveal, not a loop: the ring of six dots pops into place, a
+ * shot glass appears at the center, a stream pours in and fills it, then
+ * the stream's tail drops in and the wordmark arrives (~2.55s). After that
+ * everything holds still until App.jsx fades it out. An earlier version
+ * pulsed the dots forever while waiting, which read as a loading spinner
+ * rather than a splash. All timing lives in index.css (.splash-* classes).
  *
- * The native Android splash (drawable/splash.png, same ink background +
- * same ember glass-and-ring artwork) is still what's visible for the
- * instant before React mounts. SplashScreen.hide() fires the moment this
- * component mounts, handing off to this animation — since both share the
- * exact ink background color, there's no visible seam between the native
- * layer and this one, just a static image starting to move.
+ * App.jsx owns show/hide timing: it flips `fading` once the database is
+ * ready AND the reveal has finished, waits for the 300ms fade below, then
+ * unmounts this component.
+ *
+ * The native Android splash (drawable/splash.png, same ink background)
+ * is what's visible before React mounts. SplashScreen.hide() fires the
+ * moment this mounts; with the same background color on both layers the
+ * handoff has no visible seam.
  */
+const DOTS = [
+  { dx: 0, dy: -80, delay: 0.05 },
+  { dx: 69.3, dy: -40, delay: 0.13 },
+  { dx: 69.3, dy: 40, delay: 0.21 },
+  { dx: 0, dy: 80, delay: 0.29 },
+  { dx: -69.3, dy: 40, delay: 0.37 },
+  { dx: -69.3, dy: -40, delay: 0.45 },
+]
+
 export function AppSplash({ fading }) {
   useEffect(() => {
-    // Dynamic import + swallowed rejection: this plugin only does
-    // anything on a native (Android) build. Capacitor's own web
-    // implementation already no-ops safely, but this is wrapped
-    // defensively anyway so a plain browser preview — no Capacitor
-    // runtime present at all — can't crash the app over a missing
-    // native bridge.
+    // Only does anything on a native build. Wrapped so a plain browser
+    // preview with no Capacitor runtime can't crash on a missing bridge.
     import('@capacitor/splash-screen')
       .then(({ SplashScreen }) => SplashScreen.hide())
       .catch(() => {})
   }, [])
-
-  const dots = [
-    { dx: 0, dy: -70, delay: 0 },
-    { dx: 60.6, dy: -35, delay: 0.18 },
-    { dx: 60.6, dy: 35, delay: 0.36 },
-    { dx: 0, dy: 70, delay: 0.54 },
-    { dx: -60.6, dy: 35, delay: 0.72 },
-    { dx: -60.6, dy: -35, delay: 0.9 },
-  ]
 
   return (
     <div
@@ -49,16 +45,43 @@ export function AppSplash({ fading }) {
       }`}
       aria-hidden="true"
     >
-      <div className="relative h-44 w-44">
-        {dots.map((dot, i) => (
+      <div className="splash-ring">
+        {DOTS.map((dot, i) => (
           <div
             key={i}
-            className="absolute left-1/2 top-1/2 h-[34px] w-[34px] rounded-full bg-ember opacity-[0.18] [animation:splash-dot_2.6s_ease-in-out_infinite]"
+            className="splash-dot"
             style={{ '--dx': `${dot.dx}px`, '--dy': `${dot.dy}px`, animationDelay: `${dot.delay}s` }}
           />
         ))}
+        <svg className="splash-glass" viewBox="0 0 80 100">
+          <defs>
+            <clipPath id="splash-glass-inside">
+              <path d="M16 32 H64 L58.4 90 H21.6 Z" />
+            </clipPath>
+          </defs>
+          <line className="splash-stream" x1="40" y1="-18" x2="40" y2="88" pathLength="100" />
+          <g className="splash-glass-body">
+            <rect
+              className="splash-liquid"
+              x="0"
+              y="54"
+              width="80"
+              height="38"
+              clipPath="url(#splash-glass-inside)"
+            />
+            <path
+              d="M14 30 H66 L60 92 H20 Z"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="4"
+              strokeLinejoin="round"
+              className="text-ember"
+            />
+            <line x1="19.4" y1="84" x2="60.6" y2="84" stroke="currentColor" strokeWidth="2.4" className="text-ember" />
+          </g>
+        </svg>
       </div>
-      <div className="absolute bottom-[14%] font-display text-sm tracking-[0.08em] text-paper-dim opacity-80">
+      <div className="splash-wordmark absolute bottom-[14%] font-display text-sm tracking-[0.08em] text-paper-dim">
         LASENGGO
       </div>
     </div>

@@ -1800,3 +1800,37 @@ that looks right by reading the code (dots finish their last pulse
 around ~1.9s in, minimum is 1600ms, fade is 300ms) can still feel off
 in practice; worth watching an actual cold launch once there's a build
 to install.
+
+## Splash v2: one-shot reveal with a pour, instead of a looping ring
+User, after the first animated splash shipped: it "feels like a loading
+screen not a splash." Correct diagnosis: the dots pulsed on an infinite
+loop for as long as the app was initializing, which is exactly what a
+spinner does. A splash should resolve into a finished brand mark and
+then sit still.
+
+Reworked (previewed in an artifact first, then approved) into a single
+~2.55s sequence that plays once with `forwards` fill and then holds:
+the six ring dots pop in clockwise with a small overshoot, a faint
+circle traces in behind them, a shot glass appears at the center, a
+stream pours in (stroke-dashoffset draw), the liquid fills to about
+two-thirds (scaleY from the bottom, clipped to the glass interior), the
+stream's tail drops in, and the wordmark arrives last. The user asked
+for the cup and pour specifically; the glass is sized to read clearly
+(76x95px) after an earlier preview's glass came out too small.
+
+All timing moved into `.splash-*` classes in `index.css` (replacing the
+old `splash-dot` loop keyframe); `AppSplash.jsx` is now just markup.
+`MIN_SPLASH_MS` in `App.jsx` went from 1600 to 2600 so a fast SQLite
+init can't fade the splash out mid-pour. Added a splash-specific
+reduced-motion rule that zeroes `animation-delay` too: the global rule
+only shortens durations, which would have left the pieces popping in
+one by one over two seconds.
+
+Note for future edits: copying `AppSplash.jsx` to the device through
+the file-commit bridge silently wrote a stale cached copy of the old
+file (reported success, wrong contents). Caught by grepping the built
+bundle for the new class names; rewrote the file directly on the device.
+
+Verified: rolldown syntax check, full `vite build`, grepped the bundle
+for every new `splash-*` class and the compiled CSS for the new
+keyframes, `npx cap sync android`. Not verified on a real device.

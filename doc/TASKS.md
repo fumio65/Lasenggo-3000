@@ -1449,3 +1449,8 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
       replacing the previous "no loading screen at all" gap; hands off
       from the native splash.png via @capacitor/splash-screen with no
       visible seam — see DECISIONS.md.
+
+- [x] app/animated-splash v2: splash is now a one-shot reveal (ring
+      pops in, shot glass fills from a pour, wordmark arrives, then it
+      holds still) instead of a looping pulse that read as a loading
+      spinner — see DECISIONS.md.
