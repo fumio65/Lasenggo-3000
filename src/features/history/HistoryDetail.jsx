@@ -3,6 +3,7 @@ import { useSessionDetail } from './useSessionDetail'
 import { deleteSession } from '../storage/sessionQueries'
 import { BackIcon } from '../../shared/components/BackIcon'
 import { TrashIcon } from '../../shared/components/TrashIcon'
+import { PlayIcon } from '../../shared/components/PlayIcon'
 import { HistoryIcon } from '../../shared/components/HistoryIcon'
 import { ParticipantStatBar, VolumeLegend, VOLUME_BY_ID } from '../../shared/components/ParticipantStatBar'
 import { ScrollFadeBox } from '../../shared/components/ScrollFadeBox'
@@ -125,7 +126,7 @@ function drinkStatusLabel(drink, events) {
   return 'Served'
 }
 
-export function HistoryDetail({ sessionId, onBack }) {
+export function HistoryDetail({ sessionId, onBack, onResume }) {
   const { detail, events, drinks, loading } = useSessionDetail(sessionId)
   // app/history-swipe-delete (detail-screen follow-up): same confirm-
   // then-delete pattern as HistoryList's swipe-to-delete, just reached
@@ -226,6 +227,25 @@ export function HistoryDetail({ sessionId, onBack }) {
             </p>
           )}
         </header>
+
+        {/* app/history-resume: a full-width CTA rather than another
+            small icon crammed into the sticky bar above — resuming
+            drops you straight back into a live session (reloading this
+            session's roster and un-ending it), a bigger decision than
+            Back/Delete, so it gets a button you can't miss instead of
+            one you have to go looking for. Hidden while loading (no
+            session to resume yet) and if the caller didn't wire up
+            onResume at all. */}
+        {!loading && detail?.session && onResume && (
+          <button
+            type="button"
+            onClick={() => onResume(sessionId)}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-ember px-4 py-2.5 text-sm font-semibold text-ink transition active:scale-95"
+          >
+            <PlayIcon className="h-4 w-4" />
+            Resume session
+          </button>
+        )}
 
         {loading ? (
           <ul className="space-y-3" aria-hidden="true">

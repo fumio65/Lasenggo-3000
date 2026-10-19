@@ -403,6 +403,36 @@ export async function getSessionHistory() {
   return result.values ?? []
 }
 
+/** app/history-resume: clears `ended_at` back to null so this session
+ * reads as live again everywhere that checks it (getSessionHistory's
+ * list still shows it either way - a session shows up in History purely
+ * by existing, ended or not - but App.jsx treats a non-null `ended_at`
+ * as "this round is over" for anything that branches on it). Does not
+ * touch any events/drinks/participants rows - resuming is just un-ending
+ * a session, never a different operation from the one that ended it. */
+export async function resumeSession(sessionId) {
+  const db = getDatabase()
+  await db.run('UPDATE sessions SET ended_at = NULL WHERE id = ?', [sessionId], false)
+}
+
+/** app/history-resume: the session row plus its participants in turn
+ * order (`ORDER BY rowid`, the same insertion order addSessionParticipant
+ * wrote them in - there's no separate "turn position" column, rowid is
+ * already exactly that), including `person_id` - getSessionDetail's own
+ * participants query leaves that out since it only needs it for display
+ * stats, but resuming needs it to carry into the in-memory roster
+ * (App.jsx's useParticipants) the same way adding someone normally does. */
+export async function getSessionForResume(sessionId) {
+  const db = getDatabase()
+  const sessionResult = await db.query('SELECT * FROM sessions WHERE id = ?', [sessionId])
+  const session = sessionResult.values?.[0] ?? null
+  const participantsResult = await db.query(
+    'SELECT id, name, person_id FROM participants WHERE session_id = ? ORDER BY rowid',
+    [sessionId],
+  )
+  return { session, participants: participantsResult.values ?? [] }
+}
+
 /** app/history-list (swipe-to-delete): permanently removes a past
  * session and everything under it. No `ON DELETE CASCADE` on these
  * tables (see db.js's schema — plain `REFERENCES`, foreign_keys pragma

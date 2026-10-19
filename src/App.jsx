@@ -5,7 +5,7 @@ import { HistoryScreen } from './features/history/HistoryScreen'
 import { PeopleScreen } from './features/session/PeopleScreen'
 import { useParticipants } from './features/session/useParticipants'
 import { initDatabase } from './features/storage/db'
-import { createSession, endSession } from './features/storage/sessionQueries'
+import { createSession, endSession, resumeSession, getSessionForResume } from './features/storage/sessionQueries'
 import { findOrCreatePerson } from './features/storage/peopleQueries'
 import { ensureAnonymousSession } from './features/sync/auth'
 import { runSync } from './features/sync/syncJob'
@@ -19,6 +19,7 @@ function App() {
     clearParticipants,
     moveParticipant,
     reorderParticipants,
+    loadParticipants,
   } = useParticipants()
   const [screen, setScreen] = useState('participants') // 'participants' | 'session' | 'history' | 'people'
 
@@ -172,6 +173,38 @@ function App() {
     triggerSync() // session just ended — a natural moment to push it (backend/sync-job)
   }
 
+  // app/history-resume: "un-ends" a past session and drops back into
+  // ActiveSessionScreen for it, same destination handleStartSession
+  // lands on. Reloads *that session's own* participants (same ids as its
+  // DB rows, via loadParticipants) rather than trying to merge with
+  // whatever's currently in the in-memory roster — those are two
+  // different things that happen to share state, and mixing them would
+  // either lose the resumed session's real roster or silently carry
+  // someone from an unrelated half-filled "Who's joining" draft into it.
+  // Pass limit was never persisted anywhere (sessions has no such column
+  // — see DECISIONS.md), so a resumed session always comes back with no
+  // limit set; there's no original value to restore.
+  async function handleResumeSession(sessionIdToResume) {
+    try {
+      const { session, participants: rows } = await getSessionForResume(sessionIdToResume)
+      if (!session) return
+      await resumeSession(sessionIdToResume)
+      loadParticipants(
+        rows.map((row) => ({
+          id: row.id,
+          name: row.name,
+          personId: row.person_id ?? null,
+        })),
+      )
+      setSessionId(sessionIdToResume)
+      setSessionName(session.name || '')
+      setPassLimit(null)
+      setScreen('session')
+    } catch (err) {
+      console.error('Failed to resume session', err)
+    }
+  }
+
   return (
     <>
       {/* UX fix: Session History used to be reachable only from the
@@ -198,7 +231,10 @@ function App() {
         </div>
       )}
       {screen === 'history' && (
-        <HistoryScreen onExit={() => setScreen(sessionId ? 'session' : 'participants')} />
+        <HistoryScreen
+          onExit={() => setScreen(sessionId ? 'session' : 'participants')}
+          onResume={handleResumeSession}
+        />
       )}
       {/* app/people-roster: only reachable from the participants screen (not
           mid-session, unlike History) - there's no in-session reason to

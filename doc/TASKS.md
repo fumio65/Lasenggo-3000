@@ -1418,3 +1418,8 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
 - [x] app/history-swipe-delete: swipe a session row left to reveal a
       delete button; tapping it opens a confirm dialog (swipe never
       deletes by itself) — see DECISIONS.md.
+
+- [x] app/history-resume: added a "Resume session" button to the History
+      detail/overview screen; resuming un-ends the session and restores
+      its exact participants, continuing where it left off (pass limit
+      can't be restored — never persisted) — see DECISIONS.md.

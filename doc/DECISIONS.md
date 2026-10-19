@@ -1503,3 +1503,49 @@ wiring needed.
 Verified: rolldound syntax check, full `vite build`, grepped the built
 bundle for the dialog copy to confirm it shipped (now appears twice —
 once for each screen's own copy of the dialog).
+
+## Resume a past session from History
+User: "What if I want to continue on that session what should I do?" —
+there was no way to pick a past session back up; ending a session was
+final. Added a "Resume session" button to HistoryDetail's overview,
+right below the header, shown whenever that screen is reachable with an
+`onResume` handler.
+
+What it does: `getSessionForResume(sessionId)` loads the session row
+plus its participants (id, name, person_id) straight from the DB.
+`resumeSession(sessionId)` then sets `ended_at = NULL` on that session,
+un-ending it. App.jsx's `handleResumeSession` wires the two together:
+loads the session's exact participant rows via the new
+`loadParticipants()` passthrough in `useParticipants` (a raw
+`setParticipants`, deliberately bypassing `addParticipant`/etc. so the
+original DB ids and person_id links are preserved rather than
+re-created), restores the session's name, points `sessionId` back at the
+resumed session, and switches to the session screen — same session,
+same participants, continuing where it left off.
+
+Decided without a time limit on which sessions can be resumed (any past
+session, however old, can be resumed) — the user confirmed building the
+feature but didn't weigh in on a cutoff, and a hard age limit felt like
+an arbitrary restriction to bake in without being asked for it. Easy to
+add later if it turns out stale sessions showing a Resume button is
+confusing in practice.
+
+Known limitation: pass limit can never be restored on resume, because it
+has never been persisted anywhere — `sessions` has no `pass_limit`
+column, it only ever lived in App.jsx's in-memory state. A resumed
+session always comes back with no pass limit set (`passLimit: null`),
+even if the original session had one. Fixing that would need a schema
+migration to add the column; flagging it here rather than quietly
+pretending it's handled.
+
+New file: `src/shared/components/PlayIcon.jsx` — solid play-triangle
+glyph, same stroke/fill convention as the rest of the icon family.
+
+Verified: rolldown syntax check on all 6 touched/new files
+(`sessionQueries.js`, `useParticipants.js`, `App.jsx`,
+`HistoryScreen.jsx`, `HistoryDetail.jsx`, `PlayIcon.jsx`), full `vite
+build`, grepped the built bundle for the "Resume session" button copy to
+confirm it shipped. Not verified: actual on-device feel of resuming
+mid-pour, and whether users find a Resume option on very old sessions
+useful or confusing — worth watching for real usage before deciding on a
+time cutoff.
