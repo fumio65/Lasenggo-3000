@@ -1302,3 +1302,14 @@ there; left as-is after re-checking both the query and the render path.
 Verified: rolldound syntax check, full `vite build`. Confirmed via code
 read (not assumption) that getSessionHistory already selects `s.name`
 and HistoryList already conditionally renders it.
+
+## History list: icon next to the session name
+User: "at the name of the session put an icon also do you think it would
+look modern?" Added a new `TagIcon` (price-tag/label glyph) in front of
+a named session's title — matches the icon-led pattern the rest of the
+row already has (CalendarIcon+date, HistoryIcon+time, PeopleIcon+count),
+so every piece of info in a History row now has its own icon instead of
+the name being the one plain-text holdout.
+
+Verified: rolldown syntax check on both touched/new files, full `vite
+build`.
