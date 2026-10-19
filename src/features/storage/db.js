@@ -92,6 +92,19 @@ const SCHEMA = `
     status TEXT NOT NULL DEFAULT 'serving',
     synced INTEGER NOT NULL DEFAULT 0
   );
+
+  -- app/people-roster-delete-tombstone: records a person id the user chose
+  -- to remove from the roster, so pullPeople (pull.js) knows never to
+  -- resurrect it. Needed because deletePerson only removes the local row —
+  -- the Supabase 'people' row may still exist (push happened before the
+  -- delete, delete happened offline, etc.) — and without this, the very
+  -- next pull (app open, History screen, anywhere pullSessions runs) would
+  -- see that remote row as "missing locally" and re-insert it. See
+  -- DECISIONS.md.
+  CREATE TABLE IF NOT EXISTS deleted_people (
+    id TEXT PRIMARY KEY,
+    deleted_at TEXT NOT NULL
+  );
 `
 
 const sqlite = new SQLiteConnection(CapacitorSQLite)

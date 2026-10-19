@@ -129,7 +129,14 @@ async function pullPeople(db, deviceId) {
 
   const localIdsResult = await db.query('SELECT id FROM people')
   const localIds = new Set((localIdsResult.values ?? []).map((row) => row.id))
-  const missing = remotePeople.filter((p) => !localIds.has(p.id))
+  // app/people-roster-delete-tombstone: a remote row the user deleted
+  // locally is still "missing locally" by id, so without this it would
+  // get re-inserted by the filter below on every pull — exactly the
+  // "deleted people coming back" bug. Tombstoned ids are excluded from
+  // what counts as missing, same as if they'd never existed remotely.
+  const deletedIdsResult = await db.query('SELECT id FROM deleted_people')
+  const deletedIds = new Set((deletedIdsResult.values ?? []).map((row) => row.id))
+  const missing = remotePeople.filter((p) => !localIds.has(p.id) && !deletedIds.has(p.id))
   if (missing.length === 0) return 0
 
   await db.executeSet(

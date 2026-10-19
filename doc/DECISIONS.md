@@ -1549,3 +1549,55 @@ confirm it shipped. Not verified: actual on-device feel of resuming
 mid-pour, and whether users find a Resume option on very old sessions
 useful or confusing — worth watching for real usage before deciding on a
 time cutoff.
+
+## People: confirm before removing, and fixed deleted people coming back
+User: "I noticed when I tried to delete some participants when I click
+the 'x' button there's no warning on it and also I noticed people that I
+delete coming back why is that?" — two separate bugs on the roster
+screen.
+
+**No confirm dialog.** The ✕ button called `deletePerson` straight away,
+no second step — unlike every other destructive action in the app
+(session delete on both History screens), which only *arms* on the
+first tap and needs a confirm dialog to actually act. Brought People in
+line: ✕ now opens the same warning-dialog shape asking "Remove this
+person?", and only confirming there calls `deletePerson`.
+
+**Deleted people coming back.** Root cause: `deletePerson` only ever
+removed the local SQLite row. The Supabase `people` row (if that person
+had synced before, e.g. created on a previous install or pushed earlier
+in the session) was untouched. `pullPeople` (pull.js), which runs on
+every `pullSessions()` call, re-inserts any remote row whose id isn't
+already present locally — so the very next pull saw that same remote
+row as "missing" and brought the deleted person right back. This can
+fire surprisingly often since `pullSessions` runs wherever History is
+opened, not just on first launch.
+
+Fixed with a tombstone: a new local-only `deleted_people(id,
+deleted_at)` table (added to db.js's SCHEMA — no migration needed, it's
+a brand-new table so `CREATE TABLE IF NOT EXISTS` covers every install).
+`deletePerson` now writes a tombstone row for the id *before* anything
+async, so the delete sticks even fully offline. `pullPeople` excludes
+any tombstoned id from what counts as "missing", so it's never
+reinserted again, regardless of whether the remote row still exists.
+`deletePerson` also makes a best-effort attempt to delete the row from
+Supabase directly (wrapped in try/catch, failure swallowed) — this
+isn't what makes the fix work on this device, it's just housekeeping so
+a reinstall or another device doesn't see a "deleted" person reappear
+either; the tombstone alone is what guarantees this device never
+resurrects it.
+
+Deliberately did not add a queued/retry mechanism for the remote delete
+(no `people_deletes_pending` push table, say) — a failed one-shot remote
+delete just means a stale row lingers in Supabase for a person this
+device has already fully forgotten locally; harmless, and adding a
+proper delete-sync queue felt like solving a problem nobody's hit yet.
+Worth revisiting if multi-device roster sync becomes a real workflow.
+
+Verified: rolldown syntax check on all 4 touched files (`db.js`,
+`peopleQueries.js`, `pull.js`, `PeopleScreen.jsx`), full `vite build`,
+grepped the built bundle for the new dialog copy and the
+`deleted_people` table name to confirm both shipped. Not verified: the
+Supabase-delete-fails-silently path (never actually simulated a network
+drop mid-delete), and whether the tombstone table should ever be pruned
+(right now it only grows — fine at roster scale, but flagging it).

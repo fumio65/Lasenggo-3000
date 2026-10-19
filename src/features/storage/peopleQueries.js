@@ -1,4 +1,5 @@
 import { getDatabase } from './db'
+import { supabase } from '../sync/supabaseClient'
 
 /**
  * Read/write helpers for the `people` roster (app/people-roster) — a
@@ -70,9 +71,30 @@ export async function renamePerson(personId, firstName, lastName = '') {
  * this id are left as-is (an orphaned person_id) rather than cleaned up —
  * harmless, since nothing currently joins back through it except future
  * suggestions/leaderboard aggregation, and those naturally stop surfacing a
- * deleted person going forward. */
-
+ * deleted person going forward.
+ *
+ * Also records a tombstone in `deleted_people` (see db.js's schema comment)
+ * before anything else, so the delete sticks even if the app is offline or
+ * closed before a remote cleanup can happen — pullPeople checks this table
+ * and will never bring the id back. Deleting the row from Supabase too is
+ * best-effort: it keeps a reinstall or another device from seeing the
+ * person again, but isn't required for *this* device to honor the delete,
+ * so a failure here (offline, not signed in, Supabase down) is swallowed
+ * rather than surfaced — the tombstone alone is enough locally. */
 export async function deletePerson(personId) {
   const db = getDatabase()
+  const now = new Date().toISOString()
   await db.run('DELETE FROM people WHERE id = ?', [personId], false)
+  await db.run(
+    'INSERT OR REPLACE INTO deleted_people (id, deleted_at) VALUES (?, ?)',
+    [personId, now],
+    false,
+  )
+  if (supabase) {
+    try {
+      await supabase.from('people').delete().eq('id', personId)
+    } catch (err) {
+      console.warn('Remote delete of person failed — local tombstone still prevents it coming back', err)
+    }
+  }
 }

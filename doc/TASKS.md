@@ -1423,3 +1423,8 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
       detail/overview screen; resuming un-ends the session and restores
       its exact participants, continuing where it left off (pass limit
       can't be restored — never persisted) — see DECISIONS.md.
+
+- [x] app/people-roster-delete-confirm: the ✕ button on People now opens
+      a confirm dialog instead of deleting right away; also fixed a bug
+      where a deleted person could reappear on the next sync pull (no
+      local tombstone existed to stop it) — see DECISIONS.md.

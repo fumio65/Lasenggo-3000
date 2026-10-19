@@ -24,6 +24,12 @@ export function PeopleScreen({ onBack }) {
   const [editFirst, setEditFirst] = useState('')
   const [editLast, setEditLast] = useState('')
   const editInputRef = useRef(null)
+  // app/people-roster-delete-confirm: the ✕ button only *arms* a delete now
+  // (same "swipe/tap arms, dialog performs" pattern as History's own
+  // delete flow) — removing someone from the roster has no undo, so a
+  // single accidental tap on ✕ shouldn't be enough to do it.
+  const [confirmPerson, setConfirmPerson] = useState(null)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     getPeople()
@@ -59,12 +65,17 @@ export function PeopleScreen({ onBack }) {
     }
   }
 
-  async function handleDelete(id) {
+  async function handleConfirmDelete() {
+    if (!confirmPerson) return
+    setDeleting(true)
     try {
-      await deletePerson(id)
-      setPeople((prev) => prev.filter((p) => p.id !== id))
+      await deletePerson(confirmPerson.id)
+      setPeople((prev) => prev.filter((p) => p.id !== confirmPerson.id))
+      setConfirmPerson(null)
     } catch (err) {
       console.error('Failed to delete person', err)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -160,7 +171,7 @@ export function PeopleScreen({ onBack }) {
                   {!isEditing && (
                     <button
                       type="button"
-                      onClick={() => handleDelete(person.id)}
+                      onClick={() => setConfirmPerson(person)}
                       aria-label={`Remove ${person.name} from the roster`}
                       className="shrink-0 rounded-lg px-2.5 py-1.5 text-maroon-dim transition hover:bg-maroon/20 active:scale-90"
                     >
@@ -173,6 +184,46 @@ export function PeopleScreen({ onBack }) {
           </ul>
         )}
       </div>
+
+      {/* app/people-roster-delete-confirm: same warning-dialog shape as
+          History's delete flows — tapping ✕ only arms this, confirming
+          here is what actually calls deletePerson. */}
+      {confirmPerson && (
+        <div
+          className="fixed inset-0 z-30 flex items-end justify-center bg-ink/70 p-4 backdrop-blur-sm sm:items-center"
+          onClick={() => !deleting && setConfirmPerson(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md space-y-3 rounded-2xl bg-smoke p-5 ring-1 ring-smoke-light"
+          >
+            <h2 className="font-display text-base font-semibold text-paper">Remove this person?</h2>
+            <p className="text-sm text-paper-dim">
+              Removes <span className="text-paper">{confirmPerson.name}</span> from the roster.
+              Past sessions keep their own record of them — this only stops them showing up in
+              future suggestions. This can't be undone.
+            </p>
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setConfirmPerson(null)}
+                disabled={deleting}
+                className="flex-1 rounded-xl px-3 py-2 text-sm font-semibold text-paper ring-1 ring-smoke-light transition hover:bg-smoke-light active:scale-95 disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={deleting}
+                className="flex-1 rounded-xl bg-maroon px-3 py-2 text-sm font-semibold text-paper transition active:scale-95 disabled:opacity-40"
+              >
+                {deleting ? 'Removing…' : 'Remove'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
