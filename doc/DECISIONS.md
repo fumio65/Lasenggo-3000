@@ -1313,3 +1313,14 @@ the name being the one plain-text holdout.
 
 Verified: rolldown syntax check on both touched/new files, full `vite
 build`.
+
+## History list: swap the name icon (price-tag -> bookmark)
+User: "change the icon of the name session it doesn't feel right." The
+price-tag-shaped `TagIcon` likely read as commerce-coded for what's just
+"this session has a title". Replaced with a `BookmarkIcon` (ribbon
+shape) — the more familiar "this one's been named/marked" symbol —
+deleted `TagIcon.jsx` since it had no other callers.
+
+Verified: rolldown syntax check on all touched/new/removed files, full
+`vite build`, grepped for stray `TagIcon` references (only the removal
+note in BookmarkIcon's own comment, no code references left).
