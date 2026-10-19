@@ -1695,3 +1695,42 @@ verified: how the adaptive icon actually looks on a real Android
 launcher (circle/squircle/teardrop mask vary by OEM launcher) — only
 checked the legacy square/round PNGs and the foreground layer in
 isolation, not the composited adaptive-icon result on an actual device.
+
+## Splash screen: same icon, centered on ink
+User: "alright let's move to the splash" — right after the launcher
+icon, the splash screen (`android/app/src/main/res/drawable*/splash.png`,
+wired up via `styles.xml`'s `AppTheme.NoActionBarLaunch` ->
+`android:background="@drawable/splash"`) was still the default white
+placeholder from the Capacitor/Android Studio scaffold, never touched.
+
+No `@capacitor/splash-screen` plugin is installed in this project — the
+native splash shown while the APK's process starts comes straight from
+these drawable resources and the theme that points at them, independent
+of any JS-side splash-screen plugin (that plugin only controls when the
+splash gets dismissed from JS, which this app doesn't use).
+
+Reused the exact same shot-glass+ring artwork from the launcher icon
+(`icon-foreground.svg`) rather than inventing separate splash art, and
+centered it at ~42% of the screen's shorter edge on a solid ink
+(`#191310`) background — same reasoning as the icon's background choice:
+one consistent visual identity from the moment the APK launches through
+to the app's own UI, instead of a different "splash brand" the user sees
+for half a second and then never again.
+
+Regenerated all 11 files Android expects here (1 default + 5 portrait
+densities + 5 landscape densities — unlike the launcher icon, Android's
+legacy splash mechanism keys off screen density *and* orientation, not
+just density) via the same `sharp` compositing approach as the icon: a
+solid-color background canvas per exact target resolution, with the
+icon artwork rasterized and centered on top.
+
+Verified: checked every regenerated PNG's exact pixel dimensions against
+what was already there (so the replacement matches what each density/
+orientation bucket expects) and sampled background pixels at multiple
+corners per file to confirm a uniform `#191310` fill with no stray
+edge/border artifacts from the compositing step. Not rebuilt via `vite
+build` for this one — these are native Android drawable resources the
+web build doesn't touch, so a web build can't exercise or break them;
+verification here was PNG-level instead. Not verified: how it actually
+looks full-screen on a real device for the instant between process
+start and the web view mounting — only checked in isolation.

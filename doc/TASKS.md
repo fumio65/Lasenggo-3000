@@ -1438,3 +1438,8 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
       shot-glass-in-a-ring icon on the app's own ink/ember palette —
       favicon, adaptive icon (background color + foreground layers), and
       legacy launcher PNGs at all 5 densities — see DECISIONS.md.
+
+- [x] app/splash-screen: replaced the default white placeholder splash
+      (all 11 density/orientation PNGs) with the launcher icon's
+      shot-glass-in-a-ring artwork centered on the app's ink background
+      — see DECISIONS.md.
