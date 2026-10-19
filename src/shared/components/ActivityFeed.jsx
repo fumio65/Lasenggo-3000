@@ -89,22 +89,29 @@ export function ActivityFeed({
             return (
               <li
                 key={event.id}
-                className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm animate-[log-enter_220ms_ease-out]"
+                className="flex items-start gap-2 rounded-lg px-2 py-1.5 text-sm animate-[log-enter_220ms_ease-out]"
               >
-                <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} />
-                <span className="min-w-0 flex-1 truncate text-paper">
+                <span aria-hidden="true" className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} />
+                {/* Wraps instead of truncating: on a phone the panel is too
+                    narrow for "Name poured · Drink name" on one line, and a
+                    cut-off row had no way to read the rest. */}
+                <span className="min-w-0 flex-1 break-words leading-snug text-paper">
                   {event.participant_name}
                   <span className="text-paper-dim"> {describe(event)}</span>
                 </span>
-                {tag && (
-                  <span
-                    className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ${TAG_STYLES[tag.key]}`}
-                  >
-                    {tag.label}
+                {/* Tag above time, stacked, so the text keeps most of the
+                    row's width. */}
+                <span className="flex shrink-0 flex-col items-end gap-0.5">
+                  {tag && (
+                    <span
+                      className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none tracking-wide ring-1 ${TAG_STYLES[tag.key]}`}
+                    >
+                      {tag.label}
+                    </span>
+                  )}
+                  <span className="text-xs leading-none text-paper-dim/70">
+                    {formatClockTime(event.timestamp)}
                   </span>
-                )}
-                <span className="shrink-0 text-xs text-paper-dim/70">
-                  {formatClockTime(event.timestamp)}
                 </span>
               </li>
             )

@@ -2016,3 +2016,17 @@ outcomes existed, shows its size tag. PAUSE/RESUME rows have no tag.
 
 Verified: syntax checks, `vite build` with all eight new tag color
 classes confirmed in the compiled CSS, `npx cap sync android`.
+
+### Follow-up: activity rows wrap instead of truncating
+User: on a phone the Activity log "didn't display the whole text", with no
+way to read the rest. Each row used `truncate` (one line, ellipsis), and
+at phone width the side-by-side tag and time left too little room, so most
+pour rows ended in "…" partway through the drink name.
+
+Rows now wrap (`break-words`, top-aligned) instead of truncating, and the
+tag and time stack vertically on the right so the text keeps most of the
+row's width. Applies to the live session and History (shared
+`ActivityFeed`). Checked by rendering both layouts at 360px wide with the
+app's compiled CSS (Playwright screenshot): before, four of five sample
+rows were cut off; after, all text is visible and wraps to two lines where
+needed.
