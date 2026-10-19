@@ -1432,3 +1432,9 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
 - [x] app/display-name: app's own display name (title, Android app
       label, in-app header) changed to "Lasenggo" — the overall
       project/hardware name stays "Lasenggo 3000" — see DECISIONS.md.
+
+- [x] app/launcher-icon: replaced the default Capacitor/Android Studio
+      placeholder icon (teal grid + robot face) and Vite favicon with a
+      shot-glass-in-a-ring icon on the app's own ink/ember palette —
+      favicon, adaptive icon (background color + foreground layers), and
+      legacy launcher PNGs at all 5 densities — see DECISIONS.md.

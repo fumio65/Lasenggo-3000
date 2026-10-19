@@ -1635,3 +1635,63 @@ of "Lasenggo 3000" and exactly the expected "Lasenggo" in the title/
 header. Not verified: the native Android app icon label (strings.xml
 drives it, but actually seeing it update requires a real Android build,
 not just the web `vite build` done here).
+
+## App icon: shot glass in a ring, ink background
+User opened the icon topic ("Now let's move to the Icon for this app we
+didn't talk about it yet") — the launcher icon, favicon, and adaptive-icon
+layers were all still Capacitor/Android Studio's untouched defaults (a
+generic teal-grid background, the stock Android robot-face foreground, a
+purple Vite-blob favicon) — never customized since the project scaffold.
+
+**Concept, chosen through a few rounds of visual iteration** (mocked up
+live in an artifact rather than generating final assets blind, since a
+wrong guess means redoing every density): a small shot glass at the
+center of a ring of six dots. This is CONTEXT.md's own description of
+tagayan drawn directly — "one shared glass passed around a circle" — and
+reads clearly even shrunk to a 40px home-screen icon. Earlier passes
+tried a fancier glass (open rim ellipse, waisted/flared base, wall
+highlight, bubbles) but the user correctly called it out as reading like
+"a common cup" rather than a shot glass; a reference image they shared
+settled it — a plain rounded taper (wider top, narrower base) with a
+thin "cut line" near the bottom marking the foot is instantly
+recognizable as a shot glass, and fancier detail was actively hurting
+recognizability, not helping it. Final pass also removed the liquid
+fill per request — the icon shows an empty glass, not a filled one.
+
+**Background**: ink (`#191310`) with the ember (`#e98a2e`) glass+ring,
+not the reverse (ember background, ink subject). Matches the app's own
+"Night Market Circuit" dark theme exactly — opening the app feels like
+continuing the icon rather than switching color worlds — and a thin
+ember line on dark reads as a small glowing accent rather than a flat
+block of solid orange across the whole icon.
+
+**What changed, concretely**:
+- `public/favicon.svg` — full icon (rounded-square ink background +
+  ember glass/ring) replacing the default Vite purple-blob SVG.
+- `android/app/src/main/res/values/ic_launcher_background.xml` — adaptive
+  icon's background color changed from the Android Studio default
+  `#FFFFFF` to `#191310`.
+- `android/app/src/main/res/mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/` —
+  `ic_launcher.png` and `ic_launcher_round.png` (legacy pre-API26
+  fallback: full ink-background square/round icon, at 48/72/96/144/192px)
+  and `ic_launcher_foreground.png` (the adaptive icon's foreground layer:
+  transparent background, just the ember glass+ring, at the matching
+  108/162/216/324/432px scale — foreground art lives on a 108dp canvas
+  per Android's adaptive-icon spec, 2.25x the legacy 48dp icon) — all
+  regenerated from a master SVG via `sharp` (no `@capacitor/assets` or
+  similar tool installed in this project; rasterized directly).
+- Removed `android/app/src/main/res/drawable/ic_launcher_background.xml`
+  and `drawable-v24/ic_launcher_foreground.xml` — confirmed unused dead
+  weight first (grepped the manifest and both `mipmap-anydpi-v26/*.xml`
+  files; the real adaptive-icon definition references `@color/
+  ic_launcher_background` and `@mipmap/ic_launcher_foreground`, never
+  these `@drawable/` vector versions — they were Android Studio template
+  leftovers from project creation, never wired to anything).
+
+Verified: full `vite build` succeeds, checked every generated PNG's
+actual pixel dimensions match its density bucket exactly, confirmed
+`favicon.svg` is still well-formed XML with its viewBox intact. Not
+verified: how the adaptive icon actually looks on a real Android
+launcher (circle/squircle/teardrop mask vary by OEM launcher) — only
+checked the legacy square/round PNGs and the foreground layer in
+isolation, not the composited adaptive-icon result on an actual device.
