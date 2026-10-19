@@ -1360,3 +1360,22 @@ rendering — just "too small / hard to see". Bumped `PartyIcon` from
 their existing sizes since those weren't flagged.
 
 Verified: rolldown syntax check, full `vite build`.
+
+## History list: name icon goes mood-neutral (party popper -> quote mark)
+User: "sometimes the session is not a party it's just a chill drinking
+session." The party-popper concept picked two turns ago assumed every
+named session is a celebration — a fair miss, since a session can be
+named anything ("Jojo's Birthday", but just as easily "Friday chill",
+"Office night out", etc). Swapped `PartyIcon` for a new `QuoteIcon`
+(small quotation marks) — mood-neutral, reads as "this is a title
+someone gave it" without implying what kind of occasion it was. Deleted
+`PartyIcon.jsx` since it had no other callers.
+
+This closes the loop on four icon swaps at this one spot (TagIcon ->
+BookmarkIcon -> SparkleIcon -> PartyIcon -> QuoteIcon) — each time asking
+what was actually wrong once "just change it" stopped being specific
+enough to act on confidently.
+
+Verified: rolldound syntax check on all touched/new/removed files, full
+`vite build`, grepped for stray `PartyIcon` references (only the removal
+note in QuoteIcon's own comment).
