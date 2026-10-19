@@ -132,9 +132,20 @@ export function HistoryDetail({ sessionId, onBack }) {
             pieces of info, so this detail header picks up the same
             treatment instead of being the one screen left behind. */}
         <header className="space-y-2">
+          {/* app/history-list (UX pass follow-up): a session's icon
+              depends on whether this h1 is actually showing a name or
+              (no name given) falling back to the date — HashtagIcon only
+              made sense for the first case; an unnamed session got no
+              icon at all, the one spot in this header that still had
+              that gap. CalendarIcon covers the fallback case instead,
+              since that's genuinely what the h1 is displaying then. */}
           <h1 className="flex items-center gap-2 font-display text-2xl font-semibold tracking-tight">
-            {!loading && detail?.session?.name && (
-              <HashtagIcon className="h-5 w-5 shrink-0 text-paper-dim" />
+            {!loading && detail?.session && (
+              detail.session.name ? (
+                <HashtagIcon className="h-5 w-5 shrink-0 text-paper-dim" />
+              ) : (
+                <CalendarIcon className="h-5 w-5 shrink-0 text-paper-dim" />
+              )
             )}
             <span className="truncate">
               {loading || !detail?.session

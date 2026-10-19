@@ -1400,3 +1400,14 @@ participant count (also dropped the "participant(s)" word here too, same
 as the list's own change, for consistency between the two screens).
 
 Verified: rolldown syntax check, full `vite build`.
+
+## History detail: fixed the gap where an unnamed session's title had no icon
+User: "I noticed you only put an icon to those session that has name
+what if that session has no name?" Correct catch — the h1's icon was
+gated on `detail.session.name` existing, but when there's no name the
+h1 falls back to showing the date itself, and that fallback got no icon
+at all. Now picks HashtagIcon when a name is actually shown, CalendarIcon
+when the date fallback is what's shown instead — the icon always matches
+what the h1 is actually displaying.
+
+Verified: rolldound syntax check, full `vite build`.
