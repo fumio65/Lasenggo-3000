@@ -1255,3 +1255,22 @@ the time half rather than adding a redundant clock glyph.
 Verified: rolldown syntax check on both touched/new files, full `vite
 build`, grepped the built CSS for the new `11px` font-size utility to
 confirm it shipped.
+
+## History list: drop the per-row icon badge, icon instead of "participants"
+User follow-up: "remove the big time icon at the right side and put a
+icon to the participants remove the 'participants' and put an icon on
+it." (Confirmed via a quick clarifying question which icon was meant:
+the round clock-icon badge added for unnamed sessions, not the small
+clock inside the date/time line.)
+
+Two changes to the History row:
+- Removed the `h-9 w-9` round HistoryIcon badge that showed on unnamed
+  sessions — the per-row date/time line (added last change) already
+  carries its own small clock icon, so the bigger badge was now
+  redundant on top of it.
+- Replaced the "`N` participant(s)" text label with a `PeopleIcon` +
+  bare count (reused the existing PeopleIcon already used elsewhere in
+  this app, e.g. the People nav button) — matches the icon-led style the
+  date/time row already established, and takes less width.
+
+Verified: rolldown syntax check, full `vite build`.

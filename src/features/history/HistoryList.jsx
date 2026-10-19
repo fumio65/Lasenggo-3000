@@ -2,6 +2,7 @@ import { useSessionHistory } from './useSessionHistory'
 import { BackIcon } from '../../shared/components/BackIcon'
 import { HistoryIcon } from '../../shared/components/HistoryIcon'
 import { CalendarIcon } from '../../shared/components/CalendarIcon'
+import { PeopleIcon } from '../../shared/components/PeopleIcon'
 
 /** app/history-list (UX pass: date/time icons): split out of the old
  * single combined formatDate — date and time each get their own small
@@ -108,25 +109,6 @@ export function HistoryList({ onBack, onSelect }) {
                   onClick={() => onSelect(s.id)}
                   className="flex w-full items-center gap-3 rounded-xl bg-smoke px-4 py-3 text-left transition hover:bg-smoke-light active:scale-[0.99]"
                 >
-                  {/* app/history-list (UX pass): an unnamed session's row
-                      is just its date/time as plain text — fine on its
-                      own, but a long list of them (most sessions skip
-                      naming) reads as a wall of near-identical text with
-                      nothing to anchor the eye per row. A named session
-                      doesn't have this problem (the name itself is what
-                      the eye catches), so this icon tile only shows up
-                      when there's no name to do that job instead — reuses
-                      HistoryIcon rather than adding a new glyph, since
-                      it's already this app's "a past session" symbol
-                      (empty-state above, the nav button that gets here). */}
-                  {!s.name && (
-                    <span
-                      aria-hidden="true"
-                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ink ring-1 ring-smoke-light"
-                    >
-                      <HistoryIcon className="h-4 w-4 text-paper-dim" />
-                    </span>
-                  )}
                   <span className="min-w-0 flex-1 space-y-0.5">
                     {/* app/session-naming: a custom name is still the
                         primary line when there is one — the date/time
@@ -137,8 +119,15 @@ export function HistoryList({ onBack, onSelect }) {
                     )}
                     <SessionDateTime iso={s.started_at} />
                   </span>
-                  <span className="shrink-0 pl-3 text-sm text-paper-dim">
-                    {s.participant_count} participant{s.participant_count === 1 ? '' : 's'}
+                  {/* app/history-list (UX pass): "N participants" as a
+                      text label took more width than the number itself
+                      warranted, especially next to the now-compact
+                      date/time row. A PeopleIcon + bare count reads just
+                      as clearly at a glance and matches the icon-led
+                      style the date/time row already uses. */}
+                  <span className="flex shrink-0 items-center gap-1 pl-3 text-sm text-paper-dim">
+                    <PeopleIcon className="h-3.5 w-3.5 shrink-0" />
+                    {s.participant_count}
                   </span>
                 </button>
               </li>
