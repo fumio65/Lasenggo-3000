@@ -2067,3 +2067,28 @@ Verified: syntax checks, `vite build` (strings present in bundle),
 `npx cap sync android`. Not verified: how the ticks sound on a real
 phone speaker and whether Android's WebView honors the gesture unlock;
 both need a device.
+
+### Follow-up: timeouts merged into their turn's row
+User asked to show "ran out of time" on the same Activity log line as the
+pour or pass instead of as its own row. Agreed: the timeout is part of
+that turn, and two rows read as two separate events.
+
+Display only: TIMEOUT stays its own row in the database (honest record,
+syncs as before). `mergeTimeouts` (exported from `ActivityFeed.jsx`)
+folds each TIMEOUT into one POUR/PASS row, looking only at POUR/PASS
+neighbours (pause/resume rows are skipped over):
+- the action just before it, if that's the same person's POUR (time ran
+  out while they were still drinking);
+- otherwise the action just after it, if that's by the same person (time
+  ran out before they poured or passed).
+Otherwise it stays a standalone "ran out of time" row: the person hasn't
+acted yet (live session), or they were paused / the session ended first.
+The merged row keeps its action tag and adds a red "· ran out of time
+(30s)" to its text, which now wraps on phones. SessionLog merges before
+taking its 12 most recent rows, so a timeout doesn't use up a slot.
+
+Verified: node tests of the merge rules (before acting, while drinking,
+not yet acted, paused, pause/resume rows in between, a different
+person's action, idempotence, empty list), all passing after correcting
+one wrong expectation in the test itself; `vite build`; `npx cap sync
+android`.

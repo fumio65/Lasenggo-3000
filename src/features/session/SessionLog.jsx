@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { ParticipantStatBar, VolumeLegend, VOLUME_BY_ID } from '../../shared/components/ParticipantStatBar'
 import { ScrollFadeBox } from '../../shared/components/ScrollFadeBox'
-import { ActivityFeed } from '../../shared/components/ActivityFeed'
+import { ActivityFeed, mergeTimeouts } from '../../shared/components/ActivityFeed'
 import { formatVolumeMl } from '../pour/volumeUnits'
 import { summarizeOutcomes } from '../pour/drinkOutcome'
 
@@ -116,7 +116,9 @@ export function SessionLog({ events, participants, currentParticipantId, pausedI
     1,
     ...stats.map((s) => s.byVolume.light + s.byVolume.standard + s.byVolume.heavy + s.pass),
   )
-  const recent = events.slice(0, 12)
+  // Merge timeouts into their turn's row before capping, so the cap counts
+  // turns rather than spending a slot on a separate "ran out of time" row.
+  const recent = mergeTimeouts(events).slice(0, 12)
 
   return (
     <aside className="w-full rounded-2xl bg-smoke/60 p-4 ring-1 ring-smoke-light md:sticky md:top-10">

@@ -43,6 +43,52 @@ function tagFor(event) {
   return volume ? { key: volume.id, label: volume.label } : null
 }
 
+const isAction = (e) => e.type === 'POUR' || e.type === 'PASS'
+
+/**
+ * app/turn-timer (merged timeouts): a TIMEOUT belongs to the turn it
+ * happened in, so the feed folds it into that turn's POUR/PASS row instead
+ * of showing a separate line. Display only: TIMEOUT stays its own row in
+ * the database. `events` is newest-first (getSessionEvents order); so is
+ * the result.
+ *
+ * Which row a timeout joins, looking at POUR/PASS rows only:
+ * - the action right before it, if that was the same person's POUR: time
+ *   ran out while they were still drinking (outcome pending);
+ * - otherwise the action right after it, if that's by the same person:
+ *   time ran out before they poured or passed.
+ * If neither fits (they haven't acted yet, or the session ended first),
+ * it stays a standalone "ran out of time" row. Running this twice is safe.
+ */
+export function mergeTimeouts(events) {
+  const chrono = events.slice().reverse()
+  const attached = new Map() // action event id -> timeout event
+  const absorbed = new Set() // timeout ids folded into an action
+
+  chrono.forEach((event, i) => {
+    if (event.type !== 'TIMEOUT') return
+    let prev = null
+    for (let j = i - 1; j >= 0; j -= 1) if (isAction(chrono[j])) { prev = chrono[j]; break }
+    let next = null
+    for (let j = i + 1; j < chrono.length; j += 1) if (isAction(chrono[j])) { next = chrono[j]; break }
+    const target =
+      prev && prev.type === 'POUR' && prev.participant_id === event.participant_id
+        ? prev
+        : next && next.participant_id === event.participant_id
+          ? next
+          : null
+    if (target && !attached.has(target.id) && !target.timedOut) {
+      attached.set(target.id, event)
+      absorbed.add(event.id)
+    }
+  })
+
+  if (absorbed.size === 0) return events
+  return events
+    .filter((e) => !absorbed.has(e.id))
+    .map((e) => (attached.has(e.id) ? { ...e, timedOut: attached.get(e.id).note || true } : e))
+}
+
 function describe(event) {
   if (event.type === 'POUR') {
     // The tag carries the size and the outcome; the text only adds the
@@ -79,16 +125,17 @@ export function ActivityFeed({
   if (events.length === 0) {
     return <p className="mt-2 text-sm text-paper-dim">{emptyMessage}</p>
   }
+  const rows = mergeTimeouts(events)
 
   return (
     <div className="mt-2">
       <ScrollFadeBox
         maxHeightClassName={maxHeightClassName}
-        watch={events.length}
-        resetScrollKey={autoScrollToNewest ? events[0]?.id : undefined}
+        watch={rows.length}
+        resetScrollKey={autoScrollToNewest ? rows[0]?.id : undefined}
       >
         <ul className="space-y-1.5">
-          {events.map((event) => {
+          {rows.map((event) => {
             const tag = tagFor(event)
             const dot = tag ? DOT_STYLES[tag.key] : event.type === 'PAUSE' ? 'bg-maroon-dim' : 'bg-paper-dim/50'
             return (
@@ -103,6 +150,12 @@ export function ActivityFeed({
                 <span className="min-w-0 flex-1 break-words leading-snug text-paper">
                   {event.participant_name}
                   <span className="text-paper-dim"> {describe(event)}</span>
+                  {event.timedOut && (
+                    <span className="text-maroon-dim">
+                      {' '}
+                      · ran out of time{typeof event.timedOut === 'string' ? ` (${event.timedOut})` : ''}
+                    </span>
+                  )}
                 </span>
                 {/* Tag above time, stacked, so the text keeps most of the
                     row's width. */}
