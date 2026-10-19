@@ -1414,3 +1414,7 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
 - [x] app/drink-tracking: added a mid-session "Start tracking a drink"
       form for sessions where drink tracking was skipped at Start Session
       — see DECISIONS.md.
+
+- [x] app/history-swipe-delete: swipe a session row left to reveal a
+      delete button; tapping it opens a confirm dialog (swipe never
+      deletes by itself) — see DECISIONS.md.

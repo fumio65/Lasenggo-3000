@@ -403,6 +403,22 @@ export async function getSessionHistory() {
   return result.values ?? []
 }
 
+/** app/history-list (swipe-to-delete): permanently removes a past
+ * session and everything under it. No `ON DELETE CASCADE` on these
+ * tables (see db.js's schema — plain `REFERENCES`, foreign_keys pragma
+ * never turned on), so this deletes in dependency order by hand: events
+ * and drinks reference the session directly, participants too, and
+ * `sessions` itself comes last so nothing is ever left pointing at a row
+ * that's already gone. Irreversible - the UI confirms with the user
+ * before ever calling this (see HistoryList's delete dialog). */
+export async function deleteSession(sessionId) {
+  const db = getDatabase()
+  await db.run('DELETE FROM events WHERE session_id = ?', [sessionId], false)
+  await db.run('DELETE FROM drinks WHERE session_id = ?', [sessionId], false)
+  await db.run('DELETE FROM participants WHERE session_id = ?', [sessionId], false)
+  await db.run('DELETE FROM sessions WHERE id = ?', [sessionId], false)
+}
+
 /** One session's participants with their POUR/PASS counts for that session
  * — including the Light/Standard/Heavy breakdown of their pours, not just
  * the total — in the order they were added (turn order). Used by

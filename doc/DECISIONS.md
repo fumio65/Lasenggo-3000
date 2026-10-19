@@ -1429,3 +1429,55 @@ a combined string.
 Verified: rolldown syntax check, full `vite build`. Confirmed `formatDate`
 (the combined version) is still used elsewhere in this file (the
 per-drink Drinks list rows) so it was kept, not removed.
+
+## New: swipe-to-delete on History list rows
+User request: swipe a session row to reveal a delete button (not an
+instant delete on swipe), tapping that button opens a confirm dialog,
+and the swipe itself should animate smoothly.
+
+**Storage**: added `deleteSession(sessionId)` in sessionQueries.js. No
+`ON DELETE CASCADE` exists on these tables (db.js's schema uses plain
+`REFERENCES`, foreign_keys pragma never enabled), so it deletes in
+dependency order by hand: `events` and `drinks` (both reference
+`session_id` directly), then `participants`, then `sessions` itself
+last.
+
+**Gesture**: `SwipeableSessionRow` in HistoryList.jsx — raw pointer
+events (pointerdown/move/up/cancel), no gesture library (none installed,
+and this gesture is simple enough not to need one). The first ~6px of
+movement locks an axis: horizontal keeps tracking the drag and clamps it
+between 0 and `-SWIPE_REVEAL_PX` (76px, the delete button's width);
+vertical abandons the gesture immediately so a normal vertical scroll
+through the list is never fought over mid-scroll. Only one row's delete
+button can be open at a time (`openSwipeId` lives in the parent list,
+not per-row) — opening a new one via drag or confirming/cancelling a
+delete closes whichever was open. Releasing a drag snaps to fully open
+or fully closed based on whether it crossed the halfway point
+(-38px) — verified the snap math and clamping in an isolated node
+script before wiring it up. The row's `transform` has no CSS transition
+while actively dragging (1:1 finger tracking) and a 240ms
+`cubic-bezier(0.22, 1, 0.36, 1)` ease-out transition for the snap once
+released — the "smooth animation" the request asked for. A `moved` flag
+suppresses the row's own tap-to-open handler right after a drag release,
+so releasing a swipe never also opens HistoryDetail.
+
+**Confirm dialog**: swiping only *reveals* delete, never performs it —
+tapping the revealed trash icon opens a modal ("Delete this session?
+Permanently deletes <name/date> and everything in it — participants,
+pours, drinks. This can't be undone.") with Cancel/Delete. Only
+`handleConfirmDelete` actually calls `deleteSession`.
+
+**State after delete**: added `removeSession(id)` to useSessionHistory.js
+— a local optimistic filter, deliberately separate from `refresh()`,
+since `refresh()` flips `loading` back to true for its local-read phase
+and would flash the skeleton list back in right after a delete, undoing
+the point of a smooth swipe-to-delete interaction.
+
+Verified: rolldown syntax check on all 3 touched/new files, full `vite
+build`, grepped the built bundle for the dialog copy, the swipe hint
+text, and the exact easing curve string to confirm they shipped, and
+hand-traced the drag/snap/clamp math (open/close thresholds, clamping
+past the max reveal) in an isolated node script before trusting it.
+Actual on-device touch feel (gesture responsiveness, whether `touch-action:
+pan-y` fully prevents scroll-fighting on a real phone) is not something I
+can verify from here — worth trying on your device before relying on it.
