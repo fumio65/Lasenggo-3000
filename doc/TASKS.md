@@ -1443,3 +1443,9 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
       (all 11 density/orientation PNGs) with the launcher icon's
       shot-glass-in-a-ring artwork centered on the app's ink background
       — see DECISIONS.md.
+
+- [x] app/animated-splash: added a real animated splash (ring of 6 dots
+      lighting up in turn order) shown while the app initializes SQLite,
+      replacing the previous "no loading screen at all" gap; hands off
+      from the native splash.png via @capacitor/splash-screen with no
+      visible seam — see DECISIONS.md.

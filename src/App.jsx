@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { AppSplash } from './shared/components/AppSplash'
 import { ParticipantList } from './features/session/ParticipantList'
 import { ActiveSessionScreen } from './features/session/ActiveSessionScreen'
 import { HistoryScreen } from './features/history/HistoryScreen'
@@ -51,6 +52,33 @@ function App() {
         setDbStatus('error')
       })
   }, [])
+
+  // app/animated-splash: shown until initDatabase above settles (ready
+  // or error -- either way there's nothing left to wait on; a failed db
+  // isn't recoverable by waiting longer) AND at least MIN_SPLASH_MS has
+  // elapsed, whichever is later. The minimum exists so a fast local
+  // SQLite init (the common case) doesn't cut the ring animation off
+  // mid-cycle -- it needs a moment on screen to read as a deliberate
+  // splash rather than a flash. Auth (below) is deliberately NOT part of
+  // this condition: it's non-blocking everywhere else in this app (see
+  // its own comment), so the splash shouldn't block on it either.
+  const MIN_SPLASH_MS = 1600
+  const [minSplashElapsed, setMinSplashElapsed] = useState(false)
+  const [splashFading, setSplashFading] = useState(false)
+  const [showSplash, setShowSplash] = useState(true)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setMinSplashElapsed(true), MIN_SPLASH_MS)
+    return () => clearTimeout(timer)
+  }, [])
+
+  useEffect(() => {
+    if (!showSplash || splashFading) return
+    if (dbStatus === 'loading' || !minSplashElapsed) return
+    setSplashFading(true)
+    const timer = setTimeout(() => setShowSplash(false), 320) // matches AppSplash's own 300ms fade
+    return () => clearTimeout(timer)
+  }, [dbStatus, minSplashElapsed, showSplash, splashFading])
 
   // Anonymous auth (backend/anonymous-auth) — gives this device a stable identity
   // for sync, with no login UI. Failing (or Supabase not configured) is not fatal:
@@ -207,6 +235,7 @@ function App() {
 
   return (
     <>
+      {showSplash && <AppSplash fading={splashFading} />}
       {/* UX fix: Session History used to be reachable only from the
           participants screen, so checking it mid-round meant going through
           Back (which — even with its own confirm — ends the session). Now

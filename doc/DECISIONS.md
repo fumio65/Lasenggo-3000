@@ -1734,3 +1734,69 @@ web build doesn't touch, so a web build can't exercise or break them;
 verification here was PNG-level instead. Not verified: how it actually
 looks full-screen on a real device for the instant between process
 start and the web view mounting — only checked in isolation.
+
+## Animated splash: ring of dots lighting up in turn order
+User: "let's create a splash screen...with an animation" — the static
+splash from the previous task is a single baked-in image and can't be
+animated at the native level in any meaningful way. Built the real
+two-layer version instead: the native `splash.png` (already in place)
+shows for the instant before React has loaded, then hands off to a real
+animated screen built inside the app, which fades into the actual UI
+once the app is ready.
+
+**Concept, previewed live before touching app code** (same reasoning as
+the icon: a wrong guess here means redoing a wired-up React component
+and CSS, not just a mockup): the six ring dots fire in sequence around
+the circle — "turn order coming alive," since turn order is the app's
+actual core mechanic. Iterated twice on the preview: the glass originally
+in the center read as too small (the SVG's viewBox was still the full
+108-unit icon canvas while only drawing the small glass sub-region,
+leaving mostly empty space — not actually a sizing problem, a cropping
+one), then by request the glass was dropped entirely and the dots sized
+up (22px -> 34px, ring radius widened to match) to be the whole show.
+
+**What got built**:
+- Installed `@capacitor/splash-screen` (not previously a dependency —
+  the static splash task didn't need it, since a native drawable shows
+  itself with no plugin involved; *controlling when it goes away* does
+  need it). `capacitor.config.ts` sets `launchAutoHide: false` so
+  Capacitor's own default 3s auto-hide timer can't race the handoff —
+  the app explicitly calls `SplashScreen.hide()` the instant the React
+  splash mounts, so there's exactly one transition (native -> AppSplash),
+  never a native-auto-hides-first gap of blank white underneath.
+  `backgroundColor: '#191310'` matches `splash.png`'s own fill, in case
+  the native layer needs to redraw its background before hide() takes
+  effect.
+- New `src/shared/components/AppSplash.jsx`: six dots positioned via
+  `--dx`/`--dy` custom properties (one shared `@keyframes splash-dot` in
+  `index.css` rather than six near-duplicate keyframes), pulsing
+  opacity/scale in a staggered loop. Takes a `fading` prop for its own
+  300ms opacity transition; owns no timing decisions itself.
+- `App.jsx` owns the actual show/hide logic: splash stays up until
+  `initDatabase()` settles (ready *or* error — a failed db isn't
+  recoverable by waiting longer, so error doesn't block the splash any
+  more than ready does) AND a 1600ms minimum has elapsed, whichever is
+  later. The minimum exists because local SQLite init is usually fast —
+  without it, the ring animation would frequently get cut off
+  mid-sequence before even reaching the later dots, which would read as
+  broken rather than intentional. Deliberately does NOT wait on
+  `ensureAnonymousSession()` — auth is non-blocking everywhere else in
+  this app (its own comment says failing it never blocks the session
+  flow), so gating the splash on it would contradict that.
+- Respects the app's existing global `prefers-reduced-motion` rule in
+  `index.css` (all `animation-duration` forced to `0.01ms`,
+  `iteration-count` to `1`) automatically, since `splash-dot` is just
+  another `@keyframes` under that same blanket rule — no special-casing
+  needed.
+
+Verified: rolldown syntax check on `App.jsx`, `AppSplash.jsx`, and
+`capacitor.config.ts`; full `vite build`; grepped the built bundle for
+the wordmark text, the `splash-dot` keyframe name in the compiled CSS,
+and confirmed `SplashScreen` is present in the bundled JS; ran `npx cap
+sync android`, which picked up the new plugin (`@capacitor/
+splash-screen@8.0.2` now listed alongside the existing sqlite plugin).
+Not verified: how the actual handoff feels on a real device — timing
+that looks right by reading the code (dots finish their last pulse
+around ~1.9s in, minimum is 1600ms, fade is 300ms) can still feel off
+in practice; worth watching an actual cold launch once there's a build
+to install.

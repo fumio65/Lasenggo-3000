@@ -86,3 +86,23 @@
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* app/animated-splash: AppSplash.jsx's ring-of-dots loop. Each dot sets
+   its own --dx/--dy custom properties (its resting position on the
+   ring) and this keyframe pulses opacity/scale at that fixed position —
+   kept as one shared keyframe referencing custom properties rather than
+   six near-duplicate keyframes, one per dot. */
+@keyframes splash-dot {
+  0%, 100% {
+    opacity: 0.18;
+    transform: translate(-50%, -50%) translate(var(--dx), var(--dy)) scale(0.7);
+  }
+  12% {
+    opacity: 1;
+    transform: translate(-50%, -50%) translate(var(--dx), var(--dy)) scale(1);
+  }
+  30% {
+    opacity: 0.35;
+    transform: translate(-50%, -50%) translate(var(--dx), var(--dy)) scale(0.85);
+  }
+}
