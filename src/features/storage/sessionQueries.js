@@ -1,4 +1,5 @@
 import { getDatabase } from './db'
+import { recordSavedDrink } from './savedDrinkQueries'
 import { POUR_VOLUMES } from '../pour/usePourVolume'
 
 /**
@@ -50,6 +51,8 @@ export async function createSession(participants, name = '', drinkName = '', dri
   ]
 
   await db.executeSet(set, true)
+  // app/saved-drinks: remember it for tap-to-fill next time.
+  if (trimmedDrinkName) await recordSavedDrink(trimmedDrinkName, drinkVolumeMl)
   return sessionId
 }
 
@@ -204,6 +207,8 @@ export async function addDrink(sessionId, name, volumeMl = null, status = 'servi
     [id, sessionId, name.trim(), volumeMl ?? null, new Date().toISOString(), status],
     false,
   )
+  // app/saved-drinks: covers switch, queue, "same drink" and start-tracking.
+  await recordSavedDrink(name, volumeMl)
   return id
 }
 
@@ -248,6 +253,10 @@ export async function updateDrink(drinkId, name, volumeMl = null) {
     [name.trim(), volumeMl ?? null, drinkId],
     false,
   )
+  // app/saved-drinks: an edit usually fixes a typo, so remember the
+  // corrected version too (the typo'd entry can be removed on the Drinks
+  // screen).
+  await recordSavedDrink(name, volumeMl)
 }
 
 /** app/drink-queue: switches to `drinkId` — a queued drink being

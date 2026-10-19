@@ -1,9 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { HistoryIcon } from '../../shared/components/HistoryIcon'
 import { PeopleIcon } from '../../shared/components/PeopleIcon'
+import { GlassIcon } from '../../shared/components/GlassIcon'
 import { getPeople } from '../storage/peopleQueries'
 import { VolumeInput } from '../../shared/components/VolumeInput'
-import { parseVolumeToMl } from '../pour/volumeUnits'
+import { DrinkNameInput } from '../../shared/components/DrinkNameInput'
+import { parseVolumeToMl, volumeMlToInput } from '../pour/volumeUnits'
 
 function ParticipantRow({
   participant,
@@ -167,6 +169,7 @@ export function ParticipantList({
   startingSession = false,
   onViewHistory,
   onViewPeople,
+  onViewDrinks,
   dbReady = true,
 }) {
   const [firstName, setFirstName] = useState('')
@@ -414,7 +417,7 @@ export function ParticipantList({
           <p className="text-sm text-paper-dim">
             Add everyone joining this round before you start.
           </p>
-          <div className="mt-3 flex items-center justify-center gap-2">
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
             <button
               type="button"
               onClick={onViewHistory}
@@ -434,6 +437,16 @@ export function ParticipantList({
               <PeopleIcon />
               People
             </button>
+            {/* app/saved-drinks: saved drinks list (rename/resize/remove);
+                drinks join it on their own when logged. */}
+            <button
+              type="button"
+              onClick={onViewDrinks}
+              className="flex items-center gap-1.5 rounded-lg bg-smoke px-3 py-1.5 text-sm text-paper-dim ring-1 ring-smoke-light transition hover:bg-smoke-light hover:text-paper active:scale-95"
+            >
+              <GlassIcon />
+              Drinks
+            </button>
           </div>
         </header>
 
@@ -446,8 +459,11 @@ export function ParticipantList({
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-2">
+            {/* min-w-0 on both fields: text inputs have a built-in minimum
+                width, so at phone width "Last name" refused to shrink,
+                squeezed "First name" to a sliver and overflowed the card. */}
             <div className="flex gap-2">
-              <div className="relative flex-1">
+              <div className="relative min-w-0 flex-1">
                 <input
                   type="text"
                   value={firstName}
@@ -514,7 +530,7 @@ export function ParticipantList({
                 placeholder="Last name"
                 aria-label="Last name"
                 autoComplete="off"
-                className="flex-1 rounded-xl bg-ink px-4 py-2 text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
+                className="min-w-0 flex-1 rounded-xl bg-ink px-4 py-2 text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
               />
             </div>
             <button
@@ -623,13 +639,20 @@ export function ParticipantList({
               Drink
             </label>
             <div className="flex flex-wrap gap-2">
-              <input
+              {/* app/saved-drinks: tap a saved drink to fill name + size. */}
+              <DrinkNameInput
                 id="drink-name"
-                type="text"
                 value={drinkName}
-                onChange={(e) => setDrinkName(e.target.value)}
+                onChange={setDrinkName}
+                onPick={(d) => {
+                  setDrinkName(d.name)
+                  const v = volumeMlToInput(d.volume_ml)
+                  setDrinkVolumeInput(v.amount)
+                  setDrinkVolumeUnit(v.unit)
+                }}
                 placeholder="e.g. Red Horse"
-                className="min-w-[140px] flex-1 rounded-xl bg-ink px-4 py-2 text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
+                wrapperClassName="min-w-[140px] flex-1"
+                className="rounded-xl bg-ink px-4 py-2 text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
               />
               <VolumeInput
                 idPrefix="drink-volume"

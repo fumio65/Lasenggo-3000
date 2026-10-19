@@ -4,6 +4,7 @@ import { ParticipantList } from './features/session/ParticipantList'
 import { ActiveSessionScreen } from './features/session/ActiveSessionScreen'
 import { HistoryScreen } from './features/history/HistoryScreen'
 import { PeopleScreen } from './features/session/PeopleScreen'
+import { DrinksScreen } from './features/session/DrinksScreen'
 import { useParticipants } from './features/session/useParticipants'
 import { initDatabase } from './features/storage/db'
 import { createSession, endSession, resumeSession, getSessionForResume } from './features/storage/sessionQueries'
@@ -22,7 +23,7 @@ function App() {
     reorderParticipants,
     loadParticipants,
   } = useParticipants()
-  const [screen, setScreen] = useState('participants') // 'participants' | 'session' | 'history' | 'people'
+  const [screen, setScreen] = useState('participants') // 'participants' | 'session' | 'history' | 'people' | 'drinks'
 
   // UX fix: screen switches are local-state only (no router/page nav — see
   // doc/TASKS.md's Backlog "Real browser back/forward support" for the
@@ -272,6 +273,9 @@ function App() {
           participants" sheet already covers renaming *this session's*
           people. */}
       {screen === 'people' && <PeopleScreen onBack={() => setScreen('participants')} />}
+      {/* app/saved-drinks: the saved drinks list, reached from the same
+          header as People. */}
+      {screen === 'drinks' && <DrinksScreen onBack={() => setScreen('participants')} />}
       {!sessionId && screen === 'participants' && (
         <ParticipantList
           participants={participants}
@@ -286,6 +290,7 @@ function App() {
           startingSession={starting}
           onViewHistory={() => setScreen('history')}
           onViewPeople={() => setScreen('people')}
+          onViewDrinks={() => setScreen('drinks')}
         />
       )}
       <div className="fixed bottom-2 right-2 flex flex-col items-end gap-1 text-[10px]">

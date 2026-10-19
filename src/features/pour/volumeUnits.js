@@ -44,3 +44,16 @@ export function formatVolumeMl(volumeMl) {
   }
   return `${volumeMl}mL`
 }
+
+/** app/saved-drinks: turns a stored mL value back into the amount + unit a
+ * VolumeInput should show, for tap-to-fill from a saved drink. Uses L from
+ * 1000mL up (1000 -> "1" L, 1500 -> "1.5" L), same threshold as
+ * formatVolumeMl, so a picked "1L" bottle fills in as 1 L rather than
+ * 1000 mL. Null fills in blank. */
+export function volumeMlToInput(volumeMl) {
+  if (volumeMl == null) return { amount: '', unit: 'ml' }
+  if (volumeMl >= 1000) {
+    return { amount: String(Math.round((volumeMl / 1000) * 1000) / 1000), unit: 'l' }
+  }
+  return { amount: String(volumeMl), unit: 'ml' }
+}

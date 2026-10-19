@@ -1474,3 +1474,9 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
       the timer runs (urgent last 5s), and a TIMEOUT event ("ran out of
       time", TIME'S UP tag) logged for the current person when it hits
       zero; Supabase type CHECK widened — see DECISIONS.md.
+
+- [x] app/saved-drinks: drinks are remembered (name + size) whenever
+      logged and offered as one-tap picks in every drink field; Drinks
+      screen next to People to edit/remove; synced like People (Supabase
+      table saved_drinks). Also fixed the squeezed name fields on phones
+      — see DECISIONS.md.

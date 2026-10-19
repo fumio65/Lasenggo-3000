@@ -31,7 +31,8 @@ import {
 } from '../storage/sessionQueries'
 import { findOrCreatePerson } from '../storage/peopleQueries'
 import { VolumeInput } from '../../shared/components/VolumeInput'
-import { parseVolumeToMl } from '../pour/volumeUnits'
+import { parseVolumeToMl, volumeMlToInput } from '../pour/volumeUnits'
+import { DrinkNameInput } from '../../shared/components/DrinkNameInput'
 import { approxMlForVolume, leftMlFor } from '../pour/drinkOutcome'
 
 /**
@@ -741,13 +742,20 @@ export function ActiveSessionScreen({
           onSubmit={handleEditQueuedSubmit}
           className="flex w-full flex-wrap items-center gap-2 rounded-xl bg-smoke/60 px-3 py-2.5 text-sm ring-1 ring-smoke-light"
         >
-          <input
-            type="text"
+          <DrinkNameInput
+            id={`edit-queued-${drink.id}-name`}
             value={editName}
-            onChange={(e) => setEditName(e.target.value)}
+            onChange={setEditName}
+            onPick={(d) => {
+                  setEditName(d.name)
+                  const v = volumeMlToInput(d.volume_ml)
+                  setEditVolumeInput(v.amount)
+                  setEditVolumeUnit(v.unit)
+                }}
             placeholder="Drink name"
             autoFocus
-            className="min-w-0 flex-1 rounded-xl bg-ink px-3 py-2 text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
+            wrapperClassName="min-w-0 flex-1"
+            className="rounded-xl bg-ink px-3 py-2 text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
           />
           <VolumeInput
             amount={editVolumeInput}
@@ -1019,13 +1027,20 @@ export function ActiveSessionScreen({
                     onSubmit={handleEditQueuedSubmit}
                     className="flex flex-wrap items-center justify-center gap-2 text-sm"
                   >
-                    <input
-                      type="text"
+                    <DrinkNameInput
+                      id="edit-current-drink-name"
                       value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
+                      onChange={setEditName}
+                      onPick={(d) => {
+                  setEditName(d.name)
+                  const v = volumeMlToInput(d.volume_ml)
+                  setEditVolumeInput(v.amount)
+                  setEditVolumeUnit(v.unit)
+                }}
                       placeholder="Drink name"
                       autoFocus
-                      className="min-w-0 flex-1 rounded-xl bg-ink px-3 py-2 text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
+                      wrapperClassName="min-w-0 flex-1"
+                      className="rounded-xl bg-ink px-3 py-2 text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
                     />
                     <VolumeInput
                       amount={editVolumeInput}
@@ -1186,13 +1201,19 @@ export function ActiveSessionScreen({
                 Forgot to add a drink at the start? Start tracking one now.
               </p>
               <div className="flex flex-wrap gap-2">
-                <input
-                  type="text"
+                <DrinkNameInput
+                  id="start-drink-name"
                   value={startDrinkName}
-                  onChange={(e) => setStartDrinkName(e.target.value)}
+                  onChange={setStartDrinkName}
+                  onPick={(d) => {
+                  setStartDrinkName(d.name)
+                  const v = volumeMlToInput(d.volume_ml)
+                  setStartDrinkVolumeInput(v.amount)
+                  setStartDrinkVolumeUnit(v.unit)
+                }}
                   placeholder="e.g. Red Horse"
-                  aria-label="Drink name"
-                  className="min-w-[140px] flex-1 rounded-xl bg-ink px-3 py-2 text-sm text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
+                  wrapperClassName="min-w-[140px] flex-1"
+                  className="rounded-xl bg-ink px-3 py-2 text-sm text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
                 />
                 <VolumeInput
                   idPrefix="start-drink-volume"
@@ -1270,13 +1291,19 @@ export function ActiveSessionScreen({
                     Same drink{currentDrink.volume_ml ? ` · ${currentDrink.volume_ml}mL` : ''} (new bottle)
                   </button>
                   <form onSubmit={handleSwitchSubmit} className="space-y-2">
-                    <input
-                      type="text"
+                    <DrinkNameInput
+                      id="switch-drink-name"
                       value={switchName}
-                      onChange={(e) => setSwitchName(e.target.value)}
+                      onChange={setSwitchName}
+                      onPick={(d) => {
+                  setSwitchName(d.name)
+                  const v = volumeMlToInput(d.volume_ml)
+                  setSwitchVolumeInput(v.amount)
+                  setSwitchVolumeUnit(v.unit)
+                }}
                       placeholder="Different drink"
-                      aria-label="Different drink name"
-                      className="w-full rounded-xl bg-ink px-3 py-2 text-sm text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
+                      ariaLabel="Different drink name"
+                      className="rounded-xl bg-ink px-3 py-2 text-sm text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
                     />
                     <div className="flex flex-wrap gap-2">
                       <VolumeInput
@@ -1311,13 +1338,19 @@ export function ActiveSessionScreen({
                     Not empty yet? Set up the next one for later.
                   </p>
                   <form onSubmit={handleQueueSubmit} className="space-y-2">
-                    <input
-                      type="text"
+                    <DrinkNameInput
+                      id="queue-drink-name"
                       value={queueName}
-                      onChange={(e) => setQueueName(e.target.value)}
+                      onChange={setQueueName}
+                      onPick={(d) => {
+                  setQueueName(d.name)
+                  const v = volumeMlToInput(d.volume_ml)
+                  setQueueVolumeInput(v.amount)
+                  setQueueVolumeUnit(v.unit)
+                }}
                       placeholder="Next drink"
-                      aria-label="Next drink name"
-                      className="w-full rounded-xl bg-ink px-3 py-2 text-sm text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
+                      ariaLabel="Next drink name"
+                      className="rounded-xl bg-ink px-3 py-2 text-sm text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
                     />
                     <div className="flex flex-wrap gap-2">
                       <VolumeInput

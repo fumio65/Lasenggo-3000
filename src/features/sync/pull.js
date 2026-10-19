@@ -40,6 +40,8 @@ export async function pullSessions() {
     // someone was renamed/added from a different device, or this is a
     // reinstall). Cheap either way: one query, insert whatever's missing.
     const peoplePulled = await pullPeople(db, deviceId)
+    // app/saved-drinks: same reasoning as people: not tied to any session.
+    await pullSavedDrinks(db, deviceId)
 
     const { data: remoteSessions, error: sessionsError } = await supabase
       .from('sessions')
@@ -112,6 +114,35 @@ export async function pullSessions() {
   }
 }
 
+
+/** app/saved-drinks: inserts any remote saved drinks for this device that
+ * aren't local yet, skipping ones the user deleted here (tombstoned in
+ * deleted_saved_drinks). Same rules as pullPeople below. */
+async function pullSavedDrinks(db, deviceId) {
+  const { data: remote, error } = await supabase
+    .from('saved_drinks')
+    .select('id, name, volume_ml, created_at, last_used_at')
+    .eq('device_id', deviceId)
+  if (error) throw error
+  if (!remote || remote.length === 0) return 0
+
+  const localResult = await db.query('SELECT id FROM saved_drinks')
+  const localIds = new Set((localResult.values ?? []).map((row) => row.id))
+  const deletedResult = await db.query('SELECT id FROM deleted_saved_drinks')
+  const deletedIds = new Set((deletedResult.values ?? []).map((row) => row.id))
+  const missing = remote.filter((d) => !localIds.has(d.id) && !deletedIds.has(d.id))
+  if (missing.length === 0) return 0
+
+  await db.executeSet(
+    missing.map((d) => ({
+      statement:
+        'INSERT OR IGNORE INTO saved_drinks (id, device_id, name, volume_ml, created_at, last_used_at, synced) VALUES (?, ?, ?, ?, ?, ?, 1)',
+      values: [d.id, deviceId, d.name, d.volume_ml, d.created_at, d.last_used_at],
+    })),
+    false,
+  )
+  return missing.length
+}
 
 /** app/people-roster-sync: inserts any remote `people` rows for this device
  * that aren't already present locally, keyed by id (same `INSERT OR IGNORE`

@@ -105,6 +105,29 @@ const SCHEMA = `
     id TEXT PRIMARY KEY,
     deleted_at TEXT NOT NULL
   );
+
+  -- app/saved-drinks: remembered drinks (name + bottle size) for
+  -- tap-to-fill wherever a drink is entered, the drinks counterpart of
+  -- \`people\`. Filled automatically whenever a drink is logged (no separate
+  -- "add" step). Separate from \`drinks\`, the per-session log: editing a
+  -- saved drink never rewrites a past session. One row per name + size, so
+  -- "Red Horse 500mL" and "Red Horse 1L" are separate picks.
+  CREATE TABLE IF NOT EXISTS saved_drinks (
+    id TEXT PRIMARY KEY,
+    device_id TEXT,
+    name TEXT NOT NULL,
+    volume_ml INTEGER,
+    created_at TEXT NOT NULL,
+    last_used_at TEXT NOT NULL,
+    synced INTEGER NOT NULL DEFAULT 0
+  );
+
+  -- Same purpose as deleted_people: stops pull.js from re-inserting a saved
+  -- drink the user deleted while its Supabase row still exists.
+  CREATE TABLE IF NOT EXISTS deleted_saved_drinks (
+    id TEXT PRIMARY KEY,
+    deleted_at TEXT NOT NULL
+  );
 `
 
 const sqlite = new SQLiteConnection(CapacitorSQLite)

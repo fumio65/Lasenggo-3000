@@ -118,6 +118,19 @@ events (
                                -- (0 finished, whole pour for tapon)
   timestamp timestamptz
 )
+
+-- app/saved-drinks: remembered drinks for tap-to-fill (the drinks
+-- counterpart of `people`); one row per name + bottle size. Filled
+-- automatically whenever a drink is logged. Not referenced by `drinks`:
+-- editing a saved drink never changes past sessions.
+saved_drinks (
+  id uuid primary key,
+  device_id uuid,            -- RLS: device_id = auth.uid()
+  name text,
+  volume_ml integer,
+  created_at timestamptz,
+  last_used_at timestamptz   -- sort order: most recently used first
+)
 ```
 Local SQLite mirrors this exactly, plus a `synced boolean` flag per row used by the sync
 job to find unsynced records. `volume`, `note`, and `participants.person_id` were all

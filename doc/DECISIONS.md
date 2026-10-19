@@ -2147,3 +2147,61 @@ while deciding, counts after pour, resets on Finished, a second pour
 starts fresh and expires while drinking, and the outcome after a time-up
 clears it (this last step failed before the fix). Plus `vite build` and
 `npx cap sync android`.
+
+## Saved drinks: tap a drink you've had before to fill name + size
+User: "it records the participants, what if I also record the drinks and
+its content so I can just tap the drink if I saw it, just like the
+feature when adding a participant." Agreed: groups drink the same few
+things session after session, and typing name + bottle size every time
+was the slowest part of setup.
+
+**How it works** (mirrors the People roster on purpose):
+- `saved_drinks` (local + Supabase), one row per name + bottle size, so
+  "Red Horse 500mL" and "Red Horse 1L" are separate one-tap picks. No
+  "add" button: `recordSavedDrink` runs inside `createSession`,
+  `addDrink` and `updateDrink`, so every way of entering a drink
+  (Start Session, start tracking, switch, "same drink", queue, edit)
+  feeds the list. Exact match (name ignoring case + same size) only bumps
+  `last_used_at`. It never throws, so a failure can't block logging the
+  drink itself.
+- `DrinkNameInput` replaces the plain drink-name field in all six places.
+  Focusing it lists saved drinks (most recent first, filtered as you
+  type, same look and keyboard behavior as the "Who's joining"
+  suggestions); tapping one fills the name and the size, in L from
+  1000mL up (`volumeMlToInput`). It reloads the list on each focus so a
+  drink saved a moment ago appears without a reload.
+- Drinks screen (button next to People): tap to fix name/size, ✕ to
+  remove with the same confirm dialog as People. Edits only change future
+  picks; past sessions keep what they were logged with.
+- Deletes write a `deleted_saved_drinks` tombstone before anything else
+  and best-effort delete the Supabase row, so a sync pull can't bring a
+  deleted drink back (same fix People needed earlier).
+
+**Sync** (user chose cloud sync over phone-only): Supabase migration
+`create_saved_drinks` (RLS on, one ALL policy `device_id = (select
+auth.uid())`, index on device_id). Pushed by `syncSavedDrinks` in
+`runSync`, pulled by `pullSavedDrinks` in `pullSessions`. Unlike
+`renamePerson`, `updateSavedDrink` resets `synced = 0` so edits actually
+reach the cloud. Security advisor: no new issues beyond the
+anonymous-access notice every table here has by design.
+
+**Also fixed (pre-existing, found while testing)**: on a 360px-wide phone
+the "Who's joining" First name box was squeezed to a sliver and Last name
+overflowed the card, because text inputs keep a built-in minimum width.
+Added `min-w-0` to both. The header row (Session history / People /
+Drinks) now wraps instead of overflowing.
+
+**Known limit**: editing a queued drink from inside the "+N more queued"
+dropdown puts the suggestion list inside that dropdown's own scroll area,
+so it may need a scroll to see. Rare path; left as is.
+
+Verified end to end in the real built app (headless Chromium, 360px
+wide, real SQLite via jeep-sqlite, offline): fresh install shows no
+suggestions; starting a session with "Red Horse 1L" saves it; after a
+reload it's offered and one tap fills "Red Horse" + 1 + L; a non-matching
+query hides the list; the Drinks screen lists it, edits it to "Red Horse
+Stallion 500mL", asks before removing, shows the empty state, and the
+removal survives a reload; name fields fit at 360px; no page errors. Plus
+syntax checks on every touched file and `npx cap sync android`. Cloud
+sync round-trip not exercised (no network to Supabase from the test
+environment).
