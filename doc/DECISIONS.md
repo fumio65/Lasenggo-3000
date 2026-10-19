@@ -1274,3 +1274,13 @@ Two changes to the History row:
   date/time row already established, and takes less width.
 
 Verified: rolldown syntax check, full `vite build`.
+
+## History list: bump the date/time text back up
+User: "Now I think the font is too small." The prior pass went to
+`text-[11px]`, which read as too small in practice. Bumped the
+date/time line to `text-xs` (12px, Tailwind's smallest named step
+rather than another arbitrary value) and its two icons from `h-3 w-3` to
+`h-3.5 w-3.5` to match — keeps the icon-to-text proportion from the
+previous pass instead of getting text-heavy relative to tiny icons.
+
+Verified: rolldown syntax check, full `vite build`.
