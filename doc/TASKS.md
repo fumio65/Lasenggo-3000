@@ -1407,3 +1407,6 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
 - Hardware/firmware changes that affect the BLE command or status vocabulary must be
   reflected in `tagaybox_spec.md` in the same PR, so app and firmware owners don't drift
   out of sync
+
+- [x] app/drink-session-log: mL/L display is now a manual toggle (shared, persisted)
+      instead of auto-switching per value — see DECISIONS.md.

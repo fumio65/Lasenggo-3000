@@ -1019,3 +1019,28 @@ intense," not as a real house rule to enforce — so this follows the
 same soft-signal, never-force philosophy already established for the
 pass-limit house rule (see useTurnManager's doc comment) rather than
 auto-advancing the turn.
+
+## mL/L display: manual toggle instead of per-value auto-switching
+`formatVolumeMl` used to decide mL vs L for itself per value (>= 1000mL became L),
+so a list of several drinks could show some rows in mL and others in L with no way
+for the person to pick one and have it stick. User feedback: "I think it would be
+best if you turn the mL and L into a toggle for better UX."
+
+Replaced the auto-switching with an explicit `unit` param (`formatVolumeMl(ml, unit)`)
+and a small shared toggle (`VolumeUnitToggle`, mL/L pill) backed by a tiny
+localStorage-persisted store (`useVolumeDisplayUnit` in volumeUnits.js) — not React
+context, since the point is one switch every volume display reads from, without
+threading a prop through App.jsx and multiple layers of children. Flipping it in one
+place (live SessionLog's Drinks header, or History's Drinks header) updates every
+other mounted screen immediately, and the choice survives a reload via localStorage.
+
+"L" mode always converts, even for small values (e.g. 150mL -> "0.15L"), rather than
+only kicking in above 1000 — the point of switching to L view is consistency across
+the whole list, not just hiding big numbers. Wired into the three places a drink's
+volume appears: live SessionLog's Drinks list, ParticipantStatBar's per-drink/total
+mL, and HistoryDetail's Drinks bar chart labels.
+
+Verified: rolldound syntax check on all 5 touched files, full `vite build` (8.06s),
+grepped the built bundle for the new localStorage key, "Volume unit" aria-label, and
+aria-pressed attribute to confirm it shipped, and hand-traced `formatVolumeMl` in an
+isolated node script for both units across small/large/round values.

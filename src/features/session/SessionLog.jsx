@@ -2,7 +2,8 @@ import { useMemo } from 'react'
 import { ParticipantStatBar, VolumeLegend, VOLUME_BY_ID } from '../../shared/components/ParticipantStatBar'
 import { ScrollFadeBox } from '../../shared/components/ScrollFadeBox'
 import { ActivityFeed } from '../../shared/components/ActivityFeed'
-import { formatVolumeMl } from '../pour/volumeUnits'
+import { formatVolumeMl, useVolumeDisplayUnit } from '../pour/volumeUnits'
+import { VolumeUnitToggle } from '../../shared/components/VolumeUnitToggle'
 
 /** Builds the per-participant breakdown ParticipantStatBar renders: a pour
  * count per volume id, a pass count, and a total-mL estimate (count ×
@@ -92,6 +93,7 @@ function buildStats(participants, events) {
  * added. A short roster just never shows a fade/scroll at all.
  */
 export function SessionLog({ events, participants, currentParticipantId, pausedIds, pauseReasons, drinks = [] }) {
+  const [volumeUnit] = useVolumeDisplayUnit()
   const stats = useMemo(() => {
     // UX fix: this used to pull the current participant to the front while
     // leaving everyone else at their original absolute position (so turn
@@ -150,16 +152,19 @@ export function SessionLog({ events, participants, currentParticipantId, pausedI
               as HistoryDetail's past-session equivalent. */}
           {drinks.length > 0 && (
             <>
-              <h3 className="mt-5 font-display text-xs font-semibold text-paper-dim">
-                Drinks
-              </h3>
+              <div className="mt-5 flex items-center justify-between gap-3">
+                <h3 className="font-display text-xs font-semibold text-paper-dim">
+                  Drinks
+                </h3>
+                <VolumeUnitToggle />
+              </div>
               <ul className="mt-2 space-y-1.5">
                 {drinks.map((drink) => (
                   <li key={drink.id} className="flex items-baseline justify-between gap-3 text-sm">
                     <span className="truncate text-paper">
                       {drink.name}
                       {drink.volume_ml != null && (
-                        <span className="text-paper-dim"> · {formatVolumeMl(drink.volume_ml)}</span>
+                        <span className="text-paper-dim"> · {formatVolumeMl(drink.volume_ml, volumeUnit)}</span>
                       )}
                     </span>
                     <span className="shrink-0 text-xs text-paper-dim">
