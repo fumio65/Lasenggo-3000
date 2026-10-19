@@ -1107,3 +1107,30 @@ mid-session. Switching it from History affects both screens, same as
 before.
 
 Verified: rolldown syntax check, full `vite build`.
+
+## Fix: turn timer buzzed immediately on first enable
+User report: "I noticed the bug on the timer when I turn it on for the
+first time of the session it ring right away."
+
+Root cause: `useTurnTimer`'s ticking effect decided "expired" with
+`secondsLeft <= 0`. The moment the timer is turned on (durationSeconds:
+null -> e.g. 30), React re-renders with the new durationSeconds but
+`secondsLeft` still holds its previous value — `null`, since the timer
+had been off. The ticking effect reruns on that same render (durationSeconds
+is one of its deps) *before* the separate reset effect has applied the
+real starting value, so it evaluated `null <= 0`, which JS coerces to
+`0 <= 0` — true — and called `setExpired(true)` (-> buzzer) before any
+actual counting happened. Same race applies turning the timer off and
+back on mid-session, not just the very first time, since turning it off
+resets secondsLeft back to null too.
+
+Fix: added `|| secondsLeft == null` to the ticking effect's early-return
+guard, so a not-yet-initialized countdown is treated as "not ready" rather
+than "expired". The reset effect's own update then makes the ticking
+effect rerun with the real value.
+
+Verified: hand-traced the exact transition (secondsLeft=null,
+durationSeconds=30) in an isolated node script confirming the old code
+produced EXPIRE and the fixed code produces "skip (not ready)", plus the
+normal cases (mid-countdown, real zero, fully off) still behave
+correctly. rolldown syntax check + full vite build.

@@ -38,8 +38,21 @@ export function useTurnTimer(turnKey, durationSeconds) {
 
   // The actual ticking — disabled (durationSeconds null) means no timer
   // ever runs at all, not just one that never reaches zero.
+  //
+  // Bug fix (app/turn-timer follow-up): turning the timer on (or
+  // switching it to a new duration) changes `durationSeconds` in the
+  // same render where `secondsLeft` is still whatever it was before —
+  // `null` if the timer had been off. This effect reruns on that render
+  // (its deps include `durationSeconds`) *before* the reset effect
+  // above has had a chance to apply the fresh `secondsLeft`, so without
+  // the `secondsLeft == null` guard, `secondsLeft <= 0` was evaluating
+  // `null <= 0`, which JS coerces to `0 <= 0` — true — and fired the
+  // buzzer immediately, even though the real countdown hadn't started.
+  // Treating `null` as "not ready yet" instead of "expired" closes that
+  // race; the reset effect's own update then makes this effect rerun
+  // with the real starting value.
   useEffect(() => {
-    if (durationSeconds == null) return
+    if (durationSeconds == null || secondsLeft == null) return
     if (secondsLeft <= 0) {
       setExpired(true)
       return
