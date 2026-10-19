@@ -22,6 +22,7 @@ import {
   getCurrentDrink,
   addDrink,
   updateDrink,
+  backfillUntaggedPours,
   getQueuedDrinks,
   switchToDrink,
   cancelQueuedDrink,
@@ -284,9 +285,11 @@ export function ActiveSessionScreen({
     // the same function the "switch to a different drink" path already
     // uses under the hood.
     addDrink(sessionId, trimmed, volumeMl)
+      .then((newDrinkId) => backfillUntaggedPours(sessionId, newDrinkId))
       .then(() => {
         refreshCurrentDrink()
         refreshDrinkHistory()
+        refreshEvents()
       })
       .catch((err) => console.error('Failed to start tracking drink', err))
     setStartDrinkName('')

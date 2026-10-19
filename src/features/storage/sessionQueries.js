@@ -192,6 +192,30 @@ export async function addDrink(sessionId, name, volumeMl = null, status = 'servi
   return id
 }
 
+/** app/drink-tracking (mid-session "start tracking a drink" follow-up):
+ * a POUR logged before any drink existed this session (drink tracking
+ * skipped at Start Session, or every drink demoted/served out) gets
+ * `drink_id = NULL` (see `logEvent`'s `drinkId` param, and `onEvent`'s
+ * `currentDrinkIdRef.current` in ActiveSessionScreen, which is null in
+ * exactly that situation) - so `remainingForDrink`'s "declared volume
+ * minus every POUR tagged with this id" formula has nothing to subtract,
+ * and a drink declared after the fact looks full even though real pours
+ * already happened against it. Those earlier untagged pours *were* this
+ * drink - there was only ever one thing being poured, the person just
+ * hadn't told the app its name/volume yet - so backfilling them onto the
+ * newly-declared drink's id is correcting a gap in when it was logged,
+ * not rewriting what actually happened. Scoped to this session and to
+ * still-untagged rows only, so it never touches a pour that was already
+ * correctly tagged against an earlier (now switched-away-from) drink. */
+export async function backfillUntaggedPours(sessionId, drinkId) {
+  const db = getDatabase()
+  await db.run(
+    "UPDATE events SET drink_id = ? WHERE session_id = ? AND type = 'POUR' AND drink_id IS NULL",
+    [drinkId, sessionId],
+    false,
+  )
+}
+
 /** app/drink-queue-list (+ app/drink-edit-current): edits a drink's name
  * and/or volume in place — the "edit" action on an "Up next" row, and
  * (now) on "Now serving" too, for fixing a typo'd name or a mistyped mL

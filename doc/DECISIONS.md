@@ -1161,3 +1161,37 @@ bundle for the new form's copy to confirm it shipped. Read
 `demoteCurrentDrink`'s source directly to confirm its `if (!current)
 return` guard makes it a safe no-op in this exact case (no current drink
 yet) rather than assuming.
+
+## Fix: pours made before "Start tracking a drink" didn't count against it
+User: "...when I enter the drink the bar is still complete eventhough I
+already pour the drink and the portion of the alcohol has already
+reduced." A real follow-on from the gap fixed above: a POUR logged while
+`currentDrink` was still null gets `drink_id = NULL` (see `logEvent`'s
+`drinkId` param / `currentDrinkIdRef.current` in ActiveSessionScreen).
+`remainingForDrink`'s formula is "declared volume minus every POUR
+tagged with this drink's id", so once a drink was declared after the
+fact, those earlier untagged pours had nothing to attach to and the new
+drink's bar/remaining showed completely full, ignoring real pours that
+had already happened.
+
+Those pre-existing untagged pours *were* this drink — there was only one
+thing being poured all along, the person just hadn't told the app its
+name/volume yet — so this is backfilling when something was logged, not
+rewriting what happened. Added `backfillUntaggedPours(sessionId, drinkId)`
+in sessionQueries.js: `UPDATE events SET drink_id = ? WHERE session_id = ?
+AND type = 'POUR' AND drink_id IS NULL`. Wired into
+`handleStartDrinkSubmit` right after `addDrink` resolves (using the new
+drink's id), followed by `refreshEvents()` so the client-side `events`
+state ActiveSessionScreen's own `remainingForDrink` reads picks up the
+retagged rows immediately.
+
+Scoped to `session_id` + still-NULL `drink_id` only, so it can never
+touch a pour that was already correctly tagged against an earlier
+(switched-away-from) drink — only genuinely orphaned pours from before
+any drink existed get claimed.
+
+Verified: rolldound syntax check on both touched files, full `vite
+build`, grepped the built bundle for the backfill SQL fragment to
+confirm it shipped, and hand-traced the exact before/after scenario in
+an isolated node script (remaining stuck at full pre-backfill, correctly
+dropped to declared-minus-poured after).
