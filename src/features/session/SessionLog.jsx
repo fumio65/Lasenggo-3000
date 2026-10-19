@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { ParticipantStatBar, VolumeLegend, VOLUME_BY_ID } from '../../shared/components/ParticipantStatBar'
 import { ScrollFadeBox } from '../../shared/components/ScrollFadeBox'
 import { ActivityFeed } from '../../shared/components/ActivityFeed'
-import { formatVolumeMl, useVolumeDisplayUnit } from '../pour/volumeUnits'
+import { formatVolumeMl } from '../pour/volumeUnits'
 
 /** Builds the per-participant breakdown ParticipantStatBar renders: a pour
  * count per volume id, a pass count, and a total-mL estimate (count ×
@@ -92,7 +92,6 @@ function buildStats(participants, events) {
  * added. A short roster just never shows a fade/scroll at all.
  */
 export function SessionLog({ events, participants, currentParticipantId, pausedIds, pauseReasons, drinks = [] }) {
-  const [volumeUnit] = useVolumeDisplayUnit()
   const stats = useMemo(() => {
     // UX fix: this used to pull the current participant to the front while
     // leaving everyone else at their original absolute position (so turn
@@ -160,7 +159,7 @@ export function SessionLog({ events, participants, currentParticipantId, pausedI
                     <span className="truncate text-paper">
                       {drink.name}
                       {drink.volume_ml != null && (
-                        <span className="text-paper-dim"> · {formatVolumeMl(drink.volume_ml, volumeUnit)}</span>
+                        <span className="text-paper-dim"> · {formatVolumeMl(drink.volume_ml)}</span>
                       )}
                     </span>
                     <span className="shrink-0 text-xs text-paper-dim">

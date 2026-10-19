@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { POUR_VOLUMES } from '../../features/pour/usePourVolume'
-import { formatVolumeMl, useVolumeDisplayUnit } from '../../features/pour/volumeUnits'
+import { formatVolumeMl } from '../../features/pour/volumeUnits'
 
 export const VOLUME_BY_ID = Object.fromEntries(POUR_VOLUMES.map((v) => [v.id, v]))
 // Bar segment colors, in the same light→heavy order as POUR_VOLUMES, plus
@@ -30,7 +30,6 @@ export const PASS_COLOR = 'bg-smoke-light'
  * word spelled out.
  */
 export function ParticipantStatBar({ stat, maxActions, isCurrent = false, isPaused = false, pauseReason }) {
-  const [volumeUnit] = useVolumeDisplayUnit()
   // app/drink-session-log (UX pass: long drink lists): with several
   // different drinks possible per participant, showing every one inline
   // doesn't scale in this already-compact panel — same problem the
@@ -114,7 +113,7 @@ export function ParticipantStatBar({ stat, maxActions, isCurrent = false, isPaus
             <li key={d.name} className="space-y-0.5 text-xs text-paper-dim/80">
               <div className="flex items-baseline justify-between gap-2">
                 <span className="truncate">{d.name}</span>
-                <span className="shrink-0 tabular-nums">~{formatVolumeMl(d.ml, volumeUnit)}</span>
+                <span className="shrink-0 tabular-nums">~{formatVolumeMl(d.ml)}</span>
               </div>
               {drinkVolumes.length > 0 && (
                 <div className="flex items-center gap-2.5 text-paper-dim/60">
@@ -200,7 +199,7 @@ export function ParticipantStatBar({ stat, maxActions, isCurrent = false, isPaus
         <span>
           {pourTotal} poured · {stat.pass} passed
           {stat.totalMl > 0 && (
-            <span className="text-paper-dim/70"> · ~{formatVolumeMl(stat.totalMl, volumeUnit)}</span>
+            <span className="text-paper-dim/70"> · ~{formatVolumeMl(stat.totalMl)}</span>
           )}
         </span>
       </div>

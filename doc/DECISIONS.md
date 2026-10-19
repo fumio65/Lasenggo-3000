@@ -1195,3 +1195,23 @@ build`, grepped the built bundle for the backfill SQL fragment to
 confirm it shipped, and hand-traced the exact before/after scenario in
 an isolated node script (remaining stuck at full pre-backfill, correctly
 dropped to declared-minus-poured after).
+
+## Revert: mL/L manual toggle removed entirely
+User: "let's move to the Session History I noticed the toggle is still
+there I want you to remove it." After already pulling it from the live
+session on the prior request, this removes the last remaining instance
+(History's Drinks header) too — meaning no control is left anywhere, so
+rather than leave a dead `useVolumeDisplayUnit`/localStorage store with
+nothing to drive it, this reverts the feature entirely back to its
+original pre-toggle behavior.
+
+`formatVolumeMl` is back to its original single-argument, auto-switching
+form (>= 1000mL displays as L, otherwise mL — no `unit` param). Deleted
+`VolumeUnitToggle.jsx` and the `useVolumeDisplayUnit`/localStorage store
+from `volumeUnits.js` entirely (dead code with its toggle button gone
+from every screen). Reverted the three call sites back to their
+pre-toggle form: HistoryDetail.jsx, SessionLog.jsx, ParticipantStatBar.jsx.
+
+Verified: rolldown syntax check on all 4 touched/removed files, full
+`vite build`, grepped the built bundle to confirm no trace of the old
+toggle (localStorage key, "Volume unit" aria-label) remains.

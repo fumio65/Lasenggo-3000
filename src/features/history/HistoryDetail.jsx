@@ -4,8 +4,7 @@ import { HistoryIcon } from '../../shared/components/HistoryIcon'
 import { ParticipantStatBar, VolumeLegend, VOLUME_BY_ID } from '../../shared/components/ParticipantStatBar'
 import { ScrollFadeBox } from '../../shared/components/ScrollFadeBox'
 import { ActivityFeed } from '../../shared/components/ActivityFeed'
-import { formatVolumeMl, useVolumeDisplayUnit } from '../pour/volumeUnits'
-import { VolumeUnitToggle } from '../../shared/components/VolumeUnitToggle'
+import { formatVolumeMl } from '../pour/volumeUnits'
 
 function formatDate(isoString) {
   return new Date(isoString).toLocaleString(undefined, {
@@ -92,7 +91,6 @@ function drinkStatusLabel(drink, events) {
 }
 
 export function HistoryDetail({ sessionId, onBack }) {
-  const [volumeUnit] = useVolumeDisplayUnit()
   const { detail, events, drinks, loading } = useSessionDetail(sessionId)
 
   const pausedAtEnd = buildPausedAtEnd(events)
@@ -181,10 +179,7 @@ export function HistoryDetail({ sessionId, onBack }) {
                 never used drink tracking. */}
             {drinks.length > 0 && (
               <section className="rounded-2xl bg-smoke/60 p-4 ring-1 ring-smoke-light">
-                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
-                  <h2 className="font-display text-xs font-semibold text-paper-dim">Drinks</h2>
-                  <VolumeUnitToggle />
-                </div>
+                <h2 className="font-display text-xs font-semibold text-paper-dim">Drinks</h2>
                 {/* app/drink-session-log (UX pass: small-multiples bar
                     chart instead of plain text rows; fix: bar direction
                     inverted from the live view): each drink with a
@@ -238,8 +233,8 @@ export function HistoryDetail({ sessionId, onBack }) {
                           {hasVolume && (
                             <>
                               {' · '}
-                              {formatVolumeMl(pouredMl, volumeUnit)} poured of {formatVolumeMl(drink.volume_ml, volumeUnit)}
-                              {remaining != null && !isEmpty && ` (${formatVolumeMl(remaining, volumeUnit)} left)`}
+                              {formatVolumeMl(pouredMl)} poured of {formatVolumeMl(drink.volume_ml)}
+                              {remaining != null && !isEmpty && ` (${formatVolumeMl(remaining)} left)`}
                             </>
                           )}
                         </p>

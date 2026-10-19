@@ -1,5 +1,3 @@
-import { useEffect, useState } from 'react'
-
 /**
  * app/drink-tracking (volume unit follow-up): the drink mL field is a
  * number so remaining-volume math works (can't subtract from "1 jug"),
@@ -25,72 +23,24 @@ export function parseVolumeToMl(amountInput, unitId) {
   return Math.round(amount * unit.toMl)
 }
 
-/** app/drink-session-log (UX follow-up: manual toggle instead of auto
- * switching): every drink-volume display (live session's Drinks log,
- * per-participant breakdowns, History's bars) used to pick mL vs L for
- * itself per-value (>= 1000mL became L), which meant a person skimming a
- * list saw some rows in mL and others in L with no way to pick one and
- * have it stick. `useVolumeDisplayUnit` below is the shared on/off switch
- * for that now — this function just renders a given mL amount in
- * whichever unit the switch currently says, instead of deciding on its
- * own. "L" always converts (e.g. 150mL -> "0.15L") rather than only
- * kicking in above 1000, since the point of switching to L view is
- * consistency across the whole list, not just hiding big numbers.
- * Rounded to 2 decimals with trailing zeros trimmed. Returns null for a
- * null/undefined input so callers can keep their existing
- * `volume_ml != null` guard. `unit` defaults to 'ml' for any caller that
- * hasn't been wired up to the toggle yet. */
-export function formatVolumeMl(volumeMl, unit = 'ml') {
+/** app/drink-session-log: the display-time inverse of parseVolumeToMl —
+ * a stored mL integer is always plain mL, but showing "1500mL" for a 1.5L
+ * bottle everywhere a drink's volume appears (the live session's Drinks
+ * log, per-participant breakdowns) reads worse than showing it in the
+ * unit a person would actually say out loud. Switches to L at >= 1000mL,
+ * rounded to 2 decimals with trailing zeros trimmed (1500 -> "1.5L", 2000
+ * -> "2L"), otherwise plain "<n>mL". Returns null for a null/undefined
+ * input so callers can keep their existing `volume_ml != null` guard.
+ *
+ * app/drink-session-log (UX follow-up, reverted): a manual mL/L toggle
+ * was tried here and in the live session + History headers, then
+ * explicitly pulled back out of both places on user feedback — this is
+ * back to the original auto-switching behavior, no `unit` param. */
+export function formatVolumeMl(volumeMl) {
   if (volumeMl == null) return null
-  if (unit === 'l') {
+  if (volumeMl >= 1000) {
     const liters = Math.round((volumeMl / 1000) * 100) / 100
     return `${liters}L`
   }
   return `${volumeMl}mL`
-}
-
-/** app/drink-session-log (UX follow-up): a tiny shared store — not React
- * context — so the mL/L switch lives in exactly one place (localStorage,
- * key below) and every screen that shows a volume (live SessionLog,
- * ParticipantStatBar, HistoryDetail) reads and flips the *same* switch,
- * without threading a prop through App.jsx and three layers of children
- * for something this small. Flipping it in one place (e.g. History)
- * updates every other mounted screen immediately via the subscriber set,
- * and the choice survives a reload/app restart via localStorage. Falls
- * back to in-memory-only (still works, just doesn't persist) if
- * localStorage throws (private browsing, storage disabled, etc).
- */
-const VOLUME_UNIT_STORAGE_KEY = 'lasenggo:volumeDisplayUnit'
-
-function readStoredUnit() {
-  try {
-    return localStorage.getItem(VOLUME_UNIT_STORAGE_KEY) === 'l' ? 'l' : 'ml'
-  } catch {
-    return 'ml'
-  }
-}
-
-let currentVolumeUnit = readStoredUnit()
-const volumeUnitListeners = new Set()
-
-export function useVolumeDisplayUnit() {
-  const [unit, setUnit] = useState(currentVolumeUnit)
-
-  useEffect(() => {
-    volumeUnitListeners.add(setUnit)
-    return () => volumeUnitListeners.delete(setUnit)
-  }, [])
-
-  function setVolumeDisplayUnit(nextUnit) {
-    currentVolumeUnit = nextUnit
-    try {
-      localStorage.setItem(VOLUME_UNIT_STORAGE_KEY, nextUnit)
-    } catch {
-      // localStorage unavailable — the toggle still works for this
-      // session, it just won't be remembered next time.
-    }
-    volumeUnitListeners.forEach((listener) => listener(nextUnit))
-  }
-
-  return [unit, setVolumeDisplayUnit]
 }
