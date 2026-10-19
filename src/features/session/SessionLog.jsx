@@ -3,7 +3,6 @@ import { ParticipantStatBar, VolumeLegend, VOLUME_BY_ID } from '../../shared/com
 import { ScrollFadeBox } from '../../shared/components/ScrollFadeBox'
 import { ActivityFeed } from '../../shared/components/ActivityFeed'
 import { formatVolumeMl, useVolumeDisplayUnit } from '../pour/volumeUnits'
-import { VolumeUnitToggle } from '../../shared/components/VolumeUnitToggle'
 
 /** Builds the per-participant breakdown ParticipantStatBar renders: a pour
  * count per volume id, a pass count, and a total-mL estimate (count ×
@@ -152,12 +151,9 @@ export function SessionLog({ events, participants, currentParticipantId, pausedI
               as HistoryDetail's past-session equivalent. */}
           {drinks.length > 0 && (
             <>
-              <div className="mt-5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
-                <h3 className="font-display text-xs font-semibold text-paper-dim">
-                  Drinks
-                </h3>
-                <VolumeUnitToggle />
-              </div>
+              <h3 className="mt-5 font-display text-xs font-semibold text-paper-dim">
+                Drinks
+              </h3>
               <ul className="mt-2 space-y-1.5">
                 {drinks.map((drink) => (
                   <li key={drink.id} className="flex items-baseline justify-between gap-3 text-sm">

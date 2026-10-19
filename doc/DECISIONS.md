@@ -1091,3 +1091,19 @@ Verified: rolldown syntax check on both touched files, full `vite build`.
 Still unconfirmed on an actual phone — the original report came from the
 user's own screenshot, so a follow-up screenshot/confirmation is the real
 verification here.
+
+## Remove the mL/L toggle button from the live session; keep History's
+User: "I want you to remove the toggle at the mid-session that's not what
+I mean." The mL/L display toggle added earlier had been placed in two
+spots — live SessionLog's Drinks header and HistoryDetail's Drinks
+header — but the user only wanted one. Removed the visible
+`VolumeUnitToggle` button from the live/mid-session Drinks panel;
+HistoryDetail keeps its toggle.
+
+The live panel still renders every volume in whatever unit the toggle in
+History is currently set to (it still reads `useVolumeDisplayUnit`'s
+shared value) — it just no longer offers its own control to change it
+mid-session. Switching it from History affects both screens, same as
+before.
+
+Verified: rolldown syntax check, full `vite build`.
