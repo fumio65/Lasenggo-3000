@@ -1090,7 +1090,7 @@ export function ActiveSessionScreen({
                       aria-label="Different drink name"
                       className="w-full rounded-xl bg-ink px-3 py-2 text-sm text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
                     />
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <VolumeInput
                         idPrefix="switch-drink-volume"
                         label="Different drink volume"
@@ -1098,11 +1098,12 @@ export function ActiveSessionScreen({
                         unit={switchVolumeUnit}
                         onAmountChange={setSwitchVolumeInput}
                         onUnitChange={setSwitchVolumeUnit}
+                        className="shrink-0"
                       />
                       <button
                         type="submit"
                         disabled={!switchName.trim() || switchVolumeMissing}
-                        className="flex-1 rounded-xl bg-ember px-3 py-2 text-sm font-semibold text-ink transition active:scale-95 disabled:opacity-30"
+                        className="min-w-[80px] flex-1 rounded-xl bg-ember px-3 py-2 text-sm font-semibold text-ink transition active:scale-95 disabled:opacity-30"
                       >
                         Log
                       </button>
@@ -1130,7 +1131,7 @@ export function ActiveSessionScreen({
                       aria-label="Next drink name"
                       className="w-full rounded-xl bg-ink px-3 py-2 text-sm text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
                     />
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <VolumeInput
                         idPrefix="queue-drink-volume"
                         label="Next drink volume"
@@ -1138,11 +1139,12 @@ export function ActiveSessionScreen({
                         unit={queueVolumeUnit}
                         onAmountChange={setQueueVolumeInput}
                         onUnitChange={setQueueVolumeUnit}
+                        className="shrink-0"
                       />
                       <button
                         type="submit"
                         disabled={!queueName.trim() || queueVolumeMissing}
-                        className="flex-1 rounded-xl px-3 py-2 text-sm font-semibold text-paper ring-1 ring-smoke-light transition hover:bg-smoke-light active:scale-95 disabled:opacity-30"
+                        className="min-w-[80px] flex-1 rounded-xl px-3 py-2 text-sm font-semibold text-paper ring-1 ring-smoke-light transition hover:bg-smoke-light active:scale-95 disabled:opacity-30"
                       >
                         Queue
                       </button>

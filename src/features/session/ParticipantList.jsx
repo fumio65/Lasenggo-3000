@@ -622,14 +622,14 @@ export function ParticipantList({
             <label htmlFor="drink-name" className="text-xs text-paper-dim">
               Drink
             </label>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <input
                 id="drink-name"
                 type="text"
                 value={drinkName}
                 onChange={(e) => setDrinkName(e.target.value)}
                 placeholder="e.g. Red Horse"
-                className="flex-1 rounded-xl bg-ink px-4 py-2 text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
+                className="min-w-[140px] flex-1 rounded-xl bg-ink px-4 py-2 text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
               />
               <VolumeInput
                 idPrefix="drink-volume"
@@ -638,6 +638,7 @@ export function ParticipantList({
                 unit={drinkVolumeUnit}
                 onAmountChange={setDrinkVolumeInput}
                 onUnitChange={setDrinkVolumeUnit}
+                className="shrink-0"
               />
             </div>
             {drinkVolumeMissing && (

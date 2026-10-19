@@ -1065,3 +1065,29 @@ Verified: rolldown syntax check on both touched files, full `vite build`,
 grepped the built CSS for the `flex-wrap` utility to confirm it shipped.
 Actual phone-width rendering still not independently confirmed (no live
 browser this session) — worth a quick look on the user's device.
+
+## Fix: Start Session "Drink" row overflow on phone width (mL/L input toggle)
+User's screenshot showed this is a different control than the display
+toggle fixed above — it's the pre-existing mL/L *input*-unit picker
+(`VolumeInput`) next to the drink name field on Start Session, clipped
+off the right edge of the phone screen. Root cause: the row (`drink name`
+flex-1 input + `VolumeInput`'s fixed-width number field and toggle) used
+a plain `flex gap-2` with no wrap — on a narrow phone the combined
+minimum width exceeded the available space and nothing in the row was
+allowed to drop to a second line, so it just overflowed past the screen
+edge.
+
+Fix: `flex gap-2` -> `flex flex-wrap gap-2`, name input given
+`min-w-[140px]` (a sane floor instead of shrinking arbitrarily small),
+`VolumeInput` given `shrink-0` so it moves to its own line as one unit
+rather than squeezing. Applied to the same spot on Start Session
+(ParticipantList.jsx) and, as a consistency/safety pass, the two
+matching but not-yet-reported rows in ActiveSessionScreen's switch/queue
+dialogs (switch-drink-volume + Log button, queue-drink-volume + Queue
+button) — same `flex gap-2`-without-wrap pattern, same risk on a narrow
+phone, fixed the same way before they got reported too.
+
+Verified: rolldown syntax check on both touched files, full `vite build`.
+Still unconfirmed on an actual phone — the original report came from the
+user's own screenshot, so a follow-up screenshot/confirmation is the real
+verification here.
