@@ -622,9 +622,14 @@ export function ActiveSessionScreen({
   // TurnRing around every time it's opened either.
   const [timerSeconds, setTimerSeconds] = useState(null)
   const [timerPickerOpen, setTimerPickerOpen] = useState(false)
+  // Stopped from the moment Pour is pressed (including the simulated
+  // "Pouring…" second) until Finished/Tapon moves the turn on; the timer
+  // only times the Pour/Pass decision.
+  const timerRunning = !isPouring && !pendingPour
   const { secondsLeft: timerSecondsLeft, expired: timerExpired } = useTurnTimer(
     currentIndex,
     timerSeconds,
+    timerRunning,
   )
 
   // Buzzer fires exactly once per expiry, not once per render while
@@ -1404,7 +1409,9 @@ export function ActiveSessionScreen({
               {timerExpired
                 ? "Time's up!"
                 : timerSeconds != null
-                  ? `${timerSecondsLeft}s`
+                  ? timerRunning
+                    ? `${timerSecondsLeft}s`
+                    : `${timerSecondsLeft}s · paused`
                   : 'Turn timer: Off'}
             </button>
             {timerPickerOpen && (

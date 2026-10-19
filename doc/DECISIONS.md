@@ -2092,3 +2092,26 @@ not yet acted, paused, pause/resume rows in between, a different
 person's action, idempotence, empty list), all passing after correcting
 one wrong expectation in the test itself; `vite build`; `npx cap sync
 android`.
+
+### Fix: turn timer stops once Pour is pressed
+User spotted that the timer kept going after Pour. Caused by the
+drink-outcome change: `useTurnTimer` resets when the turn index changes,
+and Pour no longer advances the turn until Finished/Tapon, so the timer
+kept counting through the drink, ticking, buzzing and logging "ran out
+of time" on someone who had already poured.
+
+User chose "stop until next turn" (over restarting it as a drinking
+clock). `useTurnTimer` gained a `running` argument that freezes the
+countdown in place without resetting it; the session screen passes false
+from the moment Pour is pressed (including the simulated "Pouring…"
+second) until the outcome is recorded. Advancing the turn then resets
+the clock for the next person as before. No ticks play while it's
+stopped, since the tick effect only fires when the seconds change. The
+badge reads "Ns · paused" meanwhile. Undo during the drink resumes the
+same turn's countdown from where it stopped.
+
+Verified: ran the real hook in headless Chromium (Playwright) with a 3s
+duration: counts down while running, holds its value with no expiry for
+2.3s while stopped, starts fresh at 3 on the next turn, and still
+expires normally when not stopped. Plus `vite build` and `npx cap sync
+android`.

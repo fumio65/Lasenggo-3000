@@ -22,7 +22,14 @@ import { useEffect, useState } from 'react'
  * decides what that means (here: a buzzer sound + a flashing badge,
  * nothing else — Pass and Pour both keep working normally past zero).
  */
-export function useTurnTimer(turnKey, durationSeconds) {
+// `running` (app/drink-outcome fix): false stops the countdown where it is
+// without resetting it. Since Pour no longer advances the turn right away
+// (the turn waits for Finished/Tapon), the timer would otherwise keep
+// counting, ticking, buzzing and logging "ran out of time" while someone
+// was already drinking. The caller passes false from the moment Pour is
+// pressed until the outcome; the turn then advances, which resets the
+// clock for the next person as usual.
+export function useTurnTimer(turnKey, durationSeconds, running = true) {
   const [secondsLeft, setSecondsLeft] = useState(durationSeconds)
   const [expired, setExpired] = useState(false)
 
@@ -57,11 +64,13 @@ export function useTurnTimer(turnKey, durationSeconds) {
       setExpired(true)
       return
     }
+    if (!running) return
     const id = setTimeout(() => setSecondsLeft((s) => s - 1), 1000)
     return () => clearTimeout(id)
-  }, [secondsLeft, durationSeconds])
+  }, [secondsLeft, durationSeconds, running])
 
   return {
+    running: durationSeconds != null && running,
     secondsLeft: durationSeconds == null ? null : secondsLeft,
     expired: durationSeconds != null && expired,
   }
