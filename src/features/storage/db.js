@@ -137,6 +137,7 @@ export async function initDatabase() {
   await migrateAddPersonNameParts()
   await migrateAddDrinkStatus()
   await migrateAddEventDrinkId()
+  await migrateAddEventOutcome()
   return db
 }
 
@@ -245,6 +246,24 @@ async function migrateAddDrinkStatus() {
 async function migrateAddEventDrinkId() {
   if (await columnExists('events', 'drink_id')) return
   await db.execute('ALTER TABLE events ADD COLUMN drink_id TEXT')
+}
+
+/** app/drink-outcome: adds `events.outcome` and `events.left_ml` — what
+ * happened to a poured drink after the pour itself: 'finished' (cup came
+ * back empty), 'partial' (some left; `left_ml` estimates how much), or
+ * 'tapon' (thrown out; `left_ml` = the whole pour). NULL on both means the
+ * outcome was never recorded: every pour from before this feature, and a
+ * pour whose session ended before anyone tapped an outcome. Only POUR rows
+ * ever get these. The manual Finished / Left some / Tapon buttons set them
+ * today; the load cell can set them later from the cup's return weight.
+ * Same idempotent pattern as the other migrations. */
+async function migrateAddEventOutcome() {
+  if (!(await columnExists('events', 'outcome'))) {
+    await db.execute('ALTER TABLE events ADD COLUMN outcome TEXT')
+  }
+  if (!(await columnExists('events', 'left_ml'))) {
+    await db.execute('ALTER TABLE events ADD COLUMN left_ml INTEGER')
+  }
 }
 
 /** Returns the open connection. Throws if `initDatabase()` hasn't run yet. */

@@ -10,6 +10,7 @@ import { ScrollFadeBox } from '../../shared/components/ScrollFadeBox'
 import { ActivityFeed } from '../../shared/components/ActivityFeed'
 import { formatVolumeMl } from '../pour/volumeUnits'
 import { CalendarIcon } from '../../shared/components/CalendarIcon'
+import { summarizeOutcomes } from '../pour/drinkOutcome'
 import { PeopleIcon } from '../../shared/components/PeopleIcon'
 import { HashtagIcon } from '../../shared/components/HashtagIcon'
 
@@ -149,7 +150,14 @@ export function HistoryDetail({ sessionId, onBack, onResume }) {
   }
 
   const pausedAtEnd = buildPausedAtEnd(events)
-  const stats = detail?.participants.map(toStat) ?? []
+  // app/drink-outcome: drunk-vs-poured comes from the event list rather
+  // than getSessionDetail's SQL, so it's computed exactly the way the live
+  // session panel computes it (summarizeOutcomes, shared).
+  const outcomes = summarizeOutcomes(events)
+  const stats = (detail?.participants.map(toStat) ?? []).map((s) => ({
+    ...s,
+    outcome: outcomes[s.id] ?? null,
+  }))
   const maxActions = Math.max(
     1,
     ...stats.map((s) => s.byVolume.light + s.byVolume.standard + s.byVolume.heavy + s.pass),

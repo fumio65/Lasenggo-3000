@@ -203,6 +203,25 @@ export function ParticipantStatBar({ stat, maxActions, isCurrent = false, isPaus
           )}
         </span>
       </div>
+      {/* app/drink-outcome: what was actually drunk, next to what was
+          poured. Only shown once at least one of this person's pours has
+          an outcome, so sessions from before this feature (no outcomes at
+          all) look exactly as they did. Pours still waiting on, or never
+          given, an outcome are counted as "not confirmed" rather than
+          guessed either way. */}
+      {stat.outcome?.confirmed > 0 && (
+        <p className="text-xs text-paper-dim">
+          Drank ~{formatVolumeMl(stat.outcome.drankMl)}
+          <span className="text-paper-dim/70"> of ~{formatVolumeMl(stat.outcome.confirmedPouredMl)}</span>
+          {stat.outcome.partial > 0 && <span> · left some {stat.outcome.partial}×</span>}
+          {stat.outcome.tapon > 0 && (
+            <span className="text-maroon-dim"> · tapon {stat.outcome.tapon}×</span>
+          )}
+          {stat.outcome.unconfirmed > 0 && (
+            <span className="text-paper-dim/70"> · {stat.outcome.unconfirmed} not confirmed</span>
+          )}
+        </p>
+      )}
       <div className="h-2.5 w-full overflow-hidden rounded-full bg-ink">
         <div
           className="flex h-full gap-px transition-[width] duration-500 ease-out"

@@ -3,6 +3,7 @@ import { ParticipantStatBar, VolumeLegend, VOLUME_BY_ID } from '../../shared/com
 import { ScrollFadeBox } from '../../shared/components/ScrollFadeBox'
 import { ActivityFeed } from '../../shared/components/ActivityFeed'
 import { formatVolumeMl } from '../pour/volumeUnits'
+import { summarizeOutcomes } from '../pour/drinkOutcome'
 
 /** Builds the per-participant breakdown ParticipantStatBar renders: a pour
  * count per volume id, a pass count, and a total-mL estimate (count ×
@@ -63,10 +64,14 @@ function buildStats(participants, events) {
     }
   }
 
+  // app/drink-outcome: drunk-vs-poured per person, from the same events.
+  const outcomes = summarizeOutcomes(events)
+
   return participants.map((p) => {
     const { drinkTotalsByName, ...rest } = base[p.id]
     return {
       ...rest,
+      outcome: outcomes[p.id] ?? null,
       drinkTotals: Object.entries(drinkTotalsByName).map(([name, { ml, byVolume }]) => ({
         name,
         ml,

@@ -1460,3 +1460,12 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
       launchers) and to match the splash's final frame: linked ring,
       larger glass poured two-thirds full. Launcher PNGs, favicon and
       static splash all regenerated — see DECISIONS.md.
+
+- [x] app/drink-outcome: after each Pour the turn waits for Finished /
+      Left some / Tapon before moving on; stored on the POUR row
+      (outcome, left_ml), synced (Supabase migration applied), and shown
+      as "Drank ~X of ~Y" per person in the live panel and History, plus
+      in the activity feed — see DECISIONS.md.
+- [ ] hw follow-up for app/drink-outcome: set the outcome automatically
+      from the load cell (cup returned at pre-pour weight = finished;
+      heavier = partial with measured left_ml) once BLE status exists.

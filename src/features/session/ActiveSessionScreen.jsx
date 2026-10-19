@@ -16,6 +16,7 @@ import { playBuzzer } from '../../shared/playBuzzer'
 import {
   logEvent,
   deleteEvent,
+  setPourOutcome,
   getSessionEvents,
   renameParticipant,
   addSessionParticipant,
@@ -31,6 +32,7 @@ import {
 import { findOrCreatePerson } from '../storage/peopleQueries'
 import { VolumeInput } from '../../shared/components/VolumeInput'
 import { parseVolumeToMl } from '../pour/volumeUnits'
+import { LEFT_AMOUNTS, approxMlForVolume, leftMlFor } from '../pour/drinkOutcome'
 
 /**
  * Active session screen.
@@ -442,6 +444,19 @@ export function ActiveSessionScreen({
   // don't change, only what triggers the confirmation does.
   const [isPouring, setIsPouring] = useState(false)
 
+  // app/drink-outcome: a pour only proves the drink went into the cup. After
+  // each pour the turn stays on that person until someone records what
+  // happened to it — Finished, Left some (roughly how much), or Tapon —
+  // and only then moves on. `pendingPour` is that waiting state:
+  // { participant, eventId, volumeId, drinkName }. eventId starts null and
+  // is filled in once the POUR row's insert resolves (onEvent below); the
+  // outcome buttons wait for it. In-memory only: if the session ends or the
+  // app closes first, the pour simply keeps no outcome (shown as "not
+  // confirmed"). When the load cell exists, the cup returning at its
+  // pre-pour weight can resolve this automatically instead of a tap.
+  const [pendingPour, setPendingPour] = useState(null)
+  const [choosingLeftAmount, setChoosingLeftAmount] = useState(false)
+
   // app/confirm-exit-session: "Back" used to call onExit directly, which
   // ends the session in the DB right away — one stray tap during a round
   // and there was no way back to it. Now it's a three-stage confirm
@@ -553,6 +568,7 @@ export function ActiveSessionScreen({
     currentIndex,
     onPass,
     onPourConfirmed,
+    advanceTurn,
     currentPassStreak,
     isOverPassLimit,
     canUndo,
@@ -566,6 +582,13 @@ export function ActiveSessionScreen({
       logEvent(sessionId, participant.id, type, volume, null, drinkId)
         .then((eventId) => {
           setLastEvent({ id: eventId, type, participant })
+          if (type === 'POUR') {
+            setPendingPour((prev) =>
+              prev && prev.participant.id === participant.id && prev.eventId == null
+                ? { ...prev, eventId }
+                : prev,
+            )
+          }
           refreshEvents()
         })
         .catch((err) => console.error(`Failed to log ${type} event`, err))
@@ -574,6 +597,11 @@ export function ActiveSessionScreen({
 
   function handleUndo() {
     if (!canUndo || !lastEvent) return
+    // app/drink-outcome: undoing a pour that's still waiting on its outcome
+    // just cancels the wait; undoing one that already has an outcome
+    // deletes the whole POUR row (outcome included), same as before.
+    setPendingPour(null)
+    setChoosingLeftAmount(false)
     undoTurn()
     deleteEvent(lastEvent.id)
       .then(refreshEvents)
@@ -610,12 +638,34 @@ export function ActiveSessionScreen({
   // `app/ble-status-subscription` exist. Guarded by `isPouring` so a
   // double-click can't fire two pours for the same turn.
   function handlePour() {
-    if (isPouring) return
+    if (isPouring || pendingPour || !current) return
+    const pourer = current
     setIsPouring(true)
     setTimeout(() => {
-      onPourConfirmed()
+      setPendingPour({
+        participant: pourer,
+        eventId: null,
+        volumeId: volumeIdRef.current,
+        drinkName: currentDrink?.name ?? null,
+      })
+      onPourConfirmed({ advance: false })
       setIsPouring(false)
     }, 900)
+  }
+
+  // app/drink-outcome: records the outcome on the POUR row, then moves the
+  // turn on. Only advances if the turn is still on the drinker: if they
+  // were paused while drinking, useTurnManager already moved past them,
+  // and advancing again would skip the next person.
+  function handleOutcome(outcome, fraction = 0) {
+    if (!pendingPour?.eventId) return
+    const pouredMl = approxMlForVolume(pendingPour.volumeId)
+    setPourOutcome(pendingPour.eventId, outcome, leftMlFor(outcome, pouredMl, fraction))
+      .then(refreshEvents)
+      .catch((err) => console.error('Failed to save drink outcome', err))
+    if (current?.id === pendingPour.participant.id) advanceTurn()
+    setPendingPour(null)
+    setChoosingLeftAmount(false)
   }
   // app/drink-queue-list (UX pass: long queues): one row's markup, pulled
   // out of the JSX below so it can be called once for the always-visible
@@ -1293,7 +1343,11 @@ export function ActiveSessionScreen({
             <span
               className={`h-2 w-2 rounded-full ${isPouring ? 'animate-pulse bg-ember' : 'bg-ember/50'}`}
             />
-            {isPouring ? 'Pouring…' : 'Simulated — no hardware connected'}
+            {isPouring
+              ? 'Pouring…'
+              : pendingPour
+                ? `${pendingPour.participant.name} is drinking`
+                : 'Simulated — no hardware connected'}
           </div>
 
           <TurnRing participants={participants} currentIndex={currentIndex} current={current} pausedIds={pausedIds} />
@@ -1381,25 +1435,98 @@ export function ActiveSessionScreen({
               reads as the dead end Pour used to be. Pour disables itself
               only for the ~900ms of its own simulated pour, so a stray
               double-tap can't double-log it; Pass stays always-available. */}
-          <div className="grid w-full max-w-md grid-cols-2 gap-4">
-            <button
-              type="button"
-              onClick={onPass}
-              disabled={isPouring}
-              className="rounded-xl bg-ember px-6 py-5 text-lg font-display font-semibold text-ink transition active:scale-95 disabled:opacity-40"
-            >
-              Pass
-            </button>
-            <button
-              type="button"
-              onClick={handlePour}
-              disabled={isPouring}
-              title="Simulated — no hardware connected yet"
-              className="rounded-xl bg-smoke px-6 py-5 text-lg font-display font-semibold text-paper ring-1 ring-smoke-light transition active:scale-95 disabled:opacity-60"
-            >
-              {isPouring ? 'Pouring…' : 'Pour'}
-            </button>
-          </div>
+          {/* app/drink-outcome: while a pour is waiting on its outcome, the
+              outcome buttons take the place of Pour/Pass, so the round can't
+              move on until someone says what happened to the drink.
+              "Finished" is the big default since it's the common case;
+              "Left some" opens a second step asking roughly how much. */}
+          {pendingPour ? (
+            <div className="w-full max-w-md space-y-3 rounded-2xl bg-smoke/60 p-4 ring-1 ring-smoke-light">
+              <div className="space-y-0.5 text-center">
+                <p className="font-display text-base font-semibold text-paper">
+                  Did {pendingPour.participant.name} finish it?
+                </p>
+                <p className="text-xs text-paper-dim">
+                  ~{approxMlForVolume(pendingPour.volumeId)} mL
+                  {pendingPour.drinkName ? ` of ${pendingPour.drinkName}` : ''}
+                </p>
+              </div>
+              {choosingLeftAmount ? (
+                <div className="space-y-2">
+                  <p className="text-center text-xs text-paper-dim">About how much is left in the cup?</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {LEFT_AMOUNTS.map((amount) => (
+                      <button
+                        key={amount.id}
+                        type="button"
+                        onClick={() => handleOutcome('partial', amount.fraction)}
+                        disabled={!pendingPour.eventId}
+                        className="rounded-xl bg-smoke px-2 py-3 text-sm font-semibold text-paper ring-1 ring-smoke-light transition active:scale-95 disabled:opacity-40"
+                      >
+                        {amount.label}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setChoosingLeftAmount(false)}
+                    className="mx-auto block rounded-full px-3 py-1 text-xs font-medium text-paper-dim transition hover:text-paper"
+                  >
+                    Back
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => handleOutcome('finished')}
+                    disabled={!pendingPour.eventId}
+                    className="w-full rounded-xl bg-ember px-6 py-4 text-lg font-display font-semibold text-ink transition active:scale-95 disabled:opacity-40"
+                  >
+                    Finished
+                  </button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setChoosingLeftAmount(true)}
+                      disabled={!pendingPour.eventId}
+                      className="rounded-xl bg-smoke px-4 py-3 text-sm font-semibold text-paper ring-1 ring-smoke-light transition active:scale-95 disabled:opacity-40"
+                    >
+                      Left some
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleOutcome('tapon')}
+                      disabled={!pendingPour.eventId}
+                      className="rounded-xl bg-smoke px-4 py-3 text-sm font-semibold text-maroon-dim ring-1 ring-smoke-light transition active:scale-95 disabled:opacity-40"
+                    >
+                      Tapon
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="grid w-full max-w-md grid-cols-2 gap-4">
+              <button
+                type="button"
+                onClick={onPass}
+                disabled={isPouring}
+                className="rounded-xl bg-ember px-6 py-5 text-lg font-display font-semibold text-ink transition active:scale-95 disabled:opacity-40"
+              >
+                Pass
+              </button>
+              <button
+                type="button"
+                onClick={handlePour}
+                disabled={isPouring}
+                title="Simulated — no hardware connected yet"
+                className="rounded-xl bg-smoke px-6 py-5 text-lg font-display font-semibold text-paper ring-1 ring-smoke-light transition active:scale-95 disabled:opacity-60"
+              >
+                {isPouring ? 'Pouring…' : 'Pour'}
+              </button>
+            </div>
+          )}
 
           {/* app/undo-last-action: only one level deep, and only for the
               event this device itself just logged — not a history stack.

@@ -150,7 +150,7 @@ async function syncParticipants(db) {
 
 async function syncEvents(db) {
   const result = await db.query(
-    'SELECT id, session_id, participant_id, type, volume, note, timestamp FROM events WHERE synced = 0',
+    'SELECT id, session_id, participant_id, type, volume, note, outcome, left_ml, timestamp FROM events WHERE synced = 0',
   )
   const rows = result.values ?? []
   if (rows.length === 0) return 0
@@ -166,6 +166,11 @@ async function syncEvents(db) {
     type: r.type,
     volume: r.volume,
     note: r.note,
+    // app/drink-outcome: set after the POUR row is first logged, so the
+    // same row can come through here twice (setPourOutcome resets synced);
+    // upsert-by-id turns the second push into an update.
+    outcome: r.outcome,
+    left_ml: r.left_ml,
     timestamp: r.timestamp,
   }))
   const { error } = await supabase.from('events').upsert(payload)

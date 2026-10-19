@@ -1876,3 +1876,70 @@ from an empty screen, so the mark briefly disappears before animating
 back in. Fixing that means either starting the web animation from the
 same frame the system shows or styling the Android 12 splash
 (windowSplashScreenAnimatedIcon); needs testing on a real device.
+
+## Drink outcome: record whether a pour was actually drunk
+User: "we have a gap at the Pour feature ... it only records the pour of
+the content but we can't verify if that participant really drink it."
+Correct: a POUR row proves the drink went into the cup, nothing more.
+
+**Decision**: after every pour, the turn stays on that person until the
+pour's outcome is recorded, and only then moves to the next person. The
+Pour/Pass buttons are replaced by three choices: **Finished** (big
+default, the common case), **Left some** (then "A little" / "About half"
+/ "Most of it", stored as 25/50/75% of the pour's approximate mL), and
+**Tapon** (thrown out). Stored on the POUR row itself as `events.outcome`
+('finished' | 'partial' | 'tapon') and `events.left_ml`; drunk mL is
+derived (pour approxMl minus left_ml), never stored.
+
+**Why a gate rather than an optional tag**: in tagayan the next pour
+waits for the glass to come back anyway, so holding the turn matches the
+real ritual, and an optional tag would mostly go unrecorded. Cost is one
+extra tap per pour; "Finished" is made the largest button so the common
+case stays one obvious tap.
+
+**What this can't do**: no app or sensor can tell a drink that was
+swallowed from one dumped out of sight. "Finished" means the cup came back
+empty. The group watching is still the real check. Said so in the code
+and in ARCHITECTURE.md rather than overselling it.
+
+**Hardware path**: the planned load cell already reports HAS_DRINK/EMPTY.
+Once BLE exists, the cup returning at its pre-pour weight can set
+`finished` automatically (and a heavier return, `partial` with a measured
+`left_ml`), replacing the tap with no schema change. Noted in
+ARCHITECTURE.md next to the STATUS table.
+
+**Details worth knowing**:
+- Pending state (`pendingPour`) is in-memory. If the session ends or the
+  app closes mid-drink, that pour keeps a NULL outcome. NULL is shown as
+  "not confirmed", never guessed as drunk or not drunk. Sessions from
+  before this feature have only NULL outcomes, and the new "Drank ~X of
+  ~Y" stat line stays hidden for them, so old history looks unchanged.
+- `useTurnManager.onPourConfirmed` now takes `{ advance }`; the session
+  screen passes `false` and calls the newly exposed `advanceTurn()` after
+  the outcome. The undo snapshot is still taken at pour time, so "Undo
+  pour" works both while waiting (cancels the wait) and after (deletes the
+  POUR row, outcome included).
+- If the drinker is paused while the outcome is pending, the turn already
+  moved on, so recording the outcome does not advance again (it would
+  skip the next person).
+- `setPourOutcome` resets `synced = 0`; the POUR row is often already in
+  Supabase by then, and `syncEvents` upserts by id, so the second push
+  updates it. RLS on `events` is a single ALL policy, so updates are
+  allowed. Pull also carries the two new columns.
+- Drink depletion ("X mL left" in the bottle) is unchanged: liquid left
+  the bottle whether or not it was drunk.
+- Shared logic lives in `src/features/pour/drinkOutcome.js`
+  (`summarizeOutcomes`, `leftMlFor`, `describeOutcome`), used by both the
+  live SessionLog and HistoryDetail so they can't disagree.
+
+**Supabase**: applied migration `add_event_drink_outcome` to the
+lasenggo-3000 project (two nullable columns plus CHECK constraints:
+outcome in the three values, left_ml >= 0). Verified via
+information_schema afterwards.
+
+Verified: rolldown syntax checks on all 12 touched/new files; 12-case
+node test of `summarizeOutcomes`/`leftMlFor`/`describeOutcome` (mixed
+outcomes, unconfirmed pours, tapon, rounding, left_ml clamped to pour
+size), all passing; full `vite build`; grepped the bundle for the new
+UI strings and `left_ml`; `npx cap sync android`. Not verified: the flow
+on a real device, and a live sync round-trip of an outcome update.

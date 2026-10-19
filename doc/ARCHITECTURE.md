@@ -111,6 +111,10 @@ events (
   volume text,                -- 'light' | 'standard' | 'heavy', POUR only, else null
   note text,                  -- pause reason (Drunk/Went home/Run away/Emergency/
                                -- Other), PAUSE only, else null
+  outcome text,               -- POUR only: 'finished' | 'partial' | 'tapon';
+                               -- null = never recorded (app/drink-outcome)
+  left_ml integer,            -- POUR only: estimated mL left in the cup
+                               -- (0 finished, whole pour for tapon)
   timestamp timestamptz
 )
 ```
@@ -157,6 +161,14 @@ Custom GATT service, advertised as `"Lasenggo3000"`.
 
 Any change to this command/status vocabulary must be reflected here and in firmware +
 app code in the same PR — this table is the contract between the two codebases.
+
+**Drink outcome (app/drink-outcome):** after `POURED`, the app holds the turn on the
+drinker until the pour's outcome is recorded. Today that's a manual tap (Finished /
+Left some / Tapon). With hardware, `HAS_DRINK` → cup lifted → cup returned at roughly
+its pre-pour weight can record `finished` automatically, and a heavier return weight
+can record `partial` with `left_ml` from the weight difference. The scale cannot tell
+drinking apart from pouring the drink out, so `finished` means "the cup came back
+empty", not proof it was drunk. No new COMMAND/STATUS values are needed for this.
 
 ## Feature-Based Architecture (app folder structure)
 Scaffolded and live as of `app/project-scaffold` (2026-10-05) — React + Tailwind v4 +

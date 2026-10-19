@@ -1,5 +1,6 @@
 import { VOLUME_BY_ID } from './ParticipantStatBar'
 import { ScrollFadeBox } from './ScrollFadeBox'
+import { describeOutcome } from '../../features/pour/drinkOutcome'
 
 export function formatClockTime(isoString) {
   return new Date(isoString).toLocaleTimeString(undefined, {
@@ -62,7 +63,10 @@ export function ActivityFeed({
                     // never used drink tracking, so it's appended only
                     // when present rather than leaving a stray " · " for
                     // every row of an untracked session.
-                    `poured${event.volume ? ` (${VOLUME_BY_ID[event.volume]?.label ?? event.volume})` : ''}${event.drink_name ? ` · ${event.drink_name}` : ''}`}
+                    `poured${event.volume ? ` (${VOLUME_BY_ID[event.volume]?.label ?? event.volume})` : ''}${event.drink_name ? ` · ${event.drink_name}` : ''}${
+                      // app/drink-outcome: what happened to it, once known.
+                      describeOutcome(event) ? ` · ${describeOutcome(event)}` : ''
+                    }`}
                   {event.type === 'PASS' && 'passed'}
                   {event.type === 'PAUSE' && `paused${event.note ? ` (${event.note})` : ''}`}
                   {event.type === 'RESUME' && 'resumed'}

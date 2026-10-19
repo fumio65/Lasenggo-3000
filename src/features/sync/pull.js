@@ -65,7 +65,7 @@ export async function pullSessions() {
       supabase.from('participants').select('id, session_id, name, person_id').in('session_id', missingIds),
       supabase
         .from('events')
-        .select('id, session_id, participant_id, type, volume, note, timestamp')
+        .select('id, session_id, participant_id, type, volume, note, outcome, left_ml, timestamp')
         .in('session_id', missingIds),
       // app/drink-tracking: pulled alongside participants/events for the
       // same missing sessions — same "only ever filling in what's not
@@ -90,8 +90,8 @@ export async function pullSessions() {
       })),
       ...(remoteEvents ?? []).map((e) => ({
         statement:
-          'INSERT OR IGNORE INTO events (id, session_id, participant_id, type, volume, note, timestamp, synced) VALUES (?, ?, ?, ?, ?, ?, ?, 1)',
-        values: [e.id, e.session_id, e.participant_id, e.type, e.volume, e.note, e.timestamp],
+          'INSERT OR IGNORE INTO events (id, session_id, participant_id, type, volume, note, outcome, left_ml, timestamp, synced) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)',
+        values: [e.id, e.session_id, e.participant_id, e.type, e.volume, e.note, e.outcome, e.left_ml, e.timestamp],
       })),
       ...(remoteDrinks ?? []).map((d) => ({
         statement:

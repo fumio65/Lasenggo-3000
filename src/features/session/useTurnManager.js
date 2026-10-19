@@ -84,18 +84,25 @@ export function useTurnManager(participants, { onEvent, passLimit = null, paused
     advanceTurn()
   }, [participants, currentIndex, passStreaks, onEvent, advanceTurn])
 
-  // Called once a POUR is confirmed by hardware (STATUS: POURED/HAS_DRINK).
-  // Not reachable from the UI yet — app/ble-commands + app/ble-status-subscription
-  // need to exist first to produce that confirmation.
-  const onPourConfirmed = useCallback(() => {
-    const current = participants[currentIndex]
-    if (current) {
-      onEvent?.('POUR', current)
-      setUndoSnapshot({ currentIndex, passStreaks })
-      setPassStreaks((prev) => ({ ...prev, [current.id]: 0 }))
-    }
-    advanceTurn()
-  }, [participants, currentIndex, passStreaks, onEvent, advanceTurn])
+  // Called once a POUR is confirmed (simulated today; hardware STATUS:
+  // POURED/HAS_DRINK later). app/drink-outcome: pass `{ advance: false }` to
+  // log the pour but keep the turn on this person while they drink — the
+  // caller then calls `advanceTurn()` once the outcome (Finished / Left
+  // some / Tapon) is recorded. The undo snapshot is still taken here, at
+  // pour time, so undoing afterwards returns the turn to the pourer either
+  // way.
+  const onPourConfirmed = useCallback(
+    ({ advance = true } = {}) => {
+      const current = participants[currentIndex]
+      if (current) {
+        onEvent?.('POUR', current)
+        setUndoSnapshot({ currentIndex, passStreaks })
+        setPassStreaks((prev) => ({ ...prev, [current.id]: 0 }))
+      }
+      if (advance) advanceTurn()
+    },
+    [participants, currentIndex, passStreaks, onEvent, advanceTurn],
+  )
 
   const undoTurn = useCallback(() => {
     if (!undoSnapshot) return
@@ -114,6 +121,7 @@ export function useTurnManager(participants, { onEvent, passLimit = null, paused
     current,
     onPass,
     onPourConfirmed,
+    advanceTurn,
     currentPassStreak,
     isOverPassLimit,
     canUndo: undoSnapshot !== null,

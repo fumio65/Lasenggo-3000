@@ -76,6 +76,21 @@ export async function logEvent(sessionId, participantId, type, volume = null, no
   return id
 }
 
+/** app/drink-outcome: records what happened to one poured drink — see
+ * db.js's migrateAddEventOutcome for the meaning of each value. Resets
+ * `synced` to 0 so the sync job re-pushes the row: the POUR itself was
+ * usually already logged (and may already be in Supabase) before the
+ * outcome is known, and syncEvents upserts by id, so a re-push updates the
+ * existing remote row rather than duplicating it. */
+export async function setPourOutcome(eventId, outcome, leftMl) {
+  const db = getDatabase()
+  await db.run(
+    'UPDATE events SET outcome = ?, left_ml = ?, synced = 0 WHERE id = ?',
+    [outcome, leftMl, eventId],
+    false,
+  )
+}
+
 /** Deletes one event row by id (app/undo-last-action). Only ever called for
  * an event this device just logged a moment ago in the current session — see
  * that task's notes for the known limitation if it already synced. */
@@ -378,7 +393,7 @@ export async function endSession(sessionId) {
 export async function getSessionEvents(sessionId) {
   const db = getDatabase()
   const result = await db.query(
-    `SELECT e.id, e.type, e.volume, e.note, e.drink_id, e.timestamp, e.participant_id, p.name as participant_name, d.name as drink_name
+    `SELECT e.id, e.type, e.volume, e.note, e.drink_id, e.outcome, e.left_ml, e.timestamp, e.participant_id, p.name as participant_name, d.name as drink_name
      FROM events e
      JOIN participants p ON p.id = e.participant_id
      LEFT JOIN drinks d ON d.id = e.drink_id
