@@ -78,6 +78,17 @@ export function ActiveSessionScreen({
   const [switchName, setSwitchName] = useState('')
   const [switchVolumeInput, setSwitchVolumeInput] = useState('')
   const [switchVolumeUnit, setSwitchVolumeUnit] = useState('ml')
+  // app/drink-tracking (mid-session follow-up): "Start tracking a drink"
+  // - covers the gap where drink tracking was skipped entirely at Start
+  // Session (currentDrink stays null, so the "Now serving" panel never
+  // renders, and with it there was previously no way back in). Own
+  // small state/handler rather than reusing switchName/etc., since this
+  // form is shown in place of the "Now serving" panel (not inside the
+  // switch/queue dialog) and has no "same drink" shortcut to worry
+  // about - there's no current drink yet to repeat.
+  const [startDrinkName, setStartDrinkName] = useState('')
+  const [startDrinkVolumeInput, setStartDrinkVolumeInput] = useState('')
+  const [startDrinkVolumeUnit, setStartDrinkVolumeUnit] = useState('ml')
 
   // app/drink-queue (+ app/drink-queue-list): drinks staged ahead of time
   // ("set this up now, switch to it once the current one's empty") —
@@ -254,6 +265,33 @@ export function ActiveSessionScreen({
     setSwitchVolumeInput('')
     setSwitchVolumeUnit('ml')
     setSwitching(false)
+  }
+
+  // app/drink-tracking (mid-session follow-up): same "blank name is fine,
+  // a named drink needs a volume" rule as every other optional drink
+  // field in this app.
+  const startDrinkVolumeMissing =
+    startDrinkName.trim() !== '' &&
+    parseVolumeToMl(startDrinkVolumeInput, startDrinkVolumeUnit) == null
+
+  function handleStartDrinkSubmit(e) {
+    e.preventDefault()
+    const trimmed = startDrinkName.trim()
+    const volumeMl = parseVolumeToMl(startDrinkVolumeInput, startDrinkVolumeUnit)
+    if (!sessionId || !trimmed || volumeMl == null) return
+    // addDrink defaults to status 'serving' and demotes whatever was
+    // current first - a no-op demote here since currentDrink is null,
+    // the same function the "switch to a different drink" path already
+    // uses under the hood.
+    addDrink(sessionId, trimmed, volumeMl)
+      .then(() => {
+        refreshCurrentDrink()
+        refreshDrinkHistory()
+      })
+      .catch((err) => console.error('Failed to start tracking drink', err))
+    setStartDrinkName('')
+    setStartDrinkVolumeInput('')
+    setStartDrinkVolumeUnit('ml')
   }
 
   // app/drink-queue (+ app/drink-queue-list): "Queue next drink" — stages
@@ -1029,6 +1067,57 @@ export function ActiveSessionScreen({
               )}
 
             </div>
+          )}
+
+          {/* app/drink-tracking (mid-session follow-up): the inverse of
+              the panel above - shown only when drink tracking was never
+              started this session (currentDrink is still null, meaning
+              Start Session's "Drink" field was left blank). Same name +
+              volume inputs as the Queue form below, but submits through
+              handleStartDrinkSubmit, which creates the drink as the
+              *current* one (status 'serving') instead of queuing it, so
+              it becomes "Now serving" immediately and this form is
+              replaced by that panel on the next render. */}
+          {!currentDrink && (
+            <form
+              onSubmit={handleStartDrinkSubmit}
+              className="w-full max-w-md space-y-2 rounded-2xl bg-smoke px-4 py-3 ring-1 ring-smoke-light"
+            >
+              <p className="text-xs text-paper-dim">
+                Forgot to add a drink at the start? Start tracking one now.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <input
+                  type="text"
+                  value={startDrinkName}
+                  onChange={(e) => setStartDrinkName(e.target.value)}
+                  placeholder="e.g. Red Horse"
+                  aria-label="Drink name"
+                  className="min-w-[140px] flex-1 rounded-xl bg-ink px-3 py-2 text-sm text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
+                />
+                <VolumeInput
+                  idPrefix="start-drink-volume"
+                  label="Drink volume"
+                  amount={startDrinkVolumeInput}
+                  unit={startDrinkVolumeUnit}
+                  onAmountChange={setStartDrinkVolumeInput}
+                  onUnitChange={setStartDrinkVolumeUnit}
+                  className="shrink-0"
+                />
+              </div>
+              {startDrinkVolumeMissing && (
+                <p className="px-1 text-xs text-maroon-dim">
+                  Add a volume for {startDrinkName.trim()}, or clear the name to skip drink tracking.
+                </p>
+              )}
+              <button
+                type="submit"
+                disabled={!startDrinkName.trim() || startDrinkVolumeMissing}
+                className="w-full rounded-xl bg-ember px-3 py-2 text-sm font-semibold text-ink transition active:scale-95 disabled:opacity-30"
+              >
+                Start tracking
+              </button>
+            </form>
           )}
 
           {/* app/drink-queue (UX pass: dialog + animation): the "switch

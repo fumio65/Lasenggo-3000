@@ -1134,3 +1134,30 @@ durationSeconds=30) in an isolated node script confirming the old code
 produced EXPIRE and the fixed code produces "skip (not ready)", plus the
 normal cases (mid-countdown, real zero, fully off) still behave
 correctly. rolldown syntax check + full vite build.
+
+## Mid-session "Start tracking a drink" (gap found via user testing)
+User: "when I'm at the Mid-session and I forgot to enter a drink at the
+start what should I do?" Until now there was genuinely no way — every
+drink-tracking UI ("Now serving", Switch/Queue, the Drinks log) is gated
+behind `currentDrink`, which only ever gets set from Start Session's
+optional Drink field. Skipping it meant no way back in short of ending
+the session and starting a new one (losing turn history).
+
+Added a small form, shown only when `currentDrink` is still null (i.e.
+exactly the gap case), in the same spot the "Now serving" panel would
+otherwise occupy: a drink name + VolumeInput (mL/L), same "name without
+a volume stays blank" validation every other optional drink field in
+this app already uses. Submits through a new `handleStartDrinkSubmit`,
+which calls the existing `addDrink(sessionId, name, volumeMl)` — already
+defaults to status `'serving'` and already no-ops its
+`demoteCurrentDrink` call when there's nothing to demote — so the new
+drink becomes "Now serving" immediately, and the rest of the app (Drinks
+log, per-participant breakdown, History) picks it up with zero other
+changes, since none of that code cared *how* a drink became current,
+only that it did.
+
+Verified: rolldown syntax check, full `vite build`, grepped the built
+bundle for the new form's copy to confirm it shipped. Read
+`demoteCurrentDrink`'s source directly to confirm its `if (!current)
+return` guard makes it a safe no-op in this exact case (no current drink
+yet) rather than assuming.

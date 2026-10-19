@@ -1410,3 +1410,7 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
 
 - [x] app/drink-session-log: mL/L display is now a manual toggle (shared, persisted)
       instead of auto-switching per value — see DECISIONS.md.
+
+- [x] app/drink-tracking: added a mid-session "Start tracking a drink"
+      form for sessions where drink tracking was skipped at Start Session
+      — see DECISIONS.md.
