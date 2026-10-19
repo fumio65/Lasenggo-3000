@@ -1044,3 +1044,24 @@ Verified: rolldound syntax check on all 5 touched files, full `vite build` (8.06
 grepped the built bundle for the new localStorage key, "Volume unit" aria-label, and
 aria-pressed attribute to confirm it shipped, and hand-traced `formatVolumeMl` in an
 isolated node script for both units across small/large/round values.
+
+## mL/L toggle: fix narrow-viewport overflow
+User report: "when I'm using the phone view the toggle overflow it's not
+responsive." The "Drinks" heading + VolumeUnitToggle row used `flex
+items-center justify-between`, no wrap — on a narrow phone width, with
+this row nested inside several layers of horizontal padding (the screen's
+own padding plus the Drinks section's own p-4), the combined width of the
+heading text and the non-shrinking toggle pill could exceed the available
+width, and a non-wrapping flex row doesn't shrink text below its content
+size by default, so it overflowed the container instead of adapting.
+
+Fix: added `flex-wrap` (plus `gap-x-3 gap-y-1.5` replacing the single
+`gap-3`) to both header rows (SessionLog's live Drinks header,
+HistoryDetail's past-session Drinks header) — on a width too narrow for
+both items on one line, the toggle now drops to its own line below the
+heading instead of forcing horizontal overflow/scroll.
+
+Verified: rolldown syntax check on both touched files, full `vite build`,
+grepped the built CSS for the `flex-wrap` utility to confirm it shipped.
+Actual phone-width rendering still not independently confirmed (no live
+browser this session) — worth a quick look on the user's device.

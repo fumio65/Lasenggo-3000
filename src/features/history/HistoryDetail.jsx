@@ -181,7 +181,7 @@ export function HistoryDetail({ sessionId, onBack }) {
                 never used drink tracking. */}
             {drinks.length > 0 && (
               <section className="rounded-2xl bg-smoke/60 p-4 ring-1 ring-smoke-light">
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
                   <h2 className="font-display text-xs font-semibold text-paper-dim">Drinks</h2>
                   <VolumeUnitToggle />
                 </div>

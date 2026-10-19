@@ -152,7 +152,7 @@ export function SessionLog({ events, participants, currentParticipantId, pausedI
               as HistoryDetail's past-session equivalent. */}
           {drinks.length > 0 && (
             <>
-              <div className="mt-5 flex items-center justify-between gap-3">
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
                 <h3 className="font-display text-xs font-semibold text-paper-dim">
                   Drinks
                 </h3>
