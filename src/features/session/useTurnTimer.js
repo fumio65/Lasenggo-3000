@@ -22,13 +22,12 @@ import { useEffect, useState } from 'react'
  * decides what that means (here: a buzzer sound + a flashing badge,
  * nothing else — Pass and Pour both keep working normally past zero).
  */
-// `running` (app/drink-outcome fix): false stops the countdown where it is
-// without resetting it. Since Pour no longer advances the turn right away
-// (the turn waits for Finished/Tapon), the timer would otherwise keep
-// counting, ticking, buzzing and logging "ran out of time" while someone
-// was already drinking. The caller passes false from the moment Pour is
-// pressed until the outcome; the turn then advances, which resets the
-// clock for the next person as usual.
+// app/drink-timer: the session screen now uses this to time the *drinking*
+// rather than the Pour/Pass decision. It passes a `turnKey` that's unique
+// per pour ('pour-<n>', or 'idle' between pours), so each pour starts a
+// fresh countdown and clearing it resets to full. `running` false holds
+// the countdown where it is (here: at full, while nobody is drinking)
+// without resetting it.
 export function useTurnTimer(turnKey, durationSeconds, running = true) {
   const [secondsLeft, setSecondsLeft] = useState(durationSeconds)
   const [expired, setExpired] = useState(false)
@@ -60,11 +59,17 @@ export function useTurnTimer(turnKey, durationSeconds, running = true) {
   // with the real starting value.
   useEffect(() => {
     if (durationSeconds == null || secondsLeft == null) return
+    // Checked before the expiry test on purpose. When a countdown that has
+    // already hit 0 is stopped and reset (pour resolved after time-up),
+    // this effect reruns in the same commit as the reset effect above,
+    // still seeing the old 0; checking expiry first re-set `expired` right
+    // after the reset cleared it, leaving "Time's up!" stuck on the next
+    // person. A stopped timer can't expire anyway.
+    if (!running) return
     if (secondsLeft <= 0) {
       setExpired(true)
       return
     }
-    if (!running) return
     const id = setTimeout(() => setSecondsLeft((s) => s - 1), 1000)
     return () => clearTimeout(id)
   }, [secondsLeft, durationSeconds, running])

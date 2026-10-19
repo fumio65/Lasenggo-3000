@@ -454,6 +454,8 @@ export function ActiveSessionScreen({
   // confirmed"). When the load cell exists, the cup returning at its
   // pre-pour weight can resolve this automatically instead of a tap.
   const [pendingPour, setPendingPour] = useState(null)
+  // Gives every pour its own drink-timer countdown (see timerKey below).
+  const pourSeqRef = useRef(0)
   // Tapon asks first (a confirm dialog), since it marks the drink as thrown
   // out rather than drunk and is easy to hit by mistake next to Finished.
   // Finished stays one tap: it's the common case.
@@ -622,12 +624,16 @@ export function ActiveSessionScreen({
   // TurnRing around every time it's opened either.
   const [timerSeconds, setTimerSeconds] = useState(null)
   const [timerPickerOpen, setTimerPickerOpen] = useState(false)
-  // Stopped from the moment Pour is pressed (including the simulated
-  // "Pouring…" second) until Finished/Tapon moves the turn on; the timer
-  // only times the Pour/Pass decision.
-  const timerRunning = !isPouring && !pendingPour
+  // app/drink-timer: the timer times the *drinking*, not the Pour/Pass
+  // decision (user's call). It sits at the full duration while someone
+  // decides, starts counting once their pour lands (pendingPour set), and
+  // stops when Finished/Tapon is recorded. The key is per pour, so every
+  // pour starts a fresh countdown, and clearing the pour (outcome or Undo)
+  // resets it to full for the next one.
+  const timerRunning = Boolean(pendingPour)
+  const timerKey = pendingPour ? `pour-${pendingPour.key}` : 'idle'
   const { secondsLeft: timerSecondsLeft, expired: timerExpired } = useTurnTimer(
-    currentIndex,
+    timerKey,
     timerSeconds,
     timerRunning,
   )
@@ -639,13 +645,18 @@ export function ActiveSessionScreen({
   // app/turn-timer (ticking): a clock tick every second while the timer
   // runs, alternating tick/tock, higher and louder for the last 5 seconds.
   // Skips 0, where the buzzer plays instead.
-  const timerTargetRef = useRef(current)
-  timerTargetRef.current = current
+  // The drinker, not necessarily the current turn: if they were paused
+  // mid-drink the turn already moved past them.
+  const timerTargetRef = useRef(null)
+  timerTargetRef.current = pendingPour?.participant ?? null
   const timerSecondsRef = useRef(timerSeconds)
   timerSecondsRef.current = timerSeconds
   useEffect(() => {
-    if (timerSeconds == null || timerSecondsLeft == null || timerSecondsLeft <= 0) return
+    // Only while counting: a reset back to full (new pour, outcome, Undo)
+    // also changes the seconds, and shouldn't make a sound.
+    if (!timerRunning || timerSeconds == null || timerSecondsLeft == null || timerSecondsLeft <= 0) return
     playTick(timerSecondsLeft % 2 === 1, timerSecondsLeft <= 5)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timerSecondsLeft, timerSeconds])
 
   useEffect(() => {
@@ -672,10 +683,13 @@ export function ActiveSessionScreen({
   function handlePour() {
     if (isPouring || pendingPour || !current) return
     const pourer = current
+    pourSeqRef.current += 1
+    const key = pourSeqRef.current
     setIsPouring(true)
     setTimeout(() => {
       setPendingPour({
         participant: pourer,
+        key,
         eventId: null,
         volumeId: volumeIdRef.current,
         drinkName: currentDrink?.name ?? null,
@@ -1411,8 +1425,8 @@ export function ActiveSessionScreen({
                 : timerSeconds != null
                   ? timerRunning
                     ? `${timerSecondsLeft}s`
-                    : `${timerSecondsLeft}s · paused`
-                  : 'Turn timer: Off'}
+                    : `Drink timer: ${timerSeconds}s`
+                  : 'Drink timer: Off'}
             </button>
             {timerPickerOpen && (
               <div className="absolute left-1/2 top-full z-20 mt-1 flex -translate-x-1/2 items-center gap-1 rounded-full bg-smoke p-1 ring-1 ring-smoke-light shadow-lg">

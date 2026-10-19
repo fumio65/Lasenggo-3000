@@ -2115,3 +2115,35 @@ duration: counts down while running, holds its value with no expiry for
 2.3s while stopped, starts fresh at 3 on the next turn, and still
 expires normally when not stopped. Plus `vite build` and `npx cap sync
 android`.
+
+### Correction: the timer times the drinking, not the decision
+The previous entry ("turn timer stops once Pour is pressed") misread the
+user. What they meant: "after I click Pour that's when the timer starts."
+So the timer is now a drink timer:
+- While someone decides Pour/Pass it sits at the full duration, not
+  counting (badge: "Drink timer: 30s").
+- It starts when their pour lands (pendingPour set) and counts down with
+  the ticking sound.
+- Finished/Tapon (or Undo) stops it and resets to full for the next pour.
+- If it runs out while they're drinking: buzzer, and the TIMEOUT is
+  logged against the drinker (not whoever the turn index points at, in
+  case they were paused mid-drink). The Activity log merges it onto their
+  pour row ("poured · Gin · ran out of time (30s)").
+
+Implementation: `useTurnTimer` is now keyed per pour ('pour-<n>' from a
+counter, 'idle' between pours) with `running = Boolean(pendingPour)`.
+Ticks only play while running, so the reset back to full is silent.
+Label "Turn timer: Off" became "Drink timer: Off".
+
+Bug found and fixed by the browser test: when a countdown that had hit
+0 was stopped and reset (Finished after time ran out), the ticking
+effect reran in the same commit as the reset with the stale 0 and set
+`expired` back to true, leaving "Time's up!" stuck on the next person.
+The ticking effect now returns early when not running, before the
+expiry check.
+
+Verified: real hook in headless Chromium with a 3s duration: holds at 3
+while deciding, counts after pour, resets on Finished, a second pour
+starts fresh and expires while drinking, and the outcome after a time-up
+clears it (this last step failed before the fix). Plus `vite build` and
+`npx cap sync android`.

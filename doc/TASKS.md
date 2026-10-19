@@ -1470,7 +1470,7 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
       from the load cell (cup returned at pre-pour weight = finished;
       heavier = partial with measured left_ml) once BLE status exists.
 
-- [x] app/turn-timer (ticking + timeout log): clock tick each second while
+- [x] app/turn-timer (now a drink timer: starts on Pour, stops on Finished/Tapon; ticking + timeout log): clock tick each second while
       the timer runs (urgent last 5s), and a TIMEOUT event ("ran out of
       time", TIME'S UP tag) logged for the current person when it hits
       zero; Supabase type CHECK widened — see DECISIONS.md.
