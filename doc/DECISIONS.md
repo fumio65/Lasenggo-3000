@@ -1943,3 +1943,23 @@ outcomes, unconfirmed pours, tapon, rounding, left_ml clamped to pour
 size), all passing; full `vite build`; grepped the bundle for the new
 UI strings and `left_ml`; `npx cap sync android`. Not verified: the flow
 on a real device, and a live sync round-trip of an outcome update.
+
+### Follow-up: dropped "Left some"
+User: "we don't need the 'Left some' since we can see it on the glass
+because the glass will glow if there's still a portion on it." Right per
+PRD.md: the LED ring stays lit while the cup holds liquid (HAS_DRINK) and
+goes dark when it's empty, so an unfinished cup is visible to the whole
+circle and the drinker just keeps going until it's empty. A manual
+"how much is left" step added a tap for a case the table can already see.
+
+The outcome panel is now two buttons: Finished (wider, the common case)
+and Tapon. The 'partial' value and `left_ml` stay in the schema and in
+`summarizeOutcomes`/`describeOutcome`: the load cell can still measure a
+cup that comes back heavier than it left, which is real data the app
+would want once BLE exists. Only the manual button and its 25/50/75%
+picker were removed. Until hardware exists there's no glow, so in the
+meantime a pour is simply marked Finished or Tapon.
+
+Verified: syntax check, node test of the outcome math (still passing,
+including phrasing a measured partial), `vite build` with the picker's
+text confirmed gone from the bundle, `npx cap sync android`.

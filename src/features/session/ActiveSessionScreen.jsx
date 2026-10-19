@@ -32,7 +32,7 @@ import {
 import { findOrCreatePerson } from '../storage/peopleQueries'
 import { VolumeInput } from '../../shared/components/VolumeInput'
 import { parseVolumeToMl } from '../pour/volumeUnits'
-import { LEFT_AMOUNTS, approxMlForVolume, leftMlFor } from '../pour/drinkOutcome'
+import { approxMlForVolume, leftMlFor } from '../pour/drinkOutcome'
 
 /**
  * Active session screen.
@@ -446,8 +446,7 @@ export function ActiveSessionScreen({
 
   // app/drink-outcome: a pour only proves the drink went into the cup. After
   // each pour the turn stays on that person until someone records what
-  // happened to it — Finished, Left some (roughly how much), or Tapon —
-  // and only then moves on. `pendingPour` is that waiting state:
+  // happened to it — Finished or Tapon — and only then moves on. `pendingPour` is that waiting state:
   // { participant, eventId, volumeId, drinkName }. eventId starts null and
   // is filled in once the POUR row's insert resolves (onEvent below); the
   // outcome buttons wait for it. In-memory only: if the session ends or the
@@ -455,7 +454,6 @@ export function ActiveSessionScreen({
   // confirmed"). When the load cell exists, the cup returning at its
   // pre-pour weight can resolve this automatically instead of a tap.
   const [pendingPour, setPendingPour] = useState(null)
-  const [choosingLeftAmount, setChoosingLeftAmount] = useState(false)
 
   // app/confirm-exit-session: "Back" used to call onExit directly, which
   // ends the session in the DB right away — one stray tap during a round
@@ -601,7 +599,6 @@ export function ActiveSessionScreen({
     // just cancels the wait; undoing one that already has an outcome
     // deletes the whole POUR row (outcome included), same as before.
     setPendingPour(null)
-    setChoosingLeftAmount(false)
     undoTurn()
     deleteEvent(lastEvent.id)
       .then(refreshEvents)
@@ -657,15 +654,14 @@ export function ActiveSessionScreen({
   // turn on. Only advances if the turn is still on the drinker: if they
   // were paused while drinking, useTurnManager already moved past them,
   // and advancing again would skip the next person.
-  function handleOutcome(outcome, fraction = 0) {
+  function handleOutcome(outcome) {
     if (!pendingPour?.eventId) return
     const pouredMl = approxMlForVolume(pendingPour.volumeId)
-    setPourOutcome(pendingPour.eventId, outcome, leftMlFor(outcome, pouredMl, fraction))
+    setPourOutcome(pendingPour.eventId, outcome, leftMlFor(outcome, pouredMl))
       .then(refreshEvents)
       .catch((err) => console.error('Failed to save drink outcome', err))
     if (current?.id === pendingPour.participant.id) advanceTurn()
     setPendingPour(null)
-    setChoosingLeftAmount(false)
   }
   // app/drink-queue-list (UX pass: long queues): one row's markup, pulled
   // out of the JSX below so it can be called once for the always-visible
@@ -1437,9 +1433,7 @@ export function ActiveSessionScreen({
               double-tap can't double-log it; Pass stays always-available. */}
           {/* app/drink-outcome: while a pour is waiting on its outcome, the
               outcome buttons take the place of Pour/Pass, so the round can't
-              move on until someone says what happened to the drink.
-              "Finished" is the big default since it's the common case;
-              "Left some" opens a second step asking roughly how much. */}
+              move on until someone says what happened to the drink. */}
           {pendingPour ? (
             <div className="w-full max-w-md space-y-3 rounded-2xl bg-smoke/60 p-4 ring-1 ring-smoke-light">
               <div className="space-y-0.5 text-center">
@@ -1451,60 +1445,28 @@ export function ActiveSessionScreen({
                   {pendingPour.drinkName ? ` of ${pendingPour.drinkName}` : ''}
                 </p>
               </div>
-              {choosingLeftAmount ? (
-                <div className="space-y-2">
-                  <p className="text-center text-xs text-paper-dim">About how much is left in the cup?</p>
-                  <div className="grid grid-cols-3 gap-2">
-                    {LEFT_AMOUNTS.map((amount) => (
-                      <button
-                        key={amount.id}
-                        type="button"
-                        onClick={() => handleOutcome('partial', amount.fraction)}
-                        disabled={!pendingPour.eventId}
-                        className="rounded-xl bg-smoke px-2 py-3 text-sm font-semibold text-paper ring-1 ring-smoke-light transition active:scale-95 disabled:opacity-40"
-                      >
-                        {amount.label}
-                      </button>
-                    ))}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setChoosingLeftAmount(false)}
-                    className="mx-auto block rounded-full px-3 py-1 text-xs font-medium text-paper-dim transition hover:text-paper"
-                  >
-                    Back
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <button
-                    type="button"
-                    onClick={() => handleOutcome('finished')}
-                    disabled={!pendingPour.eventId}
-                    className="w-full rounded-xl bg-ember px-6 py-4 text-lg font-display font-semibold text-ink transition active:scale-95 disabled:opacity-40"
-                  >
-                    Finished
-                  </button>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setChoosingLeftAmount(true)}
-                      disabled={!pendingPour.eventId}
-                      className="rounded-xl bg-smoke px-4 py-3 text-sm font-semibold text-paper ring-1 ring-smoke-light transition active:scale-95 disabled:opacity-40"
-                    >
-                      Left some
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleOutcome('tapon')}
-                      disabled={!pendingPour.eventId}
-                      className="rounded-xl bg-smoke px-4 py-3 text-sm font-semibold text-maroon-dim ring-1 ring-smoke-light transition active:scale-95 disabled:opacity-40"
-                    >
-                      Tapon
-                    </button>
-                  </div>
-                </div>
-              )}
+              {/* Two choices only. "Left some" was dropped: the cup's LED
+                  stays lit while there's still drink in it, so the group can
+                  see an unfinished cup and the drinker just keeps going until
+                  it's empty. Finished is wider as the common case. */}
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleOutcome('finished')}
+                  disabled={!pendingPour.eventId}
+                  className="col-span-2 rounded-xl bg-ember px-6 py-4 text-lg font-display font-semibold text-ink transition active:scale-95 disabled:opacity-40"
+                >
+                  Finished
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOutcome('tapon')}
+                  disabled={!pendingPour.eventId}
+                  className="rounded-xl bg-smoke px-3 py-4 text-base font-display font-semibold text-maroon-dim ring-1 ring-smoke-light transition active:scale-95 disabled:opacity-40"
+                >
+                  Tapon
+                </button>
+              </div>
             </div>
           ) : (
             <div className="grid w-full max-w-md grid-cols-2 gap-4">

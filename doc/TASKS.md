@@ -1461,8 +1461,8 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
       larger glass poured two-thirds full. Launcher PNGs, favicon and
       static splash all regenerated — see DECISIONS.md.
 
-- [x] app/drink-outcome: after each Pour the turn waits for Finished /
-      Left some / Tapon before moving on; stored on the POUR row
+- [x] app/drink-outcome: after each Pour the turn waits for Finished or
+      Tapon before moving on ("Left some" dropped, the cup LED shows it); stored on the POUR row
       (outcome, left_ml), synced (Supabase migration applied), and shown
       as "Drank ~X of ~Y" per person in the live panel and History, plus
       in the activity feed — see DECISIONS.md.

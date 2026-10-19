@@ -5,7 +5,7 @@ import { POUR_VOLUMES } from './usePourVolume'
  *
  * A POUR event only proves the drink went into the cup. These outcomes
  * record whether it was then drunk. They're entered by hand today (the
- * Finished / Left some / Tapon buttons after each pour); once the load
+ * Finished / Tapon buttons after each pour); once the load
  * cell exists, the cup coming back to the platform at its pre-pour weight
  * can fill in the same values automatically. Neither way can tell a drink
  * that was swallowed from one that was dumped out of sight, so "finished"
@@ -17,9 +17,12 @@ export const OUTCOMES = {
   tapon: { id: 'tapon', label: 'Tapon' },
 }
 
-// "Left some" asks roughly how much, not an exact number: nobody is going
-// to measure mid-round, and the pour sizes are approximations already.
-export const LEFT_AMOUNTS = [
+// 'partial' has no button: the cup's LED stays lit while any drink is left,
+// so people finish the cup instead of logging leftovers by hand. The value
+// is kept for the load cell, which can measure what's left exactly when a
+// cup comes back heavier than it left. These buckets only phrase such a
+// measured amount in the activity feed ("left about half").
+const LEFT_AMOUNTS = [
   { id: 'little', label: 'A little', fraction: 0.25 },
   { id: 'half', label: 'About half', fraction: 0.5 },
   { id: 'most', label: 'Most of it', fraction: 0.75 },
