@@ -1428,3 +1428,7 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
       a confirm dialog instead of deleting right away; also fixed a bug
       where a deleted person could reappear on the next sync pull (no
       local tombstone existed to stop it) — see DECISIONS.md.
+
+- [x] app/display-name: app's own display name (title, Android app
+      label, in-app header) changed to "Lasenggo" — the overall
+      project/hardware name stays "Lasenggo 3000" — see DECISIONS.md.

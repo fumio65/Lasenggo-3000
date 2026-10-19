@@ -409,7 +409,7 @@ export function ParticipantList({
       <div className="mx-auto max-w-md space-y-8">
         <header className="space-y-1 text-center">
           <h1 className="font-display text-3xl font-semibold tracking-tight text-paper">
-            Lasenggo 3000
+            Lasenggo
           </h1>
           <p className="text-sm text-paper-dim">
             Add everyone joining this round before you start.

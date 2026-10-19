@@ -1601,3 +1601,37 @@ grepped the built bundle for the new dialog copy and the
 Supabase-delete-fails-silently path (never actually simulated a network
 drop mid-delete), and whether the tombstone table should ever be pruned
 (right now it only grows — fine at roster scale, but flagging it).
+
+## App display name: "Lasenggo" (dropped "3000")
+User: "I think it would be best if you turn..." → eventually "I think
+let's name the app Lasenggo" — after discussing why "Lasenggo 3000"
+didn't feel right as the *app's* name specifically.
+
+**Scope of this change**: "Lasenggo 3000" stays the project/product name
+for the overall system (hardware + app together) — it's still the title
+in CONTEXT.md, PRD.md, CLAUDE.md, the repo name, and (per CONTEXT.md's
+own terminology table) the BLE advertised device name stays
+`Lasenggo3000` with no space, since that's the physical device
+identifying itself, not the app. Only the *app's own* display identity —
+what someone sees as the app name, the page title, and the in-app
+header on the Participants screen — changes to just "Lasenggo." The
+mock sci-fi "3000" numbering reads fine for a gadget on the table; on a
+phone home screen or app-switcher, it was long and a little silly in a
+way that didn't match the rest of the UI's tone.
+
+Changed in four places: `capacitor.config.ts`'s `appName` (what Android
+shows as the installed app's name), `index.html`'s `<title>` (browser
+tab / PWA title), `android/app/src/main/res/values/strings.xml`'s
+`app_name` and `title_activity_main` (Android's own app label and
+activity title — these are source files, separate from the generated
+`android/app/src/main/assets/...` build output which regenerates on the
+next native build, not touched directly), and the big `<h1>` header at
+the top of `ParticipantList.jsx` (the first thing anyone sees on
+opening the app).
+
+Verified: rolldown syntax check on `ParticipantList.jsx`, full `vite
+build`, grepped the built bundle and confirmed zero remaining instances
+of "Lasenggo 3000" and exactly the expected "Lasenggo" in the title/
+header. Not verified: the native Android app icon label (strings.xml
+drives it, but actually seeing it update requires a real Android build,
+not just the web `vite build` done here).
