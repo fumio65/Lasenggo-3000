@@ -1387,3 +1387,16 @@ common tag" — a tag concept, but explicitly not the first attempt's
 price-tag/ticket shape. Swapped `QuoteIcon` for a new `HashtagIcon` (#)
 — the other common meaning of "tag" in modern UI (social-media labels),
 without the price-tag's commerce read. Deleted `QuoteIcon.jsx`.
+
+## History detail header: icon-led, matching the list
+User: "now let's move to the preview of the history put an icon on it" —
+the HistoryDetail screen (what you land on tapping a session in the
+list) still had a plain-text header (title, date subline, participant
+subline) while the list it's reached from now has calendar/clock/
+people/hashtag icons for the same three pieces of info. Brought the
+detail header up to the same treatment: HashtagIcon before a session
+name, CalendarIcon before the date subline, PeopleIcon before the
+participant count (also dropped the "participant(s)" word here too, same
+as the list's own change, for consistency between the two screens).
+
+Verified: rolldown syntax check, full `vite build`.

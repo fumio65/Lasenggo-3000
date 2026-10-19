@@ -5,6 +5,9 @@ import { ParticipantStatBar, VolumeLegend, VOLUME_BY_ID } from '../../shared/com
 import { ScrollFadeBox } from '../../shared/components/ScrollFadeBox'
 import { ActivityFeed } from '../../shared/components/ActivityFeed'
 import { formatVolumeMl } from '../pour/volumeUnits'
+import { CalendarIcon } from '../../shared/components/CalendarIcon'
+import { PeopleIcon } from '../../shared/components/PeopleIcon'
+import { HashtagIcon } from '../../shared/components/HashtagIcon'
 
 function formatDate(isoString) {
   return new Date(isoString).toLocaleString(undefined, {
@@ -122,20 +125,35 @@ export function HistoryDetail({ sessionId, onBack }) {
           </button>
         </div>
 
-        <header className="space-y-3">
-          <h1 className="font-display text-2xl font-semibold tracking-tight">
-            {loading || !detail?.session
-              ? 'Session'
-              : detail.session.name || formatDate(detail.session.started_at)}
+        {/* app/history-list (UX pass: icon-led header, matching
+            HistoryList's rows): the title/date/participant-count header
+            used to be plain text — the list it's reached from already
+            got calendar/clock/people/hashtag icons for the same three
+            pieces of info, so this detail header picks up the same
+            treatment instead of being the one screen left behind. */}
+        <header className="space-y-2">
+          <h1 className="flex items-center gap-2 font-display text-2xl font-semibold tracking-tight">
+            {!loading && detail?.session?.name && (
+              <HashtagIcon className="h-5 w-5 shrink-0 text-paper-dim" />
+            )}
+            <span className="truncate">
+              {loading || !detail?.session
+                ? 'Session'
+                : detail.session.name || formatDate(detail.session.started_at)}
+            </span>
           </h1>
           {/* app/session-naming: show the date as a subline too once a session
               has a custom name, so it's not lost from view */}
           {!loading && detail?.session?.name && (
-            <p className="text-sm text-paper-dim">{formatDate(detail.session.started_at)}</p>
+            <p className="flex items-center gap-1.5 text-sm text-paper-dim">
+              <CalendarIcon className="h-4 w-4 shrink-0" />
+              {formatDate(detail.session.started_at)}
+            </p>
           )}
           {!loading && participantCount > 0 && (
-            <p className="text-sm text-paper-dim">
-              {participantCount} {participantCount === 1 ? 'participant' : 'participants'}
+            <p className="flex items-center gap-1.5 text-sm text-paper-dim">
+              <PeopleIcon className="h-4 w-4 shrink-0" />
+              {participantCount}
             </p>
           )}
         </header>
