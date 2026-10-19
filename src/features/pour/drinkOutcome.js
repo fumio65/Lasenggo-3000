@@ -40,12 +40,11 @@ export function leftMlFor(outcome, pouredMl, fraction = 0) {
 }
 
 /** Short past-tense phrase for one pour's outcome, for the activity feed.
- * Tapon isn't phrased here: the feed shows it as its own tag instead of
- * appending it to an already long line that gets cut off.
+ * Finished and tapon aren't phrased here: the feed shows the pour size or
+ * TAPON as a tag instead, so only a measured partial needs words.
  * Partial pours name the closest LEFT_AMOUNTS bucket rather than a raw mL
  * figure, since the mL is itself an estimate. */
 export function describeOutcome(event) {
-  if (event.outcome === 'finished') return 'finished'
   if (event.outcome === 'partial') {
     const poured = approxMlForVolume(event.volume)
     const fraction = poured > 0 ? (event.left_ml ?? 0) / poured : 0

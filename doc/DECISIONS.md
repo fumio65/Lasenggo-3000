@@ -1998,3 +1998,21 @@ confirmed"; the "tapon N×" and "left some N×" text was removed.
 
 Verified: syntax checks, node test of the per-size tapon split and the
 resulting bar segments, `vite build`, `npx cap sync android`.
+
+### Follow-up: every pour and pass gets an activity tag
+User liked the TAPON tag and asked for the same on every row instead of
+the "finished" text: "specify how many drink they drank is it Heavy,
+Standard, Light, Tapon, and Pass."
+
+`ActivityFeed` now gives each POUR and PASS row exactly one tag, outside
+the truncating text: LIGHT / STANDARD / HEAVY (the pour size, in the
+stat bar's colors: pour-light, ember, pour-heavy), TAPON (maroon, replaces
+the size tag when thrown out), or PASS (neutral). The row dot uses the
+same color as its tag. The text is now just "poured · <drink>" or
+"passed"; the "(Standard)" and "· finished" wording was removed since the
+tag carries both. `describeOutcome` only phrases a measured partial now
+(load cell, later). A pour still waiting on its outcome, or from before
+outcomes existed, shows its size tag. PAUSE/RESUME rows have no tag.
+
+Verified: syntax checks, `vite build` with all eight new tag color
+classes confirmed in the compiled CSS, `npx cap sync android`.
