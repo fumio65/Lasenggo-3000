@@ -1324,3 +1324,18 @@ deleted `TagIcon.jsx` since it had no other callers.
 Verified: rolldown syntax check on all touched/new/removed files, full
 `vite build`, grepped for stray `TagIcon` references (only the removal
 note in BookmarkIcon's own comment, no code references left).
+
+## History list: swap the name icon again (bookmark -> sparkle)
+User: "change the icon again" (no specific reason given this time).
+Swapped `BookmarkIcon` for a new `SparkleIcon` (four-point star) — a
+flourish next to a title rather than a functional "filed/marked" symbol,
+closer to what a session's own chosen name actually is. Deleted
+`BookmarkIcon.jsx` since it had no other callers.
+
+If this one still isn't right, worth asking what specifically feels off
+(too playful, too small, wrong metaphor entirely) rather than swapping
+blind a third time.
+
+Verified: rolldound syntax check on all touched/new/removed files, full
+`vite build`, grepped for stray `BookmarkIcon` references (only the
+removal note in SparkleIcon's own comment).
