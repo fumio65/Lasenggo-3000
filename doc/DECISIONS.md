@@ -1339,3 +1339,15 @@ blind a third time.
 Verified: rolldound syntax check on all touched/new/removed files, full
 `vite build`, grepped for stray `BookmarkIcon` references (only the
 removal note in SparkleIcon's own comment).
+
+## History list: swap the name icon again (sparkle -> party popper)
+Third icon swap on this spot. This time asked instead of guessing blind
+again: first what was wrong (answer: "wrong meaning/metaphor"), then
+what concept it should actually be (answer: "a celebration/party vibe",
+matching how sessions actually get named in practice). Replaced
+`SparkleIcon` with a new `PartyIcon` (party popper/confetti). Deleted
+`SparkleIcon.jsx` since it had no other callers.
+
+Verified: rolldound syntax check on all touched/new/removed files, full
+`vite build`, grepped for stray `SparkleIcon` references (only the
+removal note in PartyIcon's own comment).
