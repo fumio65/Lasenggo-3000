@@ -77,8 +77,27 @@ export function HistoryList({ onBack, onSelect }) {
                 <button
                   type="button"
                   onClick={() => onSelect(s.id)}
-                  className="flex w-full items-center justify-between rounded-xl bg-smoke px-4 py-3 text-left transition hover:bg-smoke-light active:scale-[0.99]"
+                  className="flex w-full items-center gap-3 rounded-xl bg-smoke px-4 py-3 text-left transition hover:bg-smoke-light active:scale-[0.99]"
                 >
+                  {/* app/history-list (UX pass): an unnamed session's row
+                      is just its date/time as plain text — fine on its
+                      own, but a long list of them (most sessions skip
+                      naming) reads as a wall of near-identical text with
+                      nothing to anchor the eye per row. A named session
+                      doesn't have this problem (the name itself is what
+                      the eye catches), so this icon tile only shows up
+                      when there's no name to do that job instead — reuses
+                      HistoryIcon rather than adding a new glyph, since
+                      it's already this app's "a past session" symbol
+                      (empty-state above, the nav button that gets here). */}
+                  {!s.name && (
+                    <span
+                      aria-hidden="true"
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ink ring-1 ring-smoke-light"
+                    >
+                      <HistoryIcon className="h-4 w-4 text-paper-dim" />
+                    </span>
+                  )}
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-paper">
                       {s.name || formatDate(s.started_at)}

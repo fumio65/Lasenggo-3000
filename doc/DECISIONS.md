@@ -1215,3 +1215,20 @@ pre-toggle form: HistoryDetail.jsx, SessionLog.jsx, ParticipantStatBar.jsx.
 Verified: rolldown syntax check on all 4 touched/removed files, full
 `vite build`, grepped the built bundle to confirm no trace of the old
 toggle (localStorage key, "Volume unit" aria-label) remains.
+
+## History list: icon tile for unnamed sessions
+User: "...I noticed a lot session history is listed and all I saw is a
+text of the date and the time and the participants but ... it doesn't
+look good on UI & UX I think it would be cleaner to use an icon when the
+session has no name right?"
+
+Most sessions skip naming, so a long history list was mostly rows of
+near-identical date/time text with nothing to anchor the eye per row — a
+named session doesn't have this problem since the name itself is what
+catches the eye scanning down the list. Added a small round icon tile
+(reusing `HistoryIcon`, already this app's "a past session" glyph — the
+empty state and the History nav button both use it) as a leading element,
+shown only on rows where `s.name` is falsy, so named sessions are
+untouched.
+
+Verified: rolldown syntax check, full `vite build`.
