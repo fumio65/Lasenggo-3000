@@ -334,6 +334,274 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done
     `HistoryDetail` gets a new "Drinks" section (hidden if the session never
     used tracking) — the full log, oldest first, same "show everything, not
     just latest" idea as the existing Activity log.
+- [x] Drink volume: mL/L unit toggle, live remaining-volume readout from pours
+  - Owner: fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-requested follow-up to the drink tracking above, same day —
+    reverses that task's "manual log only, no depletion math" decision (see
+    DECISIONS.md). Two asks: (1) let the drink volume field take more than a
+    bare mL number, and (2) make the "Now serving" row show a live remaining
+    volume as pours happen. Confirmed understanding with the user first, then
+    three clarifying questions (all answered with the recommended option)
+    before writing code.
+    New `VolumeInput` component (`src/shared/components/VolumeInput.jsx`) +
+    `parseVolumeToMl`/`VOLUME_UNITS` (`src/features/pour/volumeUnits.js`):
+    pairs the existing number input with an mL/L segmented toggle, converting
+    to a whole-number mL value at input time — the field stays numeric (so
+    the depletion math below has something real to subtract from), the unit
+    toggle is what satisfies "let me type more than a bare mL count" (e.g.
+    "1" + "L" for a 1L bottle). No schema change — `drinks.volume_ml` still
+    stores a plain integer mL, unit is purely an input-time convenience, never
+    persisted. Swapped into both volume inputs: "Who's joining"'s Drink field
+    and ActiveSessionScreen's "different drink" switch form.
+    Remaining volume (`remainingMl` in `ActiveSessionScreen`) is derived, not
+    stored: the current drink's `volume_ml` minus every POUR event logged
+    since that drink's `started_at`, mapped through `POUR_VOLUMES`'
+    Light/Standard/Heavy mL presets, computed client-side from the `events`
+    list the session log already fetches — no new query, no risk of the
+    number drifting out of sync with its inputs. Shown as "Now serving:
+    `<drink>` · `<remaining>`mL left"; allowed to go negative (shown as a
+    deficit, e.g. "-45mL left", in the ember accent color) rather than
+    clamped at 0, since Light/Standard/Heavy are approximations and the pour
+    that empties a bottle rarely lands exactly on 0. "Same drink" naturally
+    resets the remaining count to the full declared volume, since it inserts
+    a fresh `drinks` row with a new `started_at` the depletion math starts
+    counting from zero against.
+    Verified live in-browser end to end: started a session with Red Horse ·
+    1 L (confirmed the L input converts and displays as "1000mL left");
+    poured Standard (~30mL) for Juan and confirmed the row updated to
+    "970mL left"; tapped Switch → "Same drink" and confirmed it reset to
+    "1000mL left"; no console errors. (One bug caught and fixed during this
+    pass: an earlier edit referenced `drinkVolumeUnit` in "Who's joining"
+    without ever declaring its `useState` — crashed `ParticipantList` on
+    load; fixed by adding the missing state line.)
+- [x] Drink depletion bar + drink queue ("Up next", one-tap switch)
+  - Owner: fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-requested follow-up, same day. Two asks: (1) a visual bar
+    on "Now serving" instead of just the mL text, and (2) staging a drink
+    ahead of time ("like a reserve") instead of only being able to switch
+    right now. Confirmed understanding first, then one clarifying question
+    (recommended option chosen) on whether the queued drink should take
+    over automatically at 0 or wait for a tap — the latter, matching the
+    earlier "no popup, passive" convention.
+    Bar: a track + fill under the "Now serving" pill, same visual language
+    as `ParticipantStatBar`'s pour-composition bars (`h-2`/`h-2.5`
+    `overflow-hidden rounded-full bg-ink` track, animated-width fill) —
+    width is `remainingMl / volume_ml` clamped to [0, 100]% (the mL text
+    beside it still shows the real, possibly-negative number). Only drawn
+    when a volume was actually declared. Also switched the "X mL left"
+    deficit color from `text-ember` to `text-maroon-dim`/`bg-maroon` — this
+    app's existing warning/danger color (duplicate-name errors, the "End
+    session" confirm) — since ember is the plain accent color used
+    everywhere else on this pill.
+    Queue: `drinks` gained a `status` column (`'serving'` | `'queued'`,
+    default `'serving'`) — a genuine migration this time (`columnExists` +
+    `ALTER TABLE`), not just a CREATE TABLE edit, since the table was
+    already created in the dev DB by the earlier browser verification pass
+    before this column existed. New `getQueuedDrink`/`promoteQueuedDrink`/
+    `cancelQueuedDrink` in `sessionQueries.js`; `getCurrentDrink` and
+    `getSessionDrinks` now filter to `status = 'serving'` so a queued row
+    (which can have a later `started_at` than the row actually being
+    served) never gets picked up as current or shown in the history log.
+    `addDrink` gained a `status` param — queuing a new drink first deletes
+    any existing queued row for that session (one meaningful "up next" at
+    a time), in the same `executeSet` transaction as the insert.
+    UI: the "Switch" panel on `ActiveSessionScreen` now has two sections —
+    the existing "switch now" form (relabeled "Ran out right now?") and a
+    new "Queue next drink" form below it ("Not empty yet? Set up the next
+    one for later"). An "Up next" row appears once something's queued:
+    quiet (smoke-toned) while the current drink still has volume, switches
+    to the maroon empty-state styling and wording ("`<current>` is empty ·
+    switch to `<queued>`?") once `remainingMl <= 0` — same "Switch now"
+    button underneath both states, just restyled, so there's one code path
+    for both the quiet and urgent cases rather than two different banners.
+    A "Cancel" link drops the queued row entirely (hard DELETE — a queued
+    row was never actually served, so there's no history to preserve).
+    Verified live in-browser end to end: started a session with Red Horse ·
+    50mL; confirmed the bar rendered full; queued Tanduay · 750mL and
+    confirmed the quiet "Up next: Tanduay · 750mL" row appeared without
+    touching "Now serving"; poured Heavy (~50mL) for Juan and confirmed
+    the bar drained to empty, the mL text turned the warning color, and
+    the "Up next" row escalated to "Red Horse is empty · switch to
+    Tanduay · 750mL?" in the maroon state; tapped "Switch now" and
+    confirmed it promoted cleanly — "Now serving: Tanduay · 750mL left",
+    full bar, "Up next" row gone. No console errors throughout. Confirmed
+    the dev DB's pre-existing `drinks` table (created before this
+    migration existed, by the earlier verification pass) picked up the new
+    `status` column cleanly on next load with no errors.
+- [x] Switch drink as a modal dialog (mobile-responsive, animated in/out)
+  - Owner: fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-requested follow-up, same day — explicitly asked for a
+    dialog, mobile responsiveness, and smooth enter/exit animation.
+    The "switch now"/"queue next" forms moved from an inline-expanding
+    section into a real dialog: backdrop (`fixed inset-0 bg-ink/70
+    backdrop-blur-sm`) + panel, bottom sheet on phone width
+    (`items-end`) and centered on larger screens (`sm:items-center`) —
+    the same responsive convention `ParticipantManagerSheet` already
+    uses, so this doesn't introduce a second dialog pattern.
+    Animation: the dialog is always mounted (never
+    `{switching && (...)}`) with `switching` toggling opacity/transform
+    classes (`transition-opacity`/`transition-all duration-300`) instead
+    — a conditionally-rendered element can't animate its own exit, since
+    React removes it before any CSS transition runs. Same technique this
+    screen's exit-confirm bar already uses for its own in-place
+    expand/collapse, so it's consistent with the rest of the file rather
+    than a new pattern. Backdrop fades; panel slides up + scales in from
+    `translate-y-6 scale-95 opacity-0` (desktop skips the vertical slide,
+    `sm:translate-y-0`, since it's centered there, not sheet-like).
+    `inert={!switching}` on the backdrop container keeps every field
+    (both forms, including `VolumeInput`'s internal number input + mL/L
+    toggle buttons) out of the tab order and hidden from assistive tech
+    while closed, in one attribute rather than threading tabIndex through
+    every element. Backdrop click and the dialog's "Done" button both
+    close it (`stopPropagation` on the panel itself so clicking inside
+    it doesn't bubble to the backdrop's close handler). Form layout also
+    changed from a single `flex gap-2` row to name-input-on-its-own-line
+    + a second row for volume+submit, so neither form overflows a narrow
+    phone width.
+    Verified live in-browser: opened the dialog (backdrop dims/blurs,
+    panel appears centered, both form sections render without overflow);
+    clicked the backdrop and confirmed it closes; reopened, queued
+    "Lambanog" through the dialog, confirmed it submitted correctly
+    (dialog closed itself, "Up next: Lambanog" appeared on the main
+    screen) — same underlying `handleQueueSubmit` as before, now just
+    reached through the dialog. No console errors throughout. (Resizing
+    the automation browser's window didn't actually shrink the page's
+    rendered viewport in this environment, so the `sm:` bottom-sheet
+    behavior itself — as opposed to the stacked, non-overflowing form
+    layout, which doesn't depend on viewport width at all — wasn't
+    directly screenshotted at phone width; worth a quick look on an
+    actual phone or devtools device toolbar.)
+- [x] Switch back to any past drink this session, picked from a list
+  - Owner: fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-requested follow-up, same day — "what if I queue a drink
+    then switch while there's still a drink in the current, I want to
+    switch it back since there's still alcohol on it". Two design
+    questions resolved with the user up front: switching back works for
+    *any* past drink this session, picked from a list (not just the one
+    most recently switched away from); switching back to an earlier
+    drink auto-re-queues the one just left, as the new "Up next" —
+    *only* if the "Up next" slot is actually free (see DECISIONS.md;
+    there's still only one such slot, so a drink that's already staged
+    there is never silently bumped).
+    Required a real data-model change, not a UI tweak: remaining volume
+    used to be computed as "every pour since this drink row's
+    `started_at`", using whichever row had `status = 'serving'`. That
+    breaks the moment a session can switch back to an earlier drink —
+    pours made against a *different* drink while this one was inactive
+    would still land after its `started_at` and get wrongly counted
+    against it. Fixed by tagging every POUR event with exactly which
+    drink was being served at that moment (`events.drink_id`, new
+    column + idempotent migration in `db.js`), set from a ref
+    (`currentDrinkIdRef`, same pattern `volumeIdRef` already uses) inside
+    `useTurnManager`'s `onEvent` callback. Remaining volume for any
+    drink, current or past, is now just "declared volume minus every
+    pour tagged with its id" — correct regardless of how many times a
+    session switches back and forth, and computed the same way (from the
+    already-fetched `events` list) for the live "Now serving" number and
+    every row in the new picker.
+    `sessionQueries.js`: `promoteQueuedDrink` and the old ad-hoc
+    "switch now" logic were unified into one `switchToDrink(sessionId,
+    drinkId)`, used both for promoting the queue and for picking a past
+    drink from the list. Both now funnel through a new internal
+    `demoteCurrentDrink` helper that decides what happens to the drink
+    being left: still has volume *and* the "Up next" slot is free ->
+    becomes the new "Up next"; otherwise (empty, or something else is
+    already staged there) -> becomes plain history. New
+    `getSessionDrinkHistory(sessionId)` lists every drink actually served
+    this session (`status IN ('serving', 'served')`) for the picker.
+    Along the way, live testing turned up and fixed two real bugs
+    predating this task, not introduced by it: (1) `promoteQueuedDrink`
+    never demoted the row it was switching away from, so two rows could
+    end up marked `'serving'` at once, silently masked by
+    `getCurrentDrink`'s `ORDER BY started_at DESC` always happening to
+    pick the right one — `getSessionDrinks`/history would have shown
+    both as current. (2) the "switch to a different drink" dialog form
+    never cleared itself after a submit (unlike the queue form, which
+    always had), so typing a second switch in the same dialog session
+    appended onto the previous entry instead of starting fresh.
+    A third bug was introduced and caught by this task's own live
+    testing before being fixed: the first version of `demoteCurrentDrink`
+    unconditionally cleared whatever was in the "Up next" slot whenever
+    *any* drink was demoted — fine when demoting the thing that's about
+    to reclaim that slot, but wrong the moment a session switches to a
+    *third* drink while an earlier one is already legitimately staged:
+    it silently deleted that staged drink instead of leaving it alone.
+    Fixed by only letting a demoted drink take the slot when it's free;
+    otherwise it just becomes ordinary history, still fully reachable
+    from the picker with its correct remaining volume.
+    Verified live end to end through a three-drink chain (Red Horse 100
+    -> pour -> Tanduay 50 -> pour -> switch back to Red Horse via "Switch
+    now", confirmed it resumed at its real 70mL rather than resetting to
+    100, and Tanduay correctly became the new "Up next" at its real
+    20mL; then switched to a third drink, Ginebra, confirmed Red Horse's
+    "Up next" status was left completely undisturbed, and that Tanduay
+    became ordinary history instead of displacing it; opened the picker
+    and confirmed it listed Tanduay at 20mL, picked it, confirmed it
+    resumed correctly and Ginebra became history in turn with its real
+    remaining volume; re-opened the picker and confirmed Ginebra now
+    listed at 40mL). Checked the DB directly after each step via the
+    browser's exposed `CapacitorSQLite` plugin to confirm row `status`
+    and values matched what the UI showed. No console errors throughout.
+- [x] Require a drink volume once a drink name is given
+  - Owner: fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-reported: "I can put a name of the drink and leave the ml
+    empty and I can start the session" — confirmed with the user this
+    should be required, not just optional-as-designed (asked via
+    AskUserQuestion; chose "Require volume if a name is given" over
+    keeping it optional or just warning).
+    Added the same `nameGiven && parseVolumeToMl(...) == null` check in
+    three places that all independently build a drink row from a
+    name+volume pair: "Who's joining" (`ParticipantList.handleStart`,
+    disables "Start session"), the Switch dialog's "different drink" form
+    (`handleSwitchSubmit`), and its "queue next drink" form
+    (`handleQueueSubmit`) — each disables its own submit button and shows
+    an inline maroon message ("Add a volume ... or clear the name") the
+    same way `duplicateError` already does elsewhere in this file, rather
+    than failing silently or only catching it server-side. The whole
+    Drink section stays optional; the rule only engages once a name has
+    actually been typed, so leaving everything blank to skip drink
+    tracking is unaffected.
+    Verified via a clean production build (`vite build` succeeded,
+    ~18s — slower than the usual ~3-6s but no longer the repeated hangs
+    seen during the previous fix tonight) and confirmed the three new
+    inline-message strings are present in the minified output bundle.
+    Couldn't get the dev server to come up for a live click-through this
+    round (stayed unresponsive past 60s while the one-shot production
+    build completed fine in 18s) — same machine-load symptoms as the
+    previous task, not specific to this change; worth a live check once
+    confirmed working normally again.
+- [x] Fix: "switch back" picker couldn't reach a drink staged as "Up next"
+  - Owner: fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-reported same day, right after the switchback feature
+    shipped: "I enter the different-drink field while the current drink
+    isn't empty, it switches, and I can't switch back to that drink."
+    Traced it to a gap, not a logic bug: switching away correctly staged
+    the old drink as "Up next" (per the earlier `demoteCurrentDrink`
+    work), but the "Up next" banner lives on the main screen, behind the
+    Switch dialog's full-screen overlay — once the dialog was open there
+    was no way back to it without closing the dialog first. The dialog's
+    own "switch back to a past drink" picker looked like the complete
+    answer but wasn't: it's built from `getSessionDrinkHistory`, which
+    only selects `status IN ('serving', 'served')` — a `'queued'` row was
+    never in that list, so the old exclusion filter for it
+    (`d.id !== queuedDrink?.id`) was dead code all along, not an actual
+    safeguard.
+    Fix: merge `queuedDrink` into the picker list client-side (the one
+    place that already has it in state), excluding only the drink
+    currently "Now serving", and tag that entry "· Up next" inline so
+    it's not confusing to see it listed twice (banner + picker). Sorted
+    by `started_at` descending across the merged list rather than
+    reversing the history query's own order, so the queued drink sorts
+    correctly by recency instead of always landing last.
+    Couldn't get a live rebuild to finish during this fix — `vite build`
+    and `vite dev` both hung repeatedly at the Tailwind project-wide scan
+    step (normally ~3-5s) across five attempts, while targeted
+    single/double-file `rolldown` transforms of the exact changed files
+    stayed fast (3-7s) and came back clean with no syntax/reference
+    errors. Looks like something unrelated was loading the machine's disk
+    heavily at the time (OneDrive sync, AV scan), not a problem with this
+    change. Flagged to the user; worth a quick live click-through once
+    confirmed working again.
 - [x] Split roster names into first/last, block duplicate participants, allow
       editing a name on "Who's joining" before Start session
   - Owner: fumio65 · Branch: `app/participant-first-last-name` · Done: 2026-10-12
@@ -701,6 +969,428 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
     Verified manually: warning appears exactly on the configured count and
     stays visible without blocking Pass; leaving the field blank produces no
     warning at all, confirming it's fully optional.
+- [x] "Up next" multi-item queue, with per-item edit/delete — Owner: fumio65 ·
+      Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: `drinks.status = 'queued'` is no longer treated as a single slot.
+    `sessionQueries.js`: `demoteCurrentDrink` simplified to unconditionally
+    re-queue a drink that still has volume (or mark it `'served'` if empty) —
+    the old "only re-queue if the slot is free" branch is gone entirely, since
+    there's no slot to contend over any more. Added `getQueuedDrinks(sessionId)`
+    (replaces the old single-row `getQueuedDrink`, returns all `'queued'` rows
+    oldest-first) and `updateQueuedDrink(drinkId, name, volumeMl)` for in-place
+    edits. `ActiveSessionScreen.jsx`'s "Up next" banner is now a list render
+    over `queuedDrinks`: each row has its own Switch now / Edit / Delete, only
+    the oldest row (`nextQueuedDrink`) gets the urgent maroon "switch to?"
+    styling once the current drink is empty, and Edit swaps a row into an
+    inline name+volume form in place (same "volume required once a name is
+    given" rule as every other drink form in this app, via a new
+    `editVolumeMissing` check). The Switch dialog's "switch back" picker no
+    longer merges in the queued drink or tags it "· Up next" — now that queued
+    items have their own dedicated list, duplicating one into the picker would
+    just be confusing.
+    See DECISIONS.md — this supersedes the earlier "auto-requeue only if the
+    slot is free" decision.
+    Verified: `node_modules/.bin/rolldown` syntax-checked `ActiveSessionScreen.jsx`
+    cleanly; a full `vite build` succeeded in 3.91s (fast, no hang this time),
+    and the compiled bundle was grepped for the new "Up next" and "Add a
+    volume, or clear the name" strings to confirm the right code shipped.
+    `vite dev` did come up and answered the first request (curl to `/` → 200)
+    within the same shell call that started it, but a follow-up curl from a
+    separate call couldn't reach it again — consistent with this device
+    bridge's per-call fresh-container behavior noted earlier in this file,
+    not a new regression. No live click-through in an actual browser was
+    possible this session; flagging that gap honestly rather than claiming
+    verification that didn't happen.
+- [x] Queued-drink list UI/UX pass: icon buttons + delete confirm — Owner:
+      fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-reported the Delete button had no confirmation and the
+    "Up next" list's styling didn't hold up once more than one row was
+    queued. Rebuilt each row from a centered flex-wrapped pill into a
+    left-aligned, full-width card (name + remaining mL on the left,
+    actions on the right). Added three small SVG icon components
+    (`EditIcon`, `TrashIcon`, `SwitchIcon` in `src/shared/components/`,
+    matching the existing `BackIcon`/`HistoryIcon` stroke convention — no
+    new icon-library dependency) and swapped the plain text Switch
+    now/Edit/Delete buttons for icon buttons. Delete is now a two-tap
+    confirm: tapping the trash icon arms that row's inline "Delete? Yes/No"
+    state (`confirmDeleteId`) instead of deleting immediately; a second tap
+    on Yes is required, and tapping Switch now, Edit, or arming a different
+    row's confirm disarms it. Kept inline rather than a popup/dialog, same
+    convention as the rest of this list (see DECISIONS.md).
+    Verified: `node_modules/.bin/rolldown` syntax-checked the file cleanly;
+    a full `vite build` succeeded in 9.45s (104 modules — the 3 new icon
+    files included), and the compiled bundle was grepped for "Delete?",
+    "Switch now to ", and "Up next" to confirm the right code shipped. No
+    live click-through in an actual browser this session — same
+    device-bridge dev-server gap noted in the previous entry, not
+    attempted again here since the pattern is already established.
+- [x] Edit "Now serving" in place (not just queued drinks) — Owner:
+      fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-reported no way to fix a misspelled name or wrong mL on
+    the drink currently being served — only "Up next" rows had an Edit
+    action. `sessionQueries.js`: `updateQueuedDrink` renamed to
+    `updateDrink`, WHERE clause widened from `status = 'queued'` to
+    `status IN ('queued', 'serving')` — a `'served'` (past/history) row
+    still can't be edited, deliberately, since it may already have real
+    pours tagged against its id. `ActiveSessionScreen.jsx`: "Now serving"
+    gained a small Edit icon that reuses the exact same inline edit form,
+    state (`editingQueuedId`/`editName`/`editVolumeInput`), and "volume
+    required once a name is given" validation already built for queued
+    rows — just targeting `currentDrink.id` instead. Saving refreshes both
+    `currentDrink` and `queuedDrinks` rather than branching on which one
+    the id belonged to.
+    Verified: `node_modules/.bin/rolldown` syntax-checked the file cleanly;
+    a full `vite build` succeeded in 8.26s, and the compiled bundle was
+    grepped for "Now serving:" and the new "edit-current-drink" id prefix
+    to confirm the right code shipped. No live click-through in an actual
+    browser this session — same device-bridge dev-server gap noted in
+    earlier entries.
+- [x] Fix: every queued row said "Up next" — Owner: fumio65 · Branch:
+      `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-reported two drinks waiting, both rows labeled "Up next" —
+    ambiguous about which one actually comes next. `ActiveSessionScreen.jsx`:
+    added the row's `index` to the `queuedDrinks.map` callback and derived
+    a `queueLabel` — urgent empty-drink message for the oldest row when
+    the current drink is out, "Up next" for the oldest row otherwise, and
+    `#${index + 1} in queue` for every row behind it.
+    Verified: `node_modules/.bin/rolldown` syntax-checked the file cleanly;
+    a full `vite build` succeeded (32.28s this run — Tailwind's generate
+    step was slower than usual but still completed, no hang), and the
+    compiled bundle was grepped for "in queue" to confirm the new label
+    text shipped. No live click-through in an actual browser this
+    session — same device-bridge dev-server gap noted in earlier entries.
+- [x] Collapse a long "Up next" queue behind a count toggle — Owner:
+      fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: Raised proactively (asked what to do about queue UX once
+    several drinks are waiting). Given three options via AskUserQuestion
+    (fixed-height scroll; collapse-to-count with expand; a separate
+    dedicated queue view), the user chose collapse-to-count. Pulled the
+    per-row markup out of the inline `.map()` into a `renderQueuedRow(drink,
+    index)` function so it can be called from two places without
+    duplicating JSX. Only `queuedDrinks[0]` (the oldest-staged row) always
+    renders; once `queuedDrinks.length > 1`, a "+N more queued" toggle
+    appears below it, and the rest only render (via `queueExpanded` state)
+    once tapped — tapping again ("Hide") collapses them.
+    Verified: `node_modules/.bin/rolldown` syntax-checked the file cleanly;
+    a full `vite build` succeeded in 5.53s (needed a one-time delete
+    permission grant for `dist/`/`node_modules/.vite` in this session,
+    since a previous call's `rm -rf` had failed with "Operation not
+    permitted" — noted here in case it recurs), and the compiled bundle
+    was grepped for "more queued" and "Hide" to confirm the right code
+    shipped. No live click-through in an actual browser this session —
+    same device-bridge dev-server gap noted in earlier entries.
+- [x] Fix: expanding the queue pushed TurnRing down the page — Owner:
+      fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-reported the turn-order circle shifted down whenever the
+    "+N more queued" toggle was expanded, since the expanded rows sat
+    inline and grew the column's height above it. `ActiveSessionScreen.jsx`:
+    the wrapper around the toggle button is now `relative`, and the
+    expanded panel is `absolute left-0 right-0 top-full z-20 mt-1 max-h-64
+    overflow-y-auto ... shadow-lg` instead of a plain in-flow `<div>` — it
+    now floats over whatever's below instead of displacing it, with a
+    capped height + scroll for a queue long enough to run off-screen.
+    Verified: `node_modules/.bin/rolldown` syntax-checked the file cleanly;
+    a full `vite build` succeeded in 14.41s, and the compiled CSS bundle
+    was grepped for `.top-full`, `.z-20`, and `.shadow-lg` to confirm
+    Tailwind actually generated those utilities. No live click-through in
+    an actual browser this session — same device-bridge dev-server gap
+    noted in earlier entries; worth confirming the floating panel doesn't
+    get clipped by any `overflow-hidden` ancestor once it's checked live.
+- [x] Fix: "Switch" button was misleading (also queues a drink) — Owner:
+      fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-reported the "Switch" label next to "Now serving" didn't
+    say it also opens the queue-a-drink-for-later form. Relabeled both
+    the trigger button and the dialog's `<h2>` from "Switch drink"/"Switch"
+    to "Switch / Queue drink"/"Switch / Queue", and added an `aria-label`
+    on the button spelling out both actions for screen readers, since the
+    visible label is now a slash-separated pair rather than one plain verb.
+    Verified: `node_modules/.bin/rolldown` syntax-checked the file cleanly;
+    a full `vite build` succeeded in 10.05s, and the compiled bundle was
+    grepped for "Switch / Queue" and "Switch / Queue drink" to confirm
+    both strings shipped. No live click-through in an actual browser this
+    session — same device-bridge dev-server gap noted in earlier entries.
+- [x] Log which drink each participant poured + a live "Drinks" section
+      (current + queued, not just history) — Owner: fumio65 · Branch:
+      `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-reported two gaps: (1) no record of which alcohol each
+    participant actually drank, (2) the session log only covered finished
+    drink history, not what's currently serving or queued.
+    `sessionQueries.js`: `getSessionEvents` now `LEFT JOIN`s `drinks` and
+    selects `d.name AS drink_name` (LEFT, not JOIN, since a PASS row has
+    no `drink_id` and a cancelled queued drink's row can be gone entirely
+    — `drink_name` just comes back null rather than dropping the event).
+    `volumeUnits.js`: new `formatVolumeMl(ml)` — >= 1000mL displays as L
+    (`1500` -> `"1.5L"`), otherwise plain `"<n>mL"`.
+    `SessionLog.jsx`: `buildStats` now collects a per-participant `Set` of
+    drink names from POUR events (deduped, first-poured order) as
+    `stat.drinkNames`; a new "Drinks" section lists every drink the
+    session has touched (merging `drinkHistory` + `queuedDrinks`
+    client-side in `ActiveSessionScreen.jsx` as `allDrinksForLog` — no new
+    query needed, both lists already existed in state) labeled "Now
+    serving"/"Queued"/"Served" with `formatVolumeMl` for the volume.
+    `ParticipantStatBar.jsx`: renders `stat.drinkNames` as a small text
+    line under the participant's name; falls back to nothing for
+    HistoryDetail's unrelated stat shape, which never sets that field.
+    Verified: `node_modules/.bin/rolldown` syntax-checked all five changed
+    files cleanly; a full `vite build` succeeded in 3.72s (needed a
+    one-time delete-permission re-grant for `dist/` in this fresh
+    container — same as a previous entry, confirming it doesn't persist
+    across separate device-bridge calls), and the compiled bundle was
+    grepped for "Now serving", "Queued", "Served", and "drink_name" to
+    confirm the right code shipped. No live click-through in an actual
+    browser this session — same device-bridge dev-server gap noted in
+    earlier entries.
+- [x] Fix: a participant's mL across a drink switch was one lumped
+      total, not separated per drink — Owner: fumio65 · Branch:
+      `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-reported: poured everyone the current drink, switched to
+    a different one, and each participant's mL just kept accumulating
+    into one combined number with no way to tell how much came from
+    which drink. The previous entry's `drinkNames` (names only, no
+    amounts) didn't actually fix this. `SessionLog.jsx`: `buildStats`
+    replaced the name-only `Set` with `drinkTotalsByName`, a running mL
+    total keyed by drink name, built the same way `totalMl` always was
+    (`VOLUME_BY_ID[event.volume].approxMl` per POUR) but added to its own
+    drink's bucket instead of one shared pot. Exposed as `stat.drinkTotals`
+    (`[{ name, ml }]`, first-poured order). `ParticipantStatBar.jsx`:
+    renders each drink with its own `~mL`/`L` line (via `formatVolumeMl`);
+    the existing combined `~totalMl` line stays as the grand total below
+    it, now also through `formatVolumeMl`.
+    Verified: hand-traced `buildStats` in an isolated `node` script with
+    two drinks (2× standard pour of "Tanduay" + 1× heavy pour of "Red
+    Horse") — confirmed `drinkTotals` came back as `Tanduay: 120`, `Red
+    Horse: 90` separately, with `totalMl: 210` matching their sum.
+    `node_modules/.bin/rolldown` syntax-checked both changed files
+    cleanly; a full `vite build` succeeded in 10.91s. No live
+    click-through in an actual browser this session — same device-bridge
+    dev-server gap noted in earlier entries.
+- [x] Show pour-size (Light/Standard/Heavy) counts per drink, not just
+      mL — Owner: fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: Proactively asked whether this was worth building now that
+    mL is already split per drink; agreed, with the scope narrowed to
+    reuse the existing per-drink line rather than add a second stacked
+    bar per drink. `SessionLog.jsx`: each `drinkTotalsByName` bucket
+    (keyed by drink name) now holds `{ ml, byVolume: { light, standard,
+    heavy } }` instead of a bare mL number — same per-POUR accumulation
+    the participant-wide `byVolume` already does, just scoped to the
+    drink that pour belonged to. `ParticipantStatBar.jsx`: each drink's
+    line gained a second row of small colored-dot counts (same dots/
+    colors/order as the participant-wide ones above), filtered to only
+    the volumes actually poured for that drink.
+    Verified: hand-traced `buildStats` in an isolated `node` script with
+    3 pours of "Tanduay" (2 Standard + 1 Heavy) and 1 "Red Horse" (Light)
+    — confirmed each drink's `byVolume` came back correctly isolated
+    (Tanduay: standard 2/heavy 1, Red Horse: light 1) while the
+    participant's own overall `byVolume`/`totalMl` still matched the sum
+    across both drinks. `node_modules/.bin/rolldown` syntax-checked both
+    changed files cleanly; a full `vite build` succeeded in 10.10s. No
+    live click-through in an actual browser this session — same
+    device-bridge dev-server gap noted in earlier entries.
+- [x] Collapse a participant's long drink list behind a count toggle —
+      Owner: fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: Raised proactively (asked what to do once a participant has
+    several different drinks logged, same shape of problem the queue
+    list had). Given the same three options via AskUserQuestion as the
+    earlier queue-list decision, the user again chose collapse-to-count,
+    for consistency. `ParticipantStatBar.jsx`: added local
+    `drinksExpanded` state (per participant row, not shared across the
+    roster); pulled the per-drink `<li>` markup into a `renderDrinkRow`
+    closure so it can be called for both the always-visible row and the
+    collapsed ones. Only `stat.drinkTotals[length - 1]` (the most
+    recently poured drink) always renders; the rest
+    (`drinkTotals.slice(0, -1).reverse()`, most-recent-of-the-earlier-ones
+    first) collapse behind a "+N more drinks" toggle and only render once
+    tapped.
+    Verified: `node_modules/.bin/rolldown` syntax-checked the file
+    cleanly; a full `vite build` succeeded in 11.30s, and the compiled
+    bundle was grepped for "more drink" and "Hide" to confirm the labels
+    shipped. No live click-through in an actual browser this session —
+    same device-bridge dev-server gap noted in earlier entries.
+- [x] Fix: collapsed drink view showed the first drink poured, not the
+      current one — Owner: fumio65 · Branch: `app/drink-tracking` ·
+      Done: 2026-10-18
+  - Notes: User-reported the default-shown drink (before expanding "+N
+    more drinks") was whichever drink they'd poured *first*, not the one
+    they were currently on. Root cause: `getSessionEvents` returns events
+    newest-first; `buildStats` (SessionLog.jsx) iterates that list and
+    inserts each drink name into `drinkTotalsByName` on its first
+    encounter — which, given newest-first iteration, is actually that
+    drink's *most recent* pour. So the object's insertion order comes out
+    newest-drink-first, not first-poured as the surrounding comments
+    (also corrected this commit) had assumed. `ParticipantStatBar.jsx`
+    was taking the *last* entry as "the current drink" — exactly
+    backwards. Changed to `drinkTotals[0]` for the always-visible row and
+    `drinkTotals.slice(1)` (already correctly ordered, no reversal
+    needed) for the collapsed ones.
+    Verified: traced `buildStats` in an isolated `node` script with
+    events in the real newest-first order (most recent pour — Red Horse —
+    listed before the earlier Tanduay pours) and confirmed
+    `drinkTotals[0]` came back as Red Horse, the actually-current drink.
+    `node_modules/.bin/rolldown` syntax-checked both changed files
+    cleanly; a full `vite build` succeeded in 10.54s. No live
+    click-through in an actual browser this session — same device-bridge
+    dev-server gap noted in earlier entries.
+- [x] Fix: Activity log never named which drink was poured — Owner:
+      fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-reported the Activity log "didn't even log it properly" —
+    every pour row still only said "poured (Standard)", with no drink
+    name, even though `getSessionEvents` has carried `drink_name` (via
+    its LEFT JOIN onto `drinks`) since the earlier per-participant-
+    breakdown work. `ActivityFeed.jsx` is shared between the live
+    session's Activity log and HistoryDetail's past-session one, so one
+    fix covers both: appends `` · ${event.drink_name}`` after the
+    pour-size label, only when `drink_name` is present (null for a
+    session that never used drink tracking, so nothing grows a stray
+    " · " for those rows).
+    Verified: `node_modules/.bin/rolldown` syntax-checked the file
+    cleanly; a full `vite build` succeeded in 9.14s, and the compiled
+    bundle was grepped for `drink_name` to confirm the field is actually
+    referenced in the shipped code (the interpolated template literal
+    itself isn't a greppable literal string once minified). No live
+    click-through in an actual browser this session — same device-bridge
+    dev-server gap noted in earlier entries.
+- [x] Fix: Session History dropped re-queued drinks, showed no
+      remaining volume — Owner: fumio65 · Branch: `app/drink-tracking` ·
+      Done: 2026-10-18
+  - Notes: User-reported History "didn't record all the drinks from
+    current to que... it just records the last alcohol drink", and
+    didn't show how much mL/L was left in each. Root cause:
+    `getSessionDrinks` filtered to `status IN ('serving', 'served')` —
+    written back when `'queued'` only ever meant "staged, never
+    touched." That broke once `demoteCurrentDrink` started *re*-queuing a
+    drink switched away from while it still had volume (not marking it
+    `'served'`) — a drink that genuinely had real pours earlier in the
+    session could land back in `'queued'` and vanish from history
+    entirely if the session ended before it was promoted again.
+    `sessionQueries.js`: dropped the status filter from `getSessionDrinks`
+    completely — every drink row now comes back, plus its `status`
+    column (previously unselected there). `HistoryDetail.jsx`: new
+    `drinkStatusLabel(drink, events)` disambiguates `'queued'` by
+    checking whether the drink has any POUR events against it ("Served,
+    then re-queued" vs. "Queued, never served"), and a ported
+    `remainingForDrink` (same declared-minus-poured formula
+    ActiveSessionScreen's live version uses, computed from the already-
+    loaded past-session `events`) shows each drink's remaining volume
+    next to its declared one, both via `formatVolumeMl`.
+    Verified: hand-traced both helpers in an isolated `node` script with
+    a drink that was poured from, switched away from while non-empty
+    (status left at `'queued'` — the actual bug scenario), and a second
+    drink still `'serving'` at session end — confirmed the first came
+    back labeled "Served, then re-queued" with its correct remaining mL,
+    not silently dropped. `node_modules/.bin/rolldown` syntax-checked
+    both changed files cleanly; a full `vite build` succeeded in 4.13s,
+    and the compiled bundle was grepped for all three new status-label
+    strings to confirm they shipped. No live click-through in an actual
+    browser this session — same device-bridge dev-server gap noted in
+    earlier entries.
+- [x] History's Drinks section: small-multiples bar chart instead of
+      plain text rows — Owner: fumio65 · Branch: `app/drink-tracking` ·
+      Done: 2026-10-18
+  - Notes: User-reported the Drinks section's UI/UX didn't look good and
+    asked for a graph, given it's a history view. Loaded the project's
+    dataviz skill before building: picked the form (magnitude comparison
+    across categorical rows = small-multiples bars, not a line/trend or a
+    single stat) and deliberately reused an *existing*, already-shipped
+    color convention rather than introducing a new categorical palette —
+    the live session's own depletion bar (ActiveSessionScreen: track
+    `bg-ink`, fill `bg-ember`/`bg-maroon` for has-volume/empty) — so no
+    new palette validation was needed; it's the same two-state status
+    encoding already in use. `HistoryDetail.jsx`: each drink with a
+    declared volume gets that track+fill bar, width = poured/declared
+    clamped to [0, 100]%, stacked oldest-first; poured/declared/remaining
+    stay as direct text labels under the bar so the numbers are never
+    only readable from color. A drink with no declared volume (nothing
+    to bar against) falls back to the plain status line alone.
+    Verified: `node_modules/.bin/rolldown` syntax-checked the file
+    cleanly; a full `vite build` succeeded in 4.65s, and the compiled
+    bundle/CSS were grepped for "poured of" and `.bg-maroon` to confirm
+    the new markup and the reused color class both shipped. No live
+    click-through in an actual browser this session — same device-bridge
+    dev-server gap noted in earlier entries; worth eyeballing the bar
+    widths on a real past session once that's checked live, per the
+    dataviz skill's own "render it and look at it" step.
+- [x] Fix: History's drink bar filled with poured amount, inconsistent
+      with the live view's draining bar — Owner: fumio65 · Branch:
+      `app/drink-tracking` · Done: 2026-10-18
+  - Notes: Asked directly which direction (fill with poured vs. drain
+    with remaining) was more user-friendly; picked drain/remaining, both
+    because it matches the live session's existing "Now serving" bar
+    (`barWidthPct = remainingMl / declared` in ActiveSessionScreen,
+    checked directly rather than assumed) and because a draining gauge
+    is the more familiar convention for "how much is left" on its own.
+    The commit that introduced the History bar had actually claimed
+    parity with the live bar in its own commit message while being the
+    opposite direction — caught here, not before.
+    `HistoryDetail.jsx`: `widthPct` changed from
+    `pouredMl / drink.volume_ml` to `max(remaining, 0) / drink.volume_ml`.
+    The poured/declared/remaining text labels underneath are unchanged —
+    only the bar's fill direction moved.
+    Verified: hand-computed the width for a 700mL drink with 520mL
+    poured (180mL remaining) — confirmed it comes out ~26% (mostly
+    drained), matching the live bar's behavior for a mostly-finished
+    drink instead of the previous ~74%. `node_modules/.bin/rolldown`
+    syntax-checked the file cleanly; a full `vite build` succeeded in
+    4.04s. No live click-through in an actual browser this session —
+    same device-bridge dev-server gap noted in earlier entries.
+- [x] Fix: Back button scrolled away on long Session History pages —
+      Owner: fumio65 · Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-reported that scrolling a long session list (or a
+    session with a lot of Drinks/Activity-log entries) scrolled the Back
+    button out of view with the rest of the header, since both
+    `HistoryList` and `HistoryDetail` are a single unbounded-height
+    scrolling page. Pulled the button into its own
+    `sticky top-0 z-10 -mx-6 -mt-6 bg-ink px-6 pb-3 pt-6` bar in both
+    files — the negative margins cancel the page's own `p-6` so the bar
+    bleeds to the real viewport edges, then re-adds its own padding; the
+    solid background stops scrolling content showing through underneath
+    it. The big session-name/date title stays in normal flow below it
+    rather than also being made sticky, so it still scrolls away
+    normally and the sticky bar stays compact.
+    Verified: `node_modules/.bin/rolldown` syntax-checked both files
+    cleanly; a full `vite build` succeeded in 4.21s, and the compiled CSS
+    was grepped for `.sticky`, `.-mx-6`, and `.-mt-6` to confirm Tailwind
+    generated those utilities. No live click-through in an actual
+    browser this session — same device-bridge dev-server gap noted in
+    earlier entries; worth confirming on an actual phone-width screen
+    that the sticky bar doesn't gap at the very top on scroll bounce (iOS
+    rubber-banding can occasionally reveal a sliver above a `sticky`
+    element depending on the surrounding scroll container).
+- [x] Optional, mid-session turn timer + buzzer — Owner: fumio65 ·
+      Branch: `app/drink-tracking` · Done: 2026-10-18
+  - Notes: User-asked-for ("add a buzzer or a time limit when they're
+    turn to drink so it look more intense", explicitly optional and
+    settable mid-session, not just at Start Session). Used
+    AskUserQuestion to settle three open questions before building:
+    timeout behavior (buzzer+flash only, no forced auto-Pass — matches
+    the existing pass-limit house rule's soft-signal philosophy),
+    duration picker (presets, not free input), and control placement
+    (new control near TurnRing, not folded into the participant manager
+    sheet). New `useTurnTimer.js` (`turnKey` = `currentIndex` from
+    useTurnManager, `durationSeconds` = null when off) resets on every
+    new turn or duration change and flips `expired` once per turn — it
+    never calls `onPass`/`onPourConfirmed` itself, same "soft signal,
+    caller decides" shape as `isOverPassLimit`. New `playBuzzer.js`
+    synthesizes a two-beep buzzer via Web Audio (no audio file asset,
+    consistent with this app's offline-first stance) rather than
+    bundling a sound file. New `TimerIcon.jsx` matches the existing
+    icon-stroke convention. `ActiveSessionScreen.jsx`: a pill next to
+    TurnRing shows "Turn timer: Off" / "`<n>`s" / "Time's up!" (maroon,
+    pulsing), opening an absolute-positioned preset dropdown (10s/15s/
+    30s/60s/Off) — same non-layout-shifting pattern as the queue's own
+    dropdown — and a `useEffect` on `expired` calls `playBuzzer()`
+    exactly once per expiry.
+    Verified: hand-traced the countdown/expiry state machine in an
+    isolated script (10s duration ticked 12 times: counts 10→1, then
+    stays "EXPIRED" rather than going negative or re-firing; disabled
+    duration never counts at all). `node_modules/.bin/rolldown`
+    syntax-checked all four changed/new files cleanly; a full `vite
+    build` succeeded in 4.22s, and the compiled bundle was grepped for
+    "Turn timer: Off", "Time's up!", and "AudioContext" to confirm the
+    UI strings and the Web Audio usage both shipped. No live
+    click-through in an actual browser this session — same
+    device-bridge dev-server gap noted in earlier entries; the buzzer
+    sound itself in particular can only really be judged by ear once
+    tested live.
 - [ ] Multiple pour stations (v2 scalability — architecture TBD, see `tagaybox_spec.md`)
 - [ ] Real browser back/forward support for in-app screens (participants/session/
       history currently switch via local React state only, per EXAMPLES.md's
@@ -717,3 +1407,87 @@ agreement, since some of these affect firmware command set (e.g. `FLUSH`, batter
 - Hardware/firmware changes that affect the BLE command or status vocabulary must be
   reflected in `tagaybox_spec.md` in the same PR, so app and firmware owners don't drift
   out of sync
+
+- [x] app/drink-session-log: mL/L display is now a manual toggle (shared, persisted)
+      instead of auto-switching per value — see DECISIONS.md.
+
+- [x] app/drink-tracking: added a mid-session "Start tracking a drink"
+      form for sessions where drink tracking was skipped at Start Session
+      — see DECISIONS.md.
+
+- [x] app/history-swipe-delete: swipe a session row left to reveal a
+      delete button; tapping it opens a confirm dialog (swipe never
+      deletes by itself) — see DECISIONS.md.
+
+- [x] app/history-resume: added a "Resume session" button to the History
+      detail/overview screen; resuming un-ends the session and restores
+      its exact participants, continuing where it left off (pass limit
+      can't be restored — never persisted) — see DECISIONS.md.
+
+- [x] app/people-roster-delete-confirm: the ✕ button on People now opens
+      a confirm dialog instead of deleting right away; also fixed a bug
+      where a deleted person could reappear on the next sync pull (no
+      local tombstone existed to stop it) — see DECISIONS.md.
+
+- [x] app/display-name: app's own display name (title, Android app
+      label, in-app header) changed to "Lasenggo" — the overall
+      project/hardware name stays "Lasenggo 3000" — see DECISIONS.md.
+
+- [x] app/launcher-icon: replaced the default Capacitor/Android Studio
+      placeholder icon (teal grid + robot face) and Vite favicon with a
+      shot-glass-in-a-ring icon on the app's own ink/ember palette —
+      favicon, adaptive icon (background color + foreground layers), and
+      legacy launcher PNGs at all 5 densities — see DECISIONS.md.
+
+- [x] app/splash-screen: replaced the default white placeholder splash
+      (all 11 density/orientation PNGs) with the launcher icon's
+      shot-glass-in-a-ring artwork centered on the app's ink background
+      — see DECISIONS.md.
+
+- [x] app/animated-splash: added a real animated splash (ring of 6 dots
+      lighting up in turn order) shown while the app initializes SQLite,
+      replacing the previous "no loading screen at all" gap; hands off
+      from the native splash.png via @capacitor/splash-screen with no
+      visible seam — see DECISIONS.md.
+
+- [x] app/animated-splash v2: splash is now a one-shot reveal (ring
+      pops in, shot glass fills from a pour, wordmark arrives, then it
+      holds still) instead of a looping pulse that read as a loading
+      spinner — see DECISIONS.md.
+
+- [x] app/launcher-icon v2: icon redrawn to sit inside Android's
+      adaptive-icon safe zone (v1's dots got clipped on circle
+      launchers) and to match the splash's final frame: linked ring,
+      larger glass poured two-thirds full. Launcher PNGs, favicon and
+      static splash all regenerated — see DECISIONS.md.
+
+- [x] app/drink-outcome: after each Pour the turn waits for Finished or
+      Tapon before moving on ("Left some" dropped, the cup LED shows it); stored on the POUR row
+      (outcome, left_ml), synced (Supabase migration applied), and shown
+      as "Drank ~X of ~Y" per person in the live panel and History, plus
+      in the activity feed — see DECISIONS.md.
+- [ ] hw follow-up for app/drink-outcome: set the outcome automatically
+      from the load cell (cup returned at pre-pour weight = finished;
+      heavier = partial with measured left_ml) once BLE status exists.
+
+- [x] app/turn-timer (now a drink timer: starts on Pour, stops on Finished/Tapon; ticking + timeout log): clock tick each second while
+      the timer runs (urgent last 5s), and a TIMEOUT event ("ran out of
+      time", TIME'S UP tag) logged for the current person when it hits
+      zero; Supabase type CHECK widened — see DECISIONS.md.
+
+- [x] app/saved-drinks: drinks are remembered (name + size) whenever
+      logged and offered as one-tap picks in every drink field; Drinks
+      screen next to People to edit/remove; synced like People (Supabase
+      table saved_drinks). Also fixed the squeezed name fields on phones
+      — see DECISIONS.md.
+
+- [x] app/session-mode: start screen on every launch (Connect to Lasenggo
+      3000 marked "coming soon" until Bluetooth exists; Use without the
+      device = manual mode), sessions.mode stored + synced, Manual /
+      Lasenggo 3000 badge in History — see DECISIONS.md.
+- [~] app/ble-connect: start screen connect circle does a real Bluetooth
+      search + connect for "Lasenggo3000" (bluetooth-le plugin, Android
+      permissions), creates 'hardware' sessions, falls back to manual on
+      disconnect. Remaining: test on a real phone with the ESP32, and GATT
+      commands/status (app/ble-commands, app/ble-status-subscription) once
+      the firmware defines its UUIDs; Pour is still simulated in device mode.

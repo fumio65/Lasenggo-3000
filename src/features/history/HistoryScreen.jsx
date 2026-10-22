@@ -7,7 +7,7 @@ import { HistoryDetail } from './HistoryDetail'
  * convention as App.jsx's top-level screen switching (see EXAMPLES.md) — kept
  * local here rather than in App since it's internal to this one feature.
  */
-export function HistoryScreen({ onExit }) {
+export function HistoryScreen({ onExit, onResume }) {
   const [selectedSessionId, setSelectedSessionId] = useState(null)
 
   // UX fix: same root cause as App.jsx's top-level scroll reset — switching
@@ -22,6 +22,7 @@ export function HistoryScreen({ onExit }) {
       <HistoryDetail
         sessionId={selectedSessionId}
         onBack={() => setSelectedSessionId(null)}
+        onResume={onResume}
       />
     )
   }

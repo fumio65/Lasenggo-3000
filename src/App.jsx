@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react'
+import { AppSplash } from './shared/components/AppSplash'
 import { ParticipantList } from './features/session/ParticipantList'
 import { ActiveSessionScreen } from './features/session/ActiveSessionScreen'
 import { HistoryScreen } from './features/history/HistoryScreen'
 import { PeopleScreen } from './features/session/PeopleScreen'
+import { DrinksScreen } from './features/session/DrinksScreen'
+import { StartScreen } from './features/session/StartScreen'
+import { disconnectDevice } from './features/ble/connectDevice'
 import { useParticipants } from './features/session/useParticipants'
 import { initDatabase } from './features/storage/db'
-import { createSession, endSession } from './features/storage/sessionQueries'
+import { createSession, endSession, resumeSession, getSessionForResume } from './features/storage/sessionQueries'
 import { findOrCreatePerson } from './features/storage/peopleQueries'
 import { ensureAnonymousSession } from './features/sync/auth'
 import { runSync } from './features/sync/syncJob'
@@ -19,8 +23,16 @@ function App() {
     clearParticipants,
     moveParticipant,
     reorderParticipants,
+    loadParticipants,
   } = useParticipants()
-  const [screen, setScreen] = useState('participants') // 'participants' | 'session' | 'history' | 'people'
+  const [screen, setScreen] = useState('participants') // 'participants' | 'session' | 'history' | 'people' | 'drinks'
+  // app/session-mode: null until picked on StartScreen, which shows every
+  // time the app opens. 'manual' today; 'hardware' once Bluetooth exists.
+  const [mode, setMode] = useState(null)
+  // app/ble-connect: the connected device's id while in 'hardware' mode.
+  // If the device drops, the app falls back to manual for whatever comes
+  // next (agreed behavior); a session already started keeps its label.
+  const [bleDeviceId, setBleDeviceId] = useState(null)
 
   // UX fix: screen switches are local-state only (no router/page nav — see
   // doc/TASKS.md's Backlog "Real browser back/forward support" for the
@@ -50,6 +62,34 @@ function App() {
         setDbStatus('error')
       })
   }, [])
+
+  // app/animated-splash: shown until initDatabase above settles (ready
+  // or error -- either way there's nothing left to wait on; a failed db
+  // isn't recoverable by waiting longer) AND at least MIN_SPLASH_MS has
+  // elapsed, whichever is later. The minimum exists so a fast local
+  // SQLite init (the common case) doesn't hide the splash
+  // before the pour finishes -- the reveal runs ~2.55s (see AppSplash.jsx
+  // and the .splash-* rules in index.css) and needs to complete to read as
+  // a deliberate splash rather than a flash. Auth (below) is deliberately NOT part of
+  // this condition: it's non-blocking everywhere else in this app (see
+  // its own comment), so the splash shouldn't block on it either.
+  const MIN_SPLASH_MS = 2600
+  const [minSplashElapsed, setMinSplashElapsed] = useState(false)
+  const [splashFading, setSplashFading] = useState(false)
+  const [showSplash, setShowSplash] = useState(true)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setMinSplashElapsed(true), MIN_SPLASH_MS)
+    return () => clearTimeout(timer)
+  }, [])
+
+  useEffect(() => {
+    if (!showSplash || splashFading) return
+    if (dbStatus === 'loading' || !minSplashElapsed) return
+    setSplashFading(true)
+    const timer = setTimeout(() => setShowSplash(false), 320) // matches AppSplash's own 300ms fade
+    return () => clearTimeout(timer)
+  }, [dbStatus, minSplashElapsed, showSplash, splashFading])
 
   // Anonymous auth (backend/anonymous-auth) — gives this device a stable identity
   // for sync, with no login UI. Failing (or Supabase not configured) is not fatal:
@@ -140,7 +180,7 @@ function App() {
           }
         }),
       )
-      const id = await createSession(resolvedParticipants, name, drinkName, drinkVolumeMl)
+      const id = await createSession(resolvedParticipants, name, drinkName, drinkVolumeMl, mode ?? 'manual')
       setSessionId(id)
       setSessionName(name.trim())
       setPassLimit(sessionPassLimit)
@@ -172,8 +212,58 @@ function App() {
     triggerSync() // session just ended — a natural moment to push it (backend/sync-job)
   }
 
+  // app/history-resume: "un-ends" a past session and drops back into
+  // ActiveSessionScreen for it, same destination handleStartSession
+  // lands on. Reloads *that session's own* participants (same ids as its
+  // DB rows, via loadParticipants) rather than trying to merge with
+  // whatever's currently in the in-memory roster — those are two
+  // different things that happen to share state, and mixing them would
+  // either lose the resumed session's real roster or silently carry
+  // someone from an unrelated half-filled "Who's joining" draft into it.
+  // Pass limit was never persisted anywhere (sessions has no such column
+  // — see DECISIONS.md), so a resumed session always comes back with no
+  // limit set; there's no original value to restore.
+  async function handleResumeSession(sessionIdToResume) {
+    try {
+      const { session, participants: rows } = await getSessionForResume(sessionIdToResume)
+      if (!session) return
+      await resumeSession(sessionIdToResume)
+      loadParticipants(
+        rows.map((row) => ({
+          id: row.id,
+          name: row.name,
+          personId: row.person_id ?? null,
+        })),
+      )
+      setSessionId(sessionIdToResume)
+      setSessionName(session.name || '')
+      setPassLimit(null)
+      setScreen('session')
+    } catch (err) {
+      console.error('Failed to resume session', err)
+    }
+  }
+
   return (
     <>
+      {showSplash && <AppSplash fading={splashFading} />}
+      {mode == null && (
+        <StartScreen
+          onChooseManual={() => {
+            setMode('manual')
+            setScreen('participants')
+          }}
+          onConnected={(deviceId) => {
+            setBleDeviceId(deviceId)
+            setMode('hardware')
+            setScreen('participants')
+          }}
+          onDeviceDisconnected={() => {
+            setBleDeviceId(null)
+            setMode((m) => (m === 'hardware' ? 'manual' : m))
+          }}
+        />
+      )}
       {/* UX fix: Session History used to be reachable only from the
           participants screen, so checking it mid-round meant going through
           Back (which — even with its own confirm — ends the session). Now
@@ -183,13 +273,14 @@ function App() {
           in-memory turn order/pass-streak state — which has nowhere else
           to live — survives the trip and the session is exactly as it was
           when the person comes back. */}
-      {sessionId && (
+      {mode != null && sessionId && (
         <div className={screen === 'history' ? 'hidden' : undefined}>
           <ActiveSessionScreen
             participants={participants}
             sessionId={sessionId}
             sessionName={sessionName}
             passLimit={passLimit}
+            mode={mode}
             onExit={handleExitSession}
             onViewHistory={() => setScreen('history')}
             onRenameParticipant={renameParticipant}
@@ -197,16 +288,22 @@ function App() {
           />
         </div>
       )}
-      {screen === 'history' && (
-        <HistoryScreen onExit={() => setScreen(sessionId ? 'session' : 'participants')} />
+      {mode != null && screen === 'history' && (
+        <HistoryScreen
+          onExit={() => setScreen(sessionId ? 'session' : 'participants')}
+          onResume={handleResumeSession}
+        />
       )}
       {/* app/people-roster: only reachable from the participants screen (not
           mid-session, unlike History) - there's no in-session reason to
           browse the whole roster, and ActiveSessionScreen's own "Manage
           participants" sheet already covers renaming *this session's*
           people. */}
-      {screen === 'people' && <PeopleScreen onBack={() => setScreen('participants')} />}
-      {!sessionId && screen === 'participants' && (
+      {mode != null && screen === 'people' && <PeopleScreen onBack={() => setScreen('participants')} />}
+      {/* app/saved-drinks: the saved drinks list, reached from the same
+          header as People. */}
+      {mode != null && screen === 'drinks' && <DrinksScreen onBack={() => setScreen('participants')} />}
+      {mode != null && !sessionId && screen === 'participants' && (
         <ParticipantList
           participants={participants}
           onAdd={addParticipant}
@@ -220,6 +317,13 @@ function App() {
           startingSession={starting}
           onViewHistory={() => setScreen('history')}
           onViewPeople={() => setScreen('people')}
+          onViewDrinks={() => setScreen('drinks')}
+          mode={mode}
+          onChangeMode={() => {
+            disconnectDevice(bleDeviceId)
+            setBleDeviceId(null)
+            setMode(null)
+          }}
         />
       )}
       <div className="fixed bottom-2 right-2 flex flex-col items-end gap-1 text-[10px]">

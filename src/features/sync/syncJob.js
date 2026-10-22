@@ -36,13 +36,15 @@ export async function runSync() {
     // dependency either way, but is kept next since `participants` also
     // depends on it (session_id).
     const peoplePushed = await syncPeople(db, deviceId)
+    // app/saved-drinks: independent of sessions, so order doesn't matter.
+    const savedDrinksPushed = await syncSavedDrinks(db, deviceId)
     const sessionsPushed = await syncSessions(db, deviceId)
     const participantsPushed = await syncParticipants(db)
     const eventsPushed = await syncEvents(db)
     const drinksPushed = await syncDrinks(db)
     return {
       ok: true,
-      pushed: { peoplePushed, sessionsPushed, participantsPushed, eventsPushed, drinksPushed },
+      pushed: { peoplePushed, savedDrinksPushed, sessionsPushed, participantsPushed, eventsPushed, drinksPushed },
     }
   } catch (err) {
     if (isNetworkError(err)) {
@@ -90,9 +92,40 @@ async function syncPeople(db, deviceId) {
   return rows.length
 }
 
+/** app/saved-drinks: pushes unsynced saved drinks, same shape as
+ * syncPeople (device_id stamped at push time). Edits set synced = 0 again
+ * (updateSavedDrink), and upsert-by-id turns that into an update. */
+async function syncSavedDrinks(db, deviceId) {
+  const result = await db.query(
+    'SELECT id, name, volume_ml, created_at, last_used_at FROM saved_drinks WHERE synced = 0',
+  )
+  const rows = result.values ?? []
+  if (rows.length === 0) return 0
+
+  const payload = rows.map((r) => ({
+    id: r.id,
+    device_id: deviceId,
+    name: r.name,
+    volume_ml: r.volume_ml,
+    created_at: r.created_at,
+    last_used_at: r.last_used_at,
+  }))
+  const { error } = await supabase.from('saved_drinks').upsert(payload)
+  if (error) throw error
+
+  await db.executeSet(
+    rows.map((r) => ({
+      statement: 'UPDATE saved_drinks SET device_id = ?, synced = 1 WHERE id = ?',
+      values: [deviceId, r.id],
+    })),
+    false,
+  )
+  return rows.length
+}
+
 async function syncSessions(db, deviceId) {
   const result = await db.query(
-    'SELECT id, name, started_at, ended_at FROM sessions WHERE synced_at IS NULL',
+    'SELECT id, name, started_at, ended_at, mode FROM sessions WHERE synced_at IS NULL',
   )
   const rows = result.values ?? []
   if (rows.length === 0) return 0
@@ -103,6 +136,7 @@ async function syncSessions(db, deviceId) {
     name: r.name,
     started_at: r.started_at,
     ended_at: r.ended_at,
+    mode: r.mode || 'manual', // app/session-mode
   }))
 
   const { error } = await supabase.from('sessions').upsert(payload)
@@ -150,7 +184,7 @@ async function syncParticipants(db) {
 
 async function syncEvents(db) {
   const result = await db.query(
-    'SELECT id, session_id, participant_id, type, volume, note, timestamp FROM events WHERE synced = 0',
+    'SELECT id, session_id, participant_id, type, volume, note, outcome, left_ml, timestamp FROM events WHERE synced = 0',
   )
   const rows = result.values ?? []
   if (rows.length === 0) return 0
@@ -166,6 +200,11 @@ async function syncEvents(db) {
     type: r.type,
     volume: r.volume,
     note: r.note,
+    // app/drink-outcome: set after the POUR row is first logged, so the
+    // same row can come through here twice (setPourOutcome resets synced);
+    // upsert-by-id turns the second push into an update.
+    outcome: r.outcome,
+    left_ml: r.left_ml,
     timestamp: r.timestamp,
   }))
   const { error } = await supabase.from('events').upsert(payload)

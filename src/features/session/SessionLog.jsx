@@ -1,7 +1,9 @@
 import { useMemo } from 'react'
 import { ParticipantStatBar, VolumeLegend, VOLUME_BY_ID } from '../../shared/components/ParticipantStatBar'
 import { ScrollFadeBox } from '../../shared/components/ScrollFadeBox'
-import { ActivityFeed } from '../../shared/components/ActivityFeed'
+import { ActivityFeed, mergeTimeouts } from '../../shared/components/ActivityFeed'
+import { formatVolumeMl } from '../pour/volumeUnits'
+import { summarizeOutcomes } from '../pour/drinkOutcome'
 
 /** Builds the per-participant breakdown ParticipantStatBar renders: a pour
  * count per volume id, a pass count, and a total-mL estimate (count ×
@@ -12,7 +14,26 @@ function buildStats(participants, events) {
   const base = Object.fromEntries(
     participants.map((p) => [
       p.id,
-      { id: p.id, name: p.name, pass: 0, totalMl: 0, byVolume: { light: 0, standard: 0, heavy: 0 } },
+      {
+        id: p.id,
+        name: p.name,
+        pass: 0,
+        totalMl: 0,
+        byVolume: { light: 0, standard: 0, heavy: 0 },
+        // app/drink-session-log (fix: switching drinks lumped everyone's
+        // mL into one combined total, with no way to tell how much came
+        // from the drink before a switch vs. the one after): a running
+        // mL total *per drink name* rather than one combined number. The
+        // resulting order is newest-drink-first, not first-poured — the
+        // `events` list this iterates comes from getSessionEvents sorted
+        // newest-first, so a drink's *first* appearance while iterating
+        // is actually its *most recent* pour, and a plain object's
+        // insertion order (preserved for string keys, same guarantee a
+        // Map would give here) ends up newest-first as a result. Each
+        // pour's approxMl is added to its own drink's bucket, not to a
+        // single pot every pour shares.
+        drinkTotalsByName: {},
+      },
     ]),
   )
 
@@ -23,11 +44,41 @@ function buildStats(participants, events) {
       row.pass += 1
     } else if (event.type === 'POUR' && row.byVolume[event.volume] !== undefined) {
       row.byVolume[event.volume] += 1
-      row.totalMl += VOLUME_BY_ID[event.volume]?.approxMl ?? 0
+      const ml = VOLUME_BY_ID[event.volume]?.approxMl ?? 0
+      row.totalMl += ml
+      if (event.drink_name) {
+        // app/drink-session-log (pour-size per drink): each drink's
+        // bucket now also keeps its own Light/Standard/Heavy counts, not
+        // just a running mL total — "how much" and "how" both belong to
+        // the drink that produced them, same as the overall byVolume
+        // above already tracks for the whole participant.
+        const bucket =
+          row.drinkTotalsByName[event.drink_name] ??
+          (row.drinkTotalsByName[event.drink_name] = {
+            ml: 0,
+            byVolume: { light: 0, standard: 0, heavy: 0 },
+          })
+        bucket.ml += ml
+        bucket.byVolume[event.volume] += 1
+      }
     }
   }
 
-  return participants.map((p) => base[p.id])
+  // app/drink-outcome: drunk-vs-poured per person, from the same events.
+  const outcomes = summarizeOutcomes(events)
+
+  return participants.map((p) => {
+    const { drinkTotalsByName, ...rest } = base[p.id]
+    return {
+      ...rest,
+      outcome: outcomes[p.id] ?? null,
+      drinkTotals: Object.entries(drinkTotalsByName).map(([name, { ml, byVolume }]) => ({
+        name,
+        ml,
+        byVolume,
+      })),
+    }
+  })
 }
 
 /**
@@ -45,7 +96,7 @@ function buildStats(participants, events) {
  * viewport, burying "Activity log" further down with every person
  * added. A short roster just never shows a fade/scroll at all.
  */
-export function SessionLog({ events, participants, currentParticipantId, pausedIds, pauseReasons }) {
+export function SessionLog({ events, participants, currentParticipantId, pausedIds, pauseReasons, drinks = [] }) {
   const stats = useMemo(() => {
     // UX fix: this used to pull the current participant to the front while
     // leaving everyone else at their original absolute position (so turn
@@ -65,7 +116,9 @@ export function SessionLog({ events, participants, currentParticipantId, pausedI
     1,
     ...stats.map((s) => s.byVolume.light + s.byVolume.standard + s.byVolume.heavy + s.pass),
   )
-  const recent = events.slice(0, 12)
+  // Merge timeouts into their turn's row before capping, so the cap counts
+  // turns rather than spending a slot on a separate "ran out of time" row.
+  const recent = mergeTimeouts(events).slice(0, 12)
 
   return (
     <aside className="w-full rounded-2xl bg-smoke/60 p-4 ring-1 ring-smoke-light md:sticky md:top-10">
@@ -95,6 +148,39 @@ export function SessionLog({ events, participants, currentParticipantId, pausedI
           <div className="mt-3">
             <VolumeLegend />
           </div>
+
+          {/* app/drink-session-log: every drink this session has touched —
+              "Now serving", everything queued behind it, and anything
+              already switched away from — not just the picker-friendly
+              subset getSessionDrinkHistory exposes elsewhere. Hidden
+              entirely for a session that never used drink tracking, same
+              as HistoryDetail's past-session equivalent. */}
+          {drinks.length > 0 && (
+            <>
+              <h3 className="mt-5 font-display text-xs font-semibold text-paper-dim">
+                Drinks
+              </h3>
+              <ul className="mt-2 space-y-1.5">
+                {drinks.map((drink) => (
+                  <li key={drink.id} className="flex items-baseline justify-between gap-3 text-sm">
+                    <span className="truncate text-paper">
+                      {drink.name}
+                      {drink.volume_ml != null && (
+                        <span className="text-paper-dim"> · {formatVolumeMl(drink.volume_ml)}</span>
+                      )}
+                    </span>
+                    <span className="shrink-0 text-xs text-paper-dim">
+                      {drink.status === 'serving'
+                        ? 'Now serving'
+                        : drink.status === 'queued'
+                          ? 'Queued'
+                          : 'Served'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
 
           <h3 className="mt-5 font-display text-xs font-semibold text-paper-dim">
             Activity log

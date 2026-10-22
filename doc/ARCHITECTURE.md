@@ -71,6 +71,8 @@ sessions (
                               -- null falls back to showing started_at in the UI
   started_at timestamptz,
   ended_at timestamptz,
+  mode text,                 -- 'manual' (logged by hand) | 'hardware' (ran with
+                              -- the Lasenggo 3000 device); default 'manual'
   synced_at timestamptz      -- null until successfully pushed to Supabase
 )
 
@@ -107,11 +109,29 @@ events (
   id uuid primary key,
   session_id uuid references sessions(id),
   participant_id uuid references participants(id),
-  type text,                 -- 'POUR' | 'PASS' | 'PAUSE' | 'RESUME'
+  type text,                 -- 'POUR' | 'PASS' | 'PAUSE' | 'RESUME' | 'TIMEOUT'
+                               -- (TIMEOUT: turn timer ran out; note = '30s')
   volume text,                -- 'light' | 'standard' | 'heavy', POUR only, else null
   note text,                  -- pause reason (Drunk/Went home/Run away/Emergency/
                                -- Other), PAUSE only, else null
+  outcome text,               -- POUR only: 'finished' | 'partial' | 'tapon';
+                               -- null = never recorded (app/drink-outcome)
+  left_ml integer,            -- POUR only: estimated mL left in the cup
+                               -- (0 finished, whole pour for tapon)
   timestamp timestamptz
+)
+
+-- app/saved-drinks: remembered drinks for tap-to-fill (the drinks
+-- counterpart of `people`); one row per name + bottle size. Filled
+-- automatically whenever a drink is logged. Not referenced by `drinks`:
+-- editing a saved drink never changes past sessions.
+saved_drinks (
+  id uuid primary key,
+  device_id uuid,            -- RLS: device_id = auth.uid()
+  name text,
+  volume_ml integer,
+  created_at timestamptz,
+  last_used_at timestamptz   -- sort order: most recently used first
 )
 ```
 Local SQLite mirrors this exactly, plus a `synced boolean` flag per row used by the sync
@@ -157,6 +177,14 @@ Custom GATT service, advertised as `"Lasenggo3000"`.
 
 Any change to this command/status vocabulary must be reflected here and in firmware +
 app code in the same PR — this table is the contract between the two codebases.
+
+**Drink outcome (app/drink-outcome):** after `POURED`, the app holds the turn on the
+drinker until the pour's outcome is recorded. Today that's a manual tap (Finished /
+Left some / Tapon). With hardware, `HAS_DRINK` → cup lifted → cup returned at roughly
+its pre-pour weight can record `finished` automatically, and a heavier return weight
+can record `partial` with `left_ml` from the weight difference. The scale cannot tell
+drinking apart from pouring the drink out, so `finished` means "the cup came back
+empty", not proof it was drunk. No new COMMAND/STATUS values are needed for this.
 
 ## Feature-Based Architecture (app folder structure)
 Scaffolded and live as of `app/project-scaffold` (2026-10-05) — React + Tailwind v4 +

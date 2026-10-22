@@ -518,3 +518,1791 @@ is read far more often than it's changed, and it's relevant to everyone at the t
 not just whoever happens to open the participants sheet — so it's placed where
 everyone already looks (right under the session name), rather than one tap deeper
 inside a sheet about a different kind of thing (people, not drinks).
+
+---
+
+### Drink tracking gained auto-depletion after all — the earlier "manual log only" decision was reversed
+**Decision**: `ActiveSessionScreen`'s "Now serving" row now shows a live remaining
+volume ("Red Horse · 970mL left"), computed as the current drink's declared
+`volume_ml` minus every POUR event logged since that drink's `started_at` (mapped
+through `POUR_VOLUMES`' Light/Standard/Heavy mL presets). This directly reverses
+"Drink tracking is a manual log, not a depletion calculator" above.
+**Why**: The user asked for it explicitly in a follow-up ("is there possible that
+the drink content reduce when pour... based on how many ml has been pour"), after
+confirming they understood the trade-off. The original decision's concern — that
+Light/Standard/Heavy are rough presets, not a true flow measurement — still holds,
+so this is framed to the user as an estimate, not a precise reading, but a rough
+live number was judged more useful than none now that it's explicitly wanted.
+Nothing is written to the `drinks` table to support this — `remainingMl` is derived
+client-side on every render from the existing `events` list already being fetched
+for the session log, so there's no new migration and no risk of the derived number
+drifting from its inputs.
+
+---
+
+### Drink volume is a number + unit toggle (mL/L), not free text
+**Decision**: The drink volume field pairs a numeric input with an mL/L segmented
+toggle (`VolumeInput`, `volumeUnits.js`) rather than accepting arbitrary text like
+"1 jug". The unit conversion happens at input time; only a plain integer mL value
+is ever stored in `drinks.volume_ml` or compared against pour totals.
+**Why**: The user's original ask was two-part — allow non-numeric input *and* make
+pours deplete the volume. Those two are in tension: depletion math needs a real
+number to subtract from, and "1 jug" has no defined mL. Asked directly, the user
+picked "number required, with a unit toggle" over free text, which satisfies the
+spirit of "let me type more than a bare mL count" (you can now type "1" + "L" for a
+1L bottle) without breaking the arithmetic the same request also asked for.
+
+---
+
+### Remaining drink volume is allowed to go negative
+**Decision**: Once a drink's remaining volume reaches 0, further pours keep
+subtracting — the UI shows a deficit ("-45mL") rather than clamping the display
+at 0.
+**Why**: Asked directly; the user picked allowing negative over clamping. Light/
+Standard/Heavy are approximations (see above), so the pour that empties the bottle
+will almost never land exactly on 0 — clamping would quietly hide that the last
+pour(s) technically exceeded what was declared, where showing the overshoot is
+closer to what actually happened. At exactly/below 0 the row also switches to the
+ember accent color as a passive visual cue; nothing interrupts the session or
+forces a decision — the user separately chose "no popup" when asked, so it's the
+existing "Switch" button that remains how a drink change gets logged.
+
+---
+
+### "Up next" is a passive queue, never an automatic switch
+**Decision**: Staging a drink ahead of time ("Queue next drink") never changes
+what's being served by itself. "Now serving" keeps showing the current drink,
+with its remaining volume continuing to go negative past 0 if pours keep
+happening, until the user taps "Switch now" on the "Up next" row.
+**Why**: Asked directly, after confirming understanding of the request (a
+two-part ask: a visual depletion bar, and a way to pre-stage the next drink
+rather than typing it from scratch the moment the current one runs out). The
+user picked "prompt to confirm, one tap" over switching automatically —
+consistent with the earlier "no popup, passive" decision on auto-depletion
+itself: nothing about serving a different drink should happen without someone
+at the table actually doing it, even once the data says the bottle's empty.
+"Up next" is visible (and cancelable) the whole time a drink is queued, not
+just once the current one hits 0 — the only thing that changes at 0 is its
+styling (quiet smoke tone → maroon, with wording that makes the empty state
+explicit), which is purely a visual nudge toward the button that was already
+there.
+
+---
+
+### Queued drinks live in the same `drinks` table, as a `status` column
+**Decision**: A staged-but-not-yet-served drink is a row in the existing
+`drinks` table with `status = 'queued'`, rather than a separate table or
+purely client-side (React-state-only) concept. `getCurrentDrink` and
+`getSessionDrinks` both filter to `status = 'serving'`; `getQueuedDrink` filters
+to `'queued'`; `promoteQueuedDrink` just flips the status and resets
+`started_at` (so depletion math starts counting the newly-current drink's
+pours from the moment it actually took over, not from whenever it was staged).
+**Why**: A session can run for hours and the app can be backgrounded or
+reloaded mid-session (web especially); keeping the queue in memory only would
+silently lose it on a refresh — the same reasoning that already applies to
+everything else in this session. Reusing the one `drinks` table (new column,
+not a new table) keeps "what was served" and "what's coming up" as two states
+of the same kind of row, so the existing sync shape (syncJob.js/pull.js) only
+needed the one extra column added, not a second sync path.
+
+---
+
+### Switch drink is a modal dialog, always mounted and class-toggled for animation
+**Decision**: The "switch now" / "queue next" forms now live in a proper dialog
+(backdrop + panel, bottom sheet on phone width via `items-end`, centered on
+larger screens via `sm:items-center` — same responsive convention
+`ParticipantManagerSheet` already uses) instead of an inline-expanding
+section. The dialog element is always in the DOM; `switching` toggles CSS
+classes (opacity/transform) rather than mounting/unmounting it, with `inert`
+gating keyboard/screen-reader access while closed.
+**Why**: User-requested, specifically asking for a dialog, mobile
+responsiveness, and a smooth animation in and out. A conditionally-rendered
+element (`{switching && (...)}`, the previous approach) can't animate its own
+*exit* — React removes it from the DOM the instant the condition flips, before
+any CSS transition has a chance to run. Keeping it always mounted and driving
+visibility through classes is the same technique this screen's exit-confirm
+bar already uses, so this isn't a new pattern for the codebase. `inert` (one
+attribute on the outer container) was chosen over manually gating `tabIndex`
+on every field — the dialog has two multi-field forms including `VolumeInput`
+internals, and `inert` covers all of it, including focus, in one line.
+
+---
+
+### Switching back to a past drink resumes its exact remaining volume, via per-pour tagging
+**Decision**: Every POUR event is now tagged with exactly which drink was
+being served at that moment (`events.drink_id`), and remaining volume for
+*any* drink — current or past — is computed as "declared volume minus every
+pour tagged with its id". This replaced the earlier "every pour since this
+drink row's `started_at`" approach.
+**Why**: The earlier approach broke the moment a session needed to switch
+back to an earlier drink (requested by the user: "there's still alcohol on
+it, I want to switch back"). Pours made against a different drink while the
+original was inactive would still land after its `started_at` and get
+wrongly counted against it on return. Tagging each pour with the exact drink
+it was poured against sidesteps the problem entirely, however many times a
+session switches back and forth, and keeps the computation (not re-fetched
+per drink, derived client-side from the same `events` list already in state)
+consistent for the live "Now serving" number and every row in the new
+"switch back to a past drink" picker.
+
+---
+
+### Switching back to a past drink: pick from a list, auto-requeue only if the slot is free
+**Decision**: "Switch back" works for any drink this session has actually
+served, picked from a list — not just the single most-recently-switched-away-
+from one. Switching away from the current drink auto-requeues it as the new
+"Up next" only when that slot isn't already occupied by something else;
+otherwise it just becomes ordinary history (`status = 'served'`), still fully
+reachable from the same picker with its correct remaining volume.
+**Why**: Both decided with the user up front. The list (not just "the last
+one") matches how an actual tagayan session plays out — more than two drinks
+in rotation is normal. The "only if free" rule was added after live testing
+surfaced the alternative (always clearing the existing queued slot) silently
+deleting a drink the user had deliberately staged, the moment a third drink
+entered the rotation — there's still only one "Up next" slot by design, and
+a slot someone already claimed should never be bumped by an unrelated
+switch. "Served" isn't a dead end either way: the picker surfaces every
+`'serving'`/`'served'` row regardless, so a drink that lost the "Up next"
+spotlight is exactly as reachable as one that never had it.
+
+---
+
+### The "switch back" picker includes the currently-queued ("Up next") drink too
+**Decision**: The picker inside the Switch dialog now merges in whatever
+drink is currently staged as "Up next" (`queuedDrink`), not just the plain
+history rows `getSessionDrinkHistory` returns (`status IN ('serving',
+'served')` — a `'queued'` row was never included there to begin with).
+**Why**: User-reported: typing into "Different drink" while the current
+drink still had volume switched correctly and auto-staged the old drink as
+"Up next" — but that banner lives on the main screen, and the Switch dialog
+is a full-screen overlay that sits in front of it. Once the dialog was open
+there was no way back to that drink without closing the dialog first, even
+though the picker looked like it should be the complete answer to "switch
+back to anything." Folding the queued drink into the same list (tagged
+"· Up next" inline) makes the picker self-contained.
+
+---
+
+### Drink volume is required once a drink name is given
+**Decision**: Typing a drink name without a volume no longer lets you
+proceed — Start Session, the mid-session "different drink" switch, and
+"queue next drink" are all disabled with an inline message until a volume
+is filled in too (or the name is cleared). The Drink section as a whole is
+still fully optional — this only applies once a name has been typed.
+**Why**: User-reported: a name with no volume used to be accepted silently,
+and the session would start with nothing for the depletion bar/remaining-mL
+readout to measure against — read as a bug rather than the field being
+intentionally optional. Requiring volume the moment a name exists keeps the
+"skip drink tracking entirely" path available while closing the
+half-filled-in gap.
+
+---
+
+### "Up next" is a real multi-item queue, not a single contested slot
+**Decision**: `drinks.status = 'queued'` is no longer a single slot — any
+number of rows can hold that status at once. `getQueuedDrinks` returns all
+of them, oldest-staged first (`ORDER BY started_at ASC`); the UI renders
+each as its own row with independent Switch now / Edit / Delete controls,
+and only the oldest one gets the urgent "switch to?" styling once the
+current drink is empty. `updateQueuedDrink(drinkId, name, volumeMl)` lets a
+queued row's name/volume be corrected in place without cancelling and
+re-adding it. **This supersedes the earlier "auto-requeue only if the slot
+is free, else mark served" decision** — that logic existed only because a
+second queued drink had nowhere to go; with no slot to contend over,
+`demoteCurrentDrink` now unconditionally re-queues a drink that still has
+volume (or marks it `'served'` if it doesn't), full stop.
+**Why**: User-reported: with a drink already staged as "Up next," switching
+away from the current drink a second time didn't add to the queue — it
+silently replaced whatever was already staged, with no indication anything
+was lost. Given three options (keep one slot but warn before replacing;
+turn it into a real multi-item queue; leave as-is), the user chose the
+multi-item queue, plus asked that each item support edit and delete
+individually rather than only cancel.
+
+---
+
+### Queued-drink rows use icon buttons and a two-tap delete confirm
+**Decision**: The "Up next" list was rebuilt from centered flex-wrapped
+pills into left-aligned, full-width stacked cards. Switch now/Edit/Delete
+are icon buttons (new `EditIcon`/`TrashIcon`/`SwitchIcon`, matching the
+existing `BackIcon`/`HistoryIcon` stroke convention) instead of plain text
+buttons. Deleting a row is now a two-tap confirm — tapping the trash icon
+arms that row's "Delete?" state (Yes/No) in place; a second tap is needed
+to actually delete. Switch now, Edit, or arming a different row's confirm
+all disarm it, so at most one row is ever armed.
+**Why**: User-reported: the delete button had no confirmation at all (a
+single mistaken tap permanently removed a queued drink, with no undo —
+unlike Pour/Pass, which do have one), and the row styling itself hadn't
+held up once more than one item was queued — a centered pill of wrapped
+text and text-buttons read fine for a single row but became cramped and
+hard to scan once several were stacked. The confirm stays inline rather
+than a popup/dialog, consistent with the rest of this list.
+
+---
+
+### "Now serving" can be edited in place too, not just queued drinks
+**Decision**: The edit affordance added for "Up next" rows now also
+applies to the current drink — a small Edit icon next to "Now serving"
+opens the same inline name+volume form in place. The backing query,
+renamed from `updateQueuedDrink` to `updateDrink`, is scoped to
+`status IN ('queued', 'serving')` rather than `'queued'` only; a drink
+that's already been demoted to `'served'` stays fixed, since it's past
+history and may already have real pours tagged against its id.
+**Why**: User-reported: there was no way to fix a misspelled drink name or
+a mistyped mL on the drink actually being served — only queued ("Up next")
+drinks could be corrected. Switching away and back just to fix a typo
+would also wrongly re-queue/re-serve the drink and disturb its
+started_at, so this needed to be a true in-place edit, not a workaround
+through Switch.
+
+---
+
+### Only the first queued row says "Up next" — later rows show their position
+**Decision**: Every row in the queue list used to say "Up next" regardless
+of position. Only the oldest-staged row (`nextQueuedDrink`) says "Up next"
+now; rows behind it show `#2 in queue`, `#3 in queue`, and so on by index.
+**Why**: User-reported having two drinks waiting and both rows labeled
+"Up next" — which is genuinely ambiguous about which one actually comes
+next. The queue is already ordered oldest-first; the label just wasn't
+reflecting that order.
+
+---
+
+### A long queue collapses behind a "+N more queued" toggle
+**Decision**: Only the single most-urgent queued row (the oldest-staged
+one) renders by default now. Once a second drink is queued, a "+N more
+queued" pill appears below it; tapping it expands the rest in place
+("Hide" to collapse again). Given three options (cap the list at a fixed
+height and let it scroll; collapse to a count and expand on tap; move the
+whole queue into its own separate view), the user picked collapse-and-
+expand.
+**Why**: Raised proactively — with the queue no longer limited to one
+slot (see the multi-item-queue entry above), stacking every row inline
+without bound would grow the "Now serving" card unpredictably and push
+the rest of the screen down as more drinks get queued. The oldest row is
+the only one that's an immediate concern anyway; everything behind it is
+"later," so it doesn't need to occupy space until someone actually asks
+to see it.
+
+---
+
+### The expanded queue floats as a dropdown instead of pushing layout
+**Decision**: The "+N more queued" expanded list is now absolutely
+positioned (`absolute top-full z-20`, anchored to a `relative` wrapper
+around the toggle) instead of sitting inline in document flow, floating
+over whatever's below it rather than displacing it. Capped at `max-h-64`
+with scroll as a safety net for a long enough queue.
+**Why**: User-reported: opening the expanded queue pushed TurnRing (the
+turn-order circle, rendered further down the same column) down the page
+every time it opened. Floating the dropdown over the rest of the screen
+instead of inserting it into the flow keeps everything else's position
+fixed regardless of how many rows are expanded.
+
+---
+
+### The "Switch" button is now labeled "Switch / Queue"
+**Decision**: The trigger button next to "Now serving" and the dialog it
+opens were both just "Switch", even though the dialog has always had two
+separate sections — switch immediately, or queue a drink for later. Both
+now read "Switch / Queue".
+**Why**: User-reported the "Switch" label was misleading given the
+dialog's queuing feature. Asked which exact wording to use; the user
+said to just pick one rather than choose between options, so this went
+with the most literal, unambiguous label rather than a shorter one that
+would still require the dialog's subtext to disambiguate.
+
+---
+
+### The live session log shows which drink each participant poured, and every drink the session has touched
+**Decision**: Two additions to the live "Session log" panel:
+1. Each participant's stat row now lists the actual drink name(s) they've
+   poured from this session (deduped, first-poured order), not just their
+   Light/Standard/Heavy pour-size breakdown. Backed by widening
+   `getSessionEvents` to `LEFT JOIN drinks` and selecting `d.name AS
+   drink_name`, then collecting a per-participant `Set` of names from POUR
+   events in `SessionLog.jsx`'s `buildStats`.
+2. A new "Drinks" section lists every drink the session has touched —
+   "Now serving", everything still queued, and anything already switched
+   away from — not just the subset `getSessionDrinkHistory` exposes for
+   the switch-back picker. Built client-side by merging `drinkHistory`
+   and `queuedDrinks` (already both in state) rather than a new query.
+   Each drink's volume is shown via a new `formatVolumeMl` helper, which
+   switches to L at >= 1000mL (`1500` -> `"1.5L"`) instead of always
+   showing a raw mL number.
+**Why**: User-reported the app never logged which alcohol each person was
+actually drinking, and the session log didn't account for alcohol that
+was current or queued — only completed history. Both gaps come from the
+same root cause: the data already existed (drink_id on every pour; status
+on every drink row) but was never surfaced in the live session's own log.
+
+---
+
+### A participant's mL is split per drink, not lumped into one combined number
+**Decision**: `SessionLog.jsx`'s `buildStats` now keeps a running mL total
+*per drink name* per participant (`drinkTotalsByName`), not a single
+combined total. `ParticipantStatBar` renders each drink the person poured
+with its own `~mL`/`L` line; the single combined `~totalMl` line (now via
+`formatVolumeMl`) stays below it as the grand total across every drink.
+**Why**: User-reported: pouring everyone the current drink, then
+switching to a different one, showed each participant's updated mL as one
+combined number — no way to tell how much came from the drink before the
+switch vs. the one after. This was the previous entry's `drinkNames` list
+(names only, no amounts) not actually solving the problem it was meant
+to — separating *how much*, not just listing *which*.
+
+---
+
+### Each participant's per-drink line also shows its own pour-size counts
+**Decision**: Each drink in a participant's breakdown now shows its own
+Light/Standard/Heavy dot-counts (same colored-dot convention the overall
+per-participant bar already uses), not just its mL total. A drink's
+`drinkTotalsByName` bucket keeps a `byVolume` count alongside its `ml`
+running total, built the exact same way the participant-wide `byVolume`
+already was.
+**Why**: Asked directly whether this was worth adding, now that mL is
+already split per drink — agreed it is: pour-size composition is
+genuinely different information from the amount itself (a mL total alone
+doesn't say whether it came from a few Heavy pours or many Light ones),
+and once a participant has had more than one drink, that composition is
+exactly the kind of thing that stops being obvious from the aggregate
+bar above. Folded into the same per-drink line rather than a second
+stacked bar, to avoid piling on more UI chrome per drink.
+
+---
+
+### A participant's drink list collapses behind a "+N more drinks" toggle too
+**Decision**: Only the most recently poured drink shows by default in a
+participant's breakdown now. Once they've had a second drink, a
+"+N more drinks" toggle appears below it (local to that participant's
+row); tapping it expands the rest, most-recent-of-the-earlier-ones first
+("Hide" to collapse again). Given the same three options as the earlier
+queue-list decision (cap-and-scroll; collapse-to-count; show only the
+top 2 by volume), the user again picked collapse-to-count, for
+consistency with the queue.
+**Why**: Raised proactively — with mL and pour-size now broken out per
+drink (two prior entries), a participant who'd had several different
+drinks would stack an increasingly tall block in an already-compact,
+height-capped panel. The same fix already proven for the queue list
+applied directly here.
+
+---
+
+### Fix: the default-shown drink was the first one poured, not the current one
+**Decision**: `ParticipantStatBar`'s default-shown drink (before the
+previous entry's "+N more drinks" toggle is expanded) is now
+`stat.drinkTotals[0]`, not `stat.drinkTotals[stat.drinkTotals.length - 1]`.
+**Why**: User-reported the collapsed view showed the drink they'd poured
+*first* all session, not whichever they were *currently* on. Root cause:
+`getSessionEvents` orders events newest-first (`ORDER BY timestamp DESC`),
+so when `buildStats` iterates that list, a drink's name is inserted into
+`drinkTotalsByName` on its *most recent* pour, not its earliest — a plain
+object's insertion order therefore comes out newest-drink-first, not
+first-poured as the comments (now corrected) had assumed. Taking the
+*last* array entry as "the current drink" was picking the oldest one
+instead.
+
+---
+
+### The Activity log now names which drink was poured
+**Decision**: `ActivityFeed.jsx`'s POUR line gained `· <drink name>` when
+`event.drink_name` is present, appended after the pour-size label (e.g.
+"Juan poured (Standard) · Tanduay"). Omitted entirely for a session that
+never used drink tracking (`drink_name` is null), so no row grows a
+stray " · " for nothing.
+**Why**: User-reported the Activity log "didn't even log it properly" —
+every other part of the session log (per-participant breakdown, the
+Drinks section) now names drinks and splits mL/pour-counts per drink, but
+the raw chronological Activity feed, shared between the live session and
+HistoryDetail's past-session view, still only ever said "poured
+(Standard)" with no way to tell which drink that pour came from.
+
+---
+
+### Fix: a re-queued drink silently vanished from Session History
+**Decision**: `getSessionDrinks` no longer filters by status at all —
+every drink row the session ever created is included in a past session's
+"Drinks" log now, regardless of what status it ended in. `HistoryDetail`
+labels each one by what actually happened to it (`drinkStatusLabel`):
+"Serving when ended", "Served", "Served, then re-queued" (status
+`'queued'` with real POUR events against it), or "Queued, never served"
+(status `'queued'`, no pours at all) — and shows each drink's remaining
+volume (`remainingForDrink`, the same declared-minus-poured formula the
+live session uses, computed from the already-loaded past-session
+`events`) alongside its declared volume, both through `formatVolumeMl`.
+**Why**: User-reported Session History "didn't record all the drinks
+from current to queue... it just records the last alcohol drink." Root
+cause: `getSessionDrinks` filtered to `status IN ('serving', 'served')`
+on the old assumption that `'queued'` only ever meant "staged, never
+touched." That assumption broke once `demoteCurrentDrink` started
+re-queuing (not serving) a drink switched away from while it still had
+volume left (app/drink-switchback) — a drink genuinely poured from
+earlier in the session could land back in `'queued'` and then silently
+disappear from history the moment the session ended before it was
+promoted again.
+
+---
+
+### History's Drinks section becomes a small-multiples bar chart
+**Decision**: Each drink with a declared volume now gets a thin
+horizontal bar — poured mL filled left-to-right against the declared
+volume as the baseline — stacked oldest-first (small multiples, one bar
+per drink, read top-to-bottom as reading forward through the session).
+Reuses the live session's own depletion-bar convention exactly (same
+track/fill markup, same ember = "has volume left" / maroon = "empty"
+coloring from ActiveSessionScreen) rather than inventing a new visual
+language for history. Every figure (poured, declared, remaining) stays
+as a direct text label alongside the bar — color is never the only way
+to read the amount. A drink with no declared volume has no baseline to
+bar against, so it falls back to the plain status line with no
+poured/declared figure.
+**Why**: User-reported the Drinks section's UI/UX "doesn't look good"
+and asked for a graph, since it's a history view. A small-multiples bar
+chart is the right form here — magnitude comparison (poured vs.
+declared) across a set of categorical rows (drinks), not a trend over
+time or a single headline number — and reusing the live view's existing
+color/track convention keeps history visually consistent with the live
+session instead of introducing a second, unrelated chart language.
+
+---
+
+### Fix: History's drink bar should drain (remaining), not fill (poured)
+**Decision**: The just-added History bar now fills with *remaining*
+volume and drains as more gets poured — `widthPct = remaining / declared`
+— instead of filling up with the poured amount. Matches the live
+session's own "Now serving" depletion bar exactly (`barWidthPct =
+remainingMl / declared` in ActiveSessionScreen).
+**Why**: Asked directly which direction was more user-friendly. The
+first version filled up with poured amount, which was consistent with
+nothing — not the live bar, which already drains. A draining gauge is
+also the more familiar convention on its own (fuel/battery indicators
+drain, not fill, as they're used up), and "how much is left" is closer
+to the question a drink log actually answers than "how much is done".
+Matching the live bar's direction means a drink's bar behaves the same
+way whether the session is happening now or being looked back on,
+instead of requiring a different mental model for each.
+
+---
+
+### The Back button on Session History pages is sticky now
+**Decision**: `HistoryList` and `HistoryDetail` both pull their Back
+button into its own `sticky top-0 z-10` bar, bled to the page's real
+edges (`-mx-6 -mt-6`, re-padded) and painted with a solid `bg-ink` so
+scrolling content doesn't show through underneath it. The big title
+stays in normal flow below it (not also sticky) — a compact pinned
+button reads as the familiar mobile pattern, and keeping the title
+scrolling avoids permanently reserving extra vertical space just to
+keep one button in view.
+**Why**: User-reported that on a long session list (or a session with a
+lot of Drinks/Activity-log entries), scrolling made the Back button
+disappear along with the rest of the header — both screens are a single
+unbounded scrolling page with no separate scroll container, so there
+was previously nothing keeping the button in view.
+
+---
+
+### Optional, mid-session-settable turn timer with a buzzer
+**Decision**: A new per-turn countdown, off by default, toggled on and
+set via a small control right next to TurnRing (not at Start Session —
+the user explicitly wanted it settable mid-session too). Presets only
+(10s/15s/30s/60s/Off), no free-form input. On expiry: a synthesized
+two-beep buzzer (Web Audio, no audio asset) plus the control itself
+flashing maroon with "Time's up!" — nothing is forced; Pass and Pour
+both keep working exactly as before and after expiry. The preset picker
+is an absolute-positioned dropdown (same floating-over-rather-than-
+pushing-layout pattern as the queue's own "+N more queued" dropdown),
+so opening it never nudges TurnRing. Given explicit options via
+AskUserQuestion, the user chose buzzer+flash-only over auto-Pass,
+presets over free input, and a new control near the turn ring over
+folding it into the participant manager sheet.
+**Why**: User-asked-for, framed as wanting the session to "look more
+intense," not as a real house rule to enforce — so this follows the
+same soft-signal, never-force philosophy already established for the
+pass-limit house rule (see useTurnManager's doc comment) rather than
+auto-advancing the turn.
+
+## mL/L display: manual toggle instead of per-value auto-switching
+`formatVolumeMl` used to decide mL vs L for itself per value (>= 1000mL became L),
+so a list of several drinks could show some rows in mL and others in L with no way
+for the person to pick one and have it stick. User feedback: "I think it would be
+best if you turn the mL and L into a toggle for better UX."
+
+Replaced the auto-switching with an explicit `unit` param (`formatVolumeMl(ml, unit)`)
+and a small shared toggle (`VolumeUnitToggle`, mL/L pill) backed by a tiny
+localStorage-persisted store (`useVolumeDisplayUnit` in volumeUnits.js) — not React
+context, since the point is one switch every volume display reads from, without
+threading a prop through App.jsx and multiple layers of children. Flipping it in one
+place (live SessionLog's Drinks header, or History's Drinks header) updates every
+other mounted screen immediately, and the choice survives a reload via localStorage.
+
+"L" mode always converts, even for small values (e.g. 150mL -> "0.15L"), rather than
+only kicking in above 1000 — the point of switching to L view is consistency across
+the whole list, not just hiding big numbers. Wired into the three places a drink's
+volume appears: live SessionLog's Drinks list, ParticipantStatBar's per-drink/total
+mL, and HistoryDetail's Drinks bar chart labels.
+
+Verified: rolldound syntax check on all 5 touched files, full `vite build` (8.06s),
+grepped the built bundle for the new localStorage key, "Volume unit" aria-label, and
+aria-pressed attribute to confirm it shipped, and hand-traced `formatVolumeMl` in an
+isolated node script for both units across small/large/round values.
+
+## mL/L toggle: fix narrow-viewport overflow
+User report: "when I'm using the phone view the toggle overflow it's not
+responsive." The "Drinks" heading + VolumeUnitToggle row used `flex
+items-center justify-between`, no wrap — on a narrow phone width, with
+this row nested inside several layers of horizontal padding (the screen's
+own padding plus the Drinks section's own p-4), the combined width of the
+heading text and the non-shrinking toggle pill could exceed the available
+width, and a non-wrapping flex row doesn't shrink text below its content
+size by default, so it overflowed the container instead of adapting.
+
+Fix: added `flex-wrap` (plus `gap-x-3 gap-y-1.5` replacing the single
+`gap-3`) to both header rows (SessionLog's live Drinks header,
+HistoryDetail's past-session Drinks header) — on a width too narrow for
+both items on one line, the toggle now drops to its own line below the
+heading instead of forcing horizontal overflow/scroll.
+
+Verified: rolldown syntax check on both touched files, full `vite build`,
+grepped the built CSS for the `flex-wrap` utility to confirm it shipped.
+Actual phone-width rendering still not independently confirmed (no live
+browser this session) — worth a quick look on the user's device.
+
+## Fix: Start Session "Drink" row overflow on phone width (mL/L input toggle)
+User's screenshot showed this is a different control than the display
+toggle fixed above — it's the pre-existing mL/L *input*-unit picker
+(`VolumeInput`) next to the drink name field on Start Session, clipped
+off the right edge of the phone screen. Root cause: the row (`drink name`
+flex-1 input + `VolumeInput`'s fixed-width number field and toggle) used
+a plain `flex gap-2` with no wrap — on a narrow phone the combined
+minimum width exceeded the available space and nothing in the row was
+allowed to drop to a second line, so it just overflowed past the screen
+edge.
+
+Fix: `flex gap-2` -> `flex flex-wrap gap-2`, name input given
+`min-w-[140px]` (a sane floor instead of shrinking arbitrarily small),
+`VolumeInput` given `shrink-0` so it moves to its own line as one unit
+rather than squeezing. Applied to the same spot on Start Session
+(ParticipantList.jsx) and, as a consistency/safety pass, the two
+matching but not-yet-reported rows in ActiveSessionScreen's switch/queue
+dialogs (switch-drink-volume + Log button, queue-drink-volume + Queue
+button) — same `flex gap-2`-without-wrap pattern, same risk on a narrow
+phone, fixed the same way before they got reported too.
+
+Verified: rolldown syntax check on both touched files, full `vite build`.
+Still unconfirmed on an actual phone — the original report came from the
+user's own screenshot, so a follow-up screenshot/confirmation is the real
+verification here.
+
+## Remove the mL/L toggle button from the live session; keep History's
+User: "I want you to remove the toggle at the mid-session that's not what
+I mean." The mL/L display toggle added earlier had been placed in two
+spots — live SessionLog's Drinks header and HistoryDetail's Drinks
+header — but the user only wanted one. Removed the visible
+`VolumeUnitToggle` button from the live/mid-session Drinks panel;
+HistoryDetail keeps its toggle.
+
+The live panel still renders every volume in whatever unit the toggle in
+History is currently set to (it still reads `useVolumeDisplayUnit`'s
+shared value) — it just no longer offers its own control to change it
+mid-session. Switching it from History affects both screens, same as
+before.
+
+Verified: rolldown syntax check, full `vite build`.
+
+## Fix: turn timer buzzed immediately on first enable
+User report: "I noticed the bug on the timer when I turn it on for the
+first time of the session it ring right away."
+
+Root cause: `useTurnTimer`'s ticking effect decided "expired" with
+`secondsLeft <= 0`. The moment the timer is turned on (durationSeconds:
+null -> e.g. 30), React re-renders with the new durationSeconds but
+`secondsLeft` still holds its previous value — `null`, since the timer
+had been off. The ticking effect reruns on that same render (durationSeconds
+is one of its deps) *before* the separate reset effect has applied the
+real starting value, so it evaluated `null <= 0`, which JS coerces to
+`0 <= 0` — true — and called `setExpired(true)` (-> buzzer) before any
+actual counting happened. Same race applies turning the timer off and
+back on mid-session, not just the very first time, since turning it off
+resets secondsLeft back to null too.
+
+Fix: added `|| secondsLeft == null` to the ticking effect's early-return
+guard, so a not-yet-initialized countdown is treated as "not ready" rather
+than "expired". The reset effect's own update then makes the ticking
+effect rerun with the real value.
+
+Verified: hand-traced the exact transition (secondsLeft=null,
+durationSeconds=30) in an isolated node script confirming the old code
+produced EXPIRE and the fixed code produces "skip (not ready)", plus the
+normal cases (mid-countdown, real zero, fully off) still behave
+correctly. rolldown syntax check + full vite build.
+
+## Mid-session "Start tracking a drink" (gap found via user testing)
+User: "when I'm at the Mid-session and I forgot to enter a drink at the
+start what should I do?" Until now there was genuinely no way — every
+drink-tracking UI ("Now serving", Switch/Queue, the Drinks log) is gated
+behind `currentDrink`, which only ever gets set from Start Session's
+optional Drink field. Skipping it meant no way back in short of ending
+the session and starting a new one (losing turn history).
+
+Added a small form, shown only when `currentDrink` is still null (i.e.
+exactly the gap case), in the same spot the "Now serving" panel would
+otherwise occupy: a drink name + VolumeInput (mL/L), same "name without
+a volume stays blank" validation every other optional drink field in
+this app already uses. Submits through a new `handleStartDrinkSubmit`,
+which calls the existing `addDrink(sessionId, name, volumeMl)` — already
+defaults to status `'serving'` and already no-ops its
+`demoteCurrentDrink` call when there's nothing to demote — so the new
+drink becomes "Now serving" immediately, and the rest of the app (Drinks
+log, per-participant breakdown, History) picks it up with zero other
+changes, since none of that code cared *how* a drink became current,
+only that it did.
+
+Verified: rolldown syntax check, full `vite build`, grepped the built
+bundle for the new form's copy to confirm it shipped. Read
+`demoteCurrentDrink`'s source directly to confirm its `if (!current)
+return` guard makes it a safe no-op in this exact case (no current drink
+yet) rather than assuming.
+
+## Fix: pours made before "Start tracking a drink" didn't count against it
+User: "...when I enter the drink the bar is still complete eventhough I
+already pour the drink and the portion of the alcohol has already
+reduced." A real follow-on from the gap fixed above: a POUR logged while
+`currentDrink` was still null gets `drink_id = NULL` (see `logEvent`'s
+`drinkId` param / `currentDrinkIdRef.current` in ActiveSessionScreen).
+`remainingForDrink`'s formula is "declared volume minus every POUR
+tagged with this drink's id", so once a drink was declared after the
+fact, those earlier untagged pours had nothing to attach to and the new
+drink's bar/remaining showed completely full, ignoring real pours that
+had already happened.
+
+Those pre-existing untagged pours *were* this drink — there was only one
+thing being poured all along, the person just hadn't told the app its
+name/volume yet — so this is backfilling when something was logged, not
+rewriting what happened. Added `backfillUntaggedPours(sessionId, drinkId)`
+in sessionQueries.js: `UPDATE events SET drink_id = ? WHERE session_id = ?
+AND type = 'POUR' AND drink_id IS NULL`. Wired into
+`handleStartDrinkSubmit` right after `addDrink` resolves (using the new
+drink's id), followed by `refreshEvents()` so the client-side `events`
+state ActiveSessionScreen's own `remainingForDrink` reads picks up the
+retagged rows immediately.
+
+Scoped to `session_id` + still-NULL `drink_id` only, so it can never
+touch a pour that was already correctly tagged against an earlier
+(switched-away-from) drink — only genuinely orphaned pours from before
+any drink existed get claimed.
+
+Verified: rolldound syntax check on both touched files, full `vite
+build`, grepped the built bundle for the backfill SQL fragment to
+confirm it shipped, and hand-traced the exact before/after scenario in
+an isolated node script (remaining stuck at full pre-backfill, correctly
+dropped to declared-minus-poured after).
+
+## Revert: mL/L manual toggle removed entirely
+User: "let's move to the Session History I noticed the toggle is still
+there I want you to remove it." After already pulling it from the live
+session on the prior request, this removes the last remaining instance
+(History's Drinks header) too — meaning no control is left anywhere, so
+rather than leave a dead `useVolumeDisplayUnit`/localStorage store with
+nothing to drive it, this reverts the feature entirely back to its
+original pre-toggle behavior.
+
+`formatVolumeMl` is back to its original single-argument, auto-switching
+form (>= 1000mL displays as L, otherwise mL — no `unit` param). Deleted
+`VolumeUnitToggle.jsx` and the `useVolumeDisplayUnit`/localStorage store
+from `volumeUnits.js` entirely (dead code with its toggle button gone
+from every screen). Reverted the three call sites back to their
+pre-toggle form: HistoryDetail.jsx, SessionLog.jsx, ParticipantStatBar.jsx.
+
+Verified: rolldown syntax check on all 4 touched/removed files, full
+`vite build`, grepped the built bundle to confirm no trace of the old
+toggle (localStorage key, "Volume unit" aria-label) remains.
+
+## History list: icon tile for unnamed sessions
+User: "...I noticed a lot session history is listed and all I saw is a
+text of the date and the time and the participants but ... it doesn't
+look good on UI & UX I think it would be cleaner to use an icon when the
+session has no name right?"
+
+Most sessions skip naming, so a long history list was mostly rows of
+near-identical date/time text with nothing to anchor the eye per row — a
+named session doesn't have this problem since the name itself is what
+catches the eye scanning down the list. Added a small round icon tile
+(reusing `HistoryIcon`, already this app's "a past session" glyph — the
+empty state and the History nav button both use it) as a leading element,
+shown only on rows where `s.name` is falsy, so named sessions are
+untouched.
+
+Verified: rolldown syntax check, full `vite build`.
+
+## History list: separate date/time icons, smaller "modern" row
+User follow-up: "I think it would be best if there is a date and a time
+icon on it and reduce the font size make it modern."
+
+Split the single combined `formatDate` into `formatDateOnly`/
+`formatTimeOnly` and built a small `SessionDateTime` component: a
+CalendarIcon next to the date, HistoryIcon's existing clock face next to
+the time (reused rather than drawing a near-duplicate clock glyph), both
+at `text-[11px]` — smaller than the old plain date string. Always
+rendered now (previously only shown as a subline for named sessions,
+folded into the primary text for unnamed ones) — a name, when present,
+stays the bold primary line; the date/time row sits underneath it either
+way, so both named and unnamed rows now share the same compact
+icon+text treatment instead of one looking "modern" and the other
+looking like plain text.
+
+Added `CalendarIcon.jsx` (new), reused the existing `HistoryIcon` for
+the time half rather than adding a redundant clock glyph.
+
+Verified: rolldown syntax check on both touched/new files, full `vite
+build`, grepped the built CSS for the new `11px` font-size utility to
+confirm it shipped.
+
+## History list: drop the per-row icon badge, icon instead of "participants"
+User follow-up: "remove the big time icon at the right side and put a
+icon to the participants remove the 'participants' and put an icon on
+it." (Confirmed via a quick clarifying question which icon was meant:
+the round clock-icon badge added for unnamed sessions, not the small
+clock inside the date/time line.)
+
+Two changes to the History row:
+- Removed the `h-9 w-9` round HistoryIcon badge that showed on unnamed
+  sessions — the per-row date/time line (added last change) already
+  carries its own small clock icon, so the bigger badge was now
+  redundant on top of it.
+- Replaced the "`N` participant(s)" text label with a `PeopleIcon` +
+  bare count (reused the existing PeopleIcon already used elsewhere in
+  this app, e.g. the People nav button) — matches the icon-led style the
+  date/time row already established, and takes less width.
+
+Verified: rolldown syntax check, full `vite build`.
+
+## History list: bump the date/time text back up
+User: "Now I think the font is too small." The prior pass went to
+`text-[11px]`, which read as too small in practice. Bumped the
+date/time line to `text-xs` (12px, Tailwind's smallest named step
+rather than another arbitrary value) and its two icons from `h-3 w-3` to
+`h-3.5 w-3.5` to match — keeps the icon-to-text proportion from the
+previous pass instead of getting text-heavy relative to tiny icons.
+
+Verified: rolldown syntax check, full `vite build`.
+
+## History list: date/time text bumped to text-sm; confirmed name already shows
+User: "make it big and also if the session has a name put a name on it."
+Bumped the date/time line again, this time to `text-sm` (14px, same size
+already used for the participant count and the Back button) with its
+icons up to `h-4 w-4` (the app's default icon size everywhere else) —
+now matches the rest of this row's secondary text/icons instead of
+introducing its own smaller scale.
+
+The "put a name on it" half was already true going into this change — a
+named session's `s.name` has always been queried (`getSessionHistory`'s
+SQL selects `s.name`) and rendered as the bold primary line above the
+date/time subline since the first icon-tile pass. No code change needed
+there; left as-is after re-checking both the query and the render path.
+
+Verified: rolldound syntax check, full `vite build`. Confirmed via code
+read (not assumption) that getSessionHistory already selects `s.name`
+and HistoryList already conditionally renders it.
+
+## History list: icon next to the session name
+User: "at the name of the session put an icon also do you think it would
+look modern?" Added a new `TagIcon` (price-tag/label glyph) in front of
+a named session's title — matches the icon-led pattern the rest of the
+row already has (CalendarIcon+date, HistoryIcon+time, PeopleIcon+count),
+so every piece of info in a History row now has its own icon instead of
+the name being the one plain-text holdout.
+
+Verified: rolldown syntax check on both touched/new files, full `vite
+build`.
+
+## History list: swap the name icon (price-tag -> bookmark)
+User: "change the icon of the name session it doesn't feel right." The
+price-tag-shaped `TagIcon` likely read as commerce-coded for what's just
+"this session has a title". Replaced with a `BookmarkIcon` (ribbon
+shape) — the more familiar "this one's been named/marked" symbol —
+deleted `TagIcon.jsx` since it had no other callers.
+
+Verified: rolldown syntax check on all touched/new/removed files, full
+`vite build`, grepped for stray `TagIcon` references (only the removal
+note in BookmarkIcon's own comment, no code references left).
+
+## History list: swap the name icon again (bookmark -> sparkle)
+User: "change the icon again" (no specific reason given this time).
+Swapped `BookmarkIcon` for a new `SparkleIcon` (four-point star) — a
+flourish next to a title rather than a functional "filed/marked" symbol,
+closer to what a session's own chosen name actually is. Deleted
+`BookmarkIcon.jsx` since it had no other callers.
+
+If this one still isn't right, worth asking what specifically feels off
+(too playful, too small, wrong metaphor entirely) rather than swapping
+blind a third time.
+
+Verified: rolldound syntax check on all touched/new/removed files, full
+`vite build`, grepped for stray `BookmarkIcon` references (only the
+removal note in SparkleIcon's own comment).
+
+## History list: swap the name icon again (sparkle -> party popper)
+Third icon swap on this spot. This time asked instead of guessing blind
+again: first what was wrong (answer: "wrong meaning/metaphor"), then
+what concept it should actually be (answer: "a celebration/party vibe",
+matching how sessions actually get named in practice). Replaced
+`SparkleIcon` with a new `PartyIcon` (party popper/confetti). Deleted
+`SparkleIcon.jsx` since it had no other callers.
+
+Verified: rolldound syntax check on all touched/new/removed files, full
+`vite build`, grepped for stray `SparkleIcon` references (only the
+removal note in PartyIcon's own comment).
+
+## History list: party icon sizing (concept was already right)
+User: "change again" — asked what specifically was wrong this time
+rather than swapping the icon blind again. Answer: not the concept, not
+rendering — just "too small / hard to see". Bumped `PartyIcon` from
+`h-4 w-4` to `h-5 w-5`, keeping CalendarIcon/HistoryIcon/PeopleIcon at
+their existing sizes since those weren't flagged.
+
+Verified: rolldown syntax check, full `vite build`.
+
+## History list: name icon goes mood-neutral (party popper -> quote mark)
+User: "sometimes the session is not a party it's just a chill drinking
+session." The party-popper concept picked two turns ago assumed every
+named session is a celebration — a fair miss, since a session can be
+named anything ("Jojo's Birthday", but just as easily "Friday chill",
+"Office night out", etc). Swapped `PartyIcon` for a new `QuoteIcon`
+(small quotation marks) — mood-neutral, reads as "this is a title
+someone gave it" without implying what kind of occasion it was. Deleted
+`PartyIcon.jsx` since it had no other callers.
+
+This closes the loop on four icon swaps at this one spot (TagIcon ->
+BookmarkIcon -> SparkleIcon -> PartyIcon -> QuoteIcon) — each time asking
+what was actually wrong once "just change it" stopped being specific
+enough to act on confidently.
+
+Verified: rolldound syntax check on all touched/new/removed files, full
+`vite build`, grepped for stray `PartyIcon` references (only the removal
+note in QuoteIcon's own comment).
+
+## History list: name icon, 5th swap (quote mark -> hashtag)
+User: "It doesn't fill [feel] like it thought." Asked what to do next
+rather than guess again; answer: "I think a tag would do but not the
+common tag" — a tag concept, but explicitly not the first attempt's
+price-tag/ticket shape. Swapped `QuoteIcon` for a new `HashtagIcon` (#)
+— the other common meaning of "tag" in modern UI (social-media labels),
+without the price-tag's commerce read. Deleted `QuoteIcon.jsx`.
+
+## History detail header: icon-led, matching the list
+User: "now let's move to the preview of the history put an icon on it" —
+the HistoryDetail screen (what you land on tapping a session in the
+list) still had a plain-text header (title, date subline, participant
+subline) while the list it's reached from now has calendar/clock/
+people/hashtag icons for the same three pieces of info. Brought the
+detail header up to the same treatment: HashtagIcon before a session
+name, CalendarIcon before the date subline, PeopleIcon before the
+participant count (also dropped the "participant(s)" word here too, same
+as the list's own change, for consistency between the two screens).
+
+Verified: rolldown syntax check, full `vite build`.
+
+## History detail: fixed the gap where an unnamed session's title had no icon
+User: "I noticed you only put an icon to those session that has name
+what if that session has no name?" Correct catch — the h1's icon was
+gated on `detail.session.name` existing, but when there's no name the
+h1 falls back to showing the date itself, and that fallback got no icon
+at all. Now picks HashtagIcon when a name is actually shown, CalendarIcon
+when the date fallback is what's shown instead — the icon always matches
+what the h1 is actually displaying.
+
+Verified: rolldound syntax check, full `vite build`.
+
+## History detail: separate time icon alongside the date icon
+User: "you didn't put the time icon on it." `formatDate` bundled date+time
+into one string, so only one icon (CalendarIcon) could reasonably go in
+front of it — the time half had nothing of its own, unlike HistoryList's
+rows, which already split date and time with separate icons.
+
+Split `formatDate` into `formatDateOnly`/`formatTimeOnly` (same as
+HistoryList) and built a local `HistoryDateTime` component pairing each
+with its own icon (CalendarIcon / HistoryIcon's clock face). Used for:
+the named-session subline (now both date and time get icons, not just
+date), and the unnamed-session h1 itself, which now *is* the icon-led
+date/time line (at title size) instead of one calendar icon in front of
+a combined string.
+
+Verified: rolldown syntax check, full `vite build`. Confirmed `formatDate`
+(the combined version) is still used elsewhere in this file (the
+per-drink Drinks list rows) so it was kept, not removed.
+
+## New: swipe-to-delete on History list rows
+User request: swipe a session row to reveal a delete button (not an
+instant delete on swipe), tapping that button opens a confirm dialog,
+and the swipe itself should animate smoothly.
+
+**Storage**: added `deleteSession(sessionId)` in sessionQueries.js. No
+`ON DELETE CASCADE` exists on these tables (db.js's schema uses plain
+`REFERENCES`, foreign_keys pragma never enabled), so it deletes in
+dependency order by hand: `events` and `drinks` (both reference
+`session_id` directly), then `participants`, then `sessions` itself
+last.
+
+**Gesture**: `SwipeableSessionRow` in HistoryList.jsx — raw pointer
+events (pointerdown/move/up/cancel), no gesture library (none installed,
+and this gesture is simple enough not to need one). The first ~6px of
+movement locks an axis: horizontal keeps tracking the drag and clamps it
+between 0 and `-SWIPE_REVEAL_PX` (76px, the delete button's width);
+vertical abandons the gesture immediately so a normal vertical scroll
+through the list is never fought over mid-scroll. Only one row's delete
+button can be open at a time (`openSwipeId` lives in the parent list,
+not per-row) — opening a new one via drag or confirming/cancelling a
+delete closes whichever was open. Releasing a drag snaps to fully open
+or fully closed based on whether it crossed the halfway point
+(-38px) — verified the snap math and clamping in an isolated node
+script before wiring it up. The row's `transform` has no CSS transition
+while actively dragging (1:1 finger tracking) and a 240ms
+`cubic-bezier(0.22, 1, 0.36, 1)` ease-out transition for the snap once
+released — the "smooth animation" the request asked for. A `moved` flag
+suppresses the row's own tap-to-open handler right after a drag release,
+so releasing a swipe never also opens HistoryDetail.
+
+**Confirm dialog**: swiping only *reveals* delete, never performs it —
+tapping the revealed trash icon opens a modal ("Delete this session?
+Permanently deletes <name/date> and everything in it — participants,
+pours, drinks. This can't be undone.") with Cancel/Delete. Only
+`handleConfirmDelete` actually calls `deleteSession`.
+
+**State after delete**: added `removeSession(id)` to useSessionHistory.js
+— a local optimistic filter, deliberately separate from `refresh()`,
+since `refresh()` flips `loading` back to true for its local-read phase
+and would flash the skeleton list back in right after a delete, undoing
+the point of a smooth swipe-to-delete interaction.
+
+Verified: rolldown syntax check on all 3 touched/new files, full `vite
+build`, grepped the built bundle for the dialog copy, the swipe hint
+text, and the exact easing curve string to confirm they shipped, and
+hand-traced the drag/snap/clamp math (open/close thresholds, clamping
+past the max reveal) in an isolated node script before trusting it.
+Actual on-device touch feel (gesture responsiveness, whether `touch-action:
+pan-y` fully prevents scroll-fighting on a real phone) is not something I
+can verify from here — worth trying on your device before relying on it.
+
+## History detail: delete button in the overview, matching the list
+User: "inside the overview of that history session put a delete feature
+also" — the swipe-to-delete added to HistoryList only covers the list;
+a single session's own detail/overview screen had no way to delete it
+without going back to the list first. Added a plain "Delete" button
+(TrashIcon + label) to the sticky header bar, next to Back — no swipe
+gesture here since this screen shows one session, not a list of rows to
+swipe through.
+
+Same confirm-dialog copy and shape as HistoryList's own (deliberately
+duplicated inline rather than extracted into a shared component yet —
+both are small and this keeps each screen self-contained for now).
+Confirming calls the same `deleteSession(sessionId)` and then `onBack()`
+— navigates back to the list rather than trying to render a detail view
+for a session that no longer exists; the list remounts and re-fetches on
+that navigation, so it reflects the deletion immediately with no extra
+wiring needed.
+
+Verified: rolldound syntax check, full `vite build`, grepped the built
+bundle for the dialog copy to confirm it shipped (now appears twice —
+once for each screen's own copy of the dialog).
+
+## Resume a past session from History
+User: "What if I want to continue on that session what should I do?" —
+there was no way to pick a past session back up; ending a session was
+final. Added a "Resume session" button to HistoryDetail's overview,
+right below the header, shown whenever that screen is reachable with an
+`onResume` handler.
+
+What it does: `getSessionForResume(sessionId)` loads the session row
+plus its participants (id, name, person_id) straight from the DB.
+`resumeSession(sessionId)` then sets `ended_at = NULL` on that session,
+un-ending it. App.jsx's `handleResumeSession` wires the two together:
+loads the session's exact participant rows via the new
+`loadParticipants()` passthrough in `useParticipants` (a raw
+`setParticipants`, deliberately bypassing `addParticipant`/etc. so the
+original DB ids and person_id links are preserved rather than
+re-created), restores the session's name, points `sessionId` back at the
+resumed session, and switches to the session screen — same session,
+same participants, continuing where it left off.
+
+Decided without a time limit on which sessions can be resumed (any past
+session, however old, can be resumed) — the user confirmed building the
+feature but didn't weigh in on a cutoff, and a hard age limit felt like
+an arbitrary restriction to bake in without being asked for it. Easy to
+add later if it turns out stale sessions showing a Resume button is
+confusing in practice.
+
+Known limitation: pass limit can never be restored on resume, because it
+has never been persisted anywhere — `sessions` has no `pass_limit`
+column, it only ever lived in App.jsx's in-memory state. A resumed
+session always comes back with no pass limit set (`passLimit: null`),
+even if the original session had one. Fixing that would need a schema
+migration to add the column; flagging it here rather than quietly
+pretending it's handled.
+
+New file: `src/shared/components/PlayIcon.jsx` — solid play-triangle
+glyph, same stroke/fill convention as the rest of the icon family.
+
+Verified: rolldown syntax check on all 6 touched/new files
+(`sessionQueries.js`, `useParticipants.js`, `App.jsx`,
+`HistoryScreen.jsx`, `HistoryDetail.jsx`, `PlayIcon.jsx`), full `vite
+build`, grepped the built bundle for the "Resume session" button copy to
+confirm it shipped. Not verified: actual on-device feel of resuming
+mid-pour, and whether users find a Resume option on very old sessions
+useful or confusing — worth watching for real usage before deciding on a
+time cutoff.
+
+## People: confirm before removing, and fixed deleted people coming back
+User: "I noticed when I tried to delete some participants when I click
+the 'x' button there's no warning on it and also I noticed people that I
+delete coming back why is that?" — two separate bugs on the roster
+screen.
+
+**No confirm dialog.** The ✕ button called `deletePerson` straight away,
+no second step — unlike every other destructive action in the app
+(session delete on both History screens), which only *arms* on the
+first tap and needs a confirm dialog to actually act. Brought People in
+line: ✕ now opens the same warning-dialog shape asking "Remove this
+person?", and only confirming there calls `deletePerson`.
+
+**Deleted people coming back.** Root cause: `deletePerson` only ever
+removed the local SQLite row. The Supabase `people` row (if that person
+had synced before, e.g. created on a previous install or pushed earlier
+in the session) was untouched. `pullPeople` (pull.js), which runs on
+every `pullSessions()` call, re-inserts any remote row whose id isn't
+already present locally — so the very next pull saw that same remote
+row as "missing" and brought the deleted person right back. This can
+fire surprisingly often since `pullSessions` runs wherever History is
+opened, not just on first launch.
+
+Fixed with a tombstone: a new local-only `deleted_people(id,
+deleted_at)` table (added to db.js's SCHEMA — no migration needed, it's
+a brand-new table so `CREATE TABLE IF NOT EXISTS` covers every install).
+`deletePerson` now writes a tombstone row for the id *before* anything
+async, so the delete sticks even fully offline. `pullPeople` excludes
+any tombstoned id from what counts as "missing", so it's never
+reinserted again, regardless of whether the remote row still exists.
+`deletePerson` also makes a best-effort attempt to delete the row from
+Supabase directly (wrapped in try/catch, failure swallowed) — this
+isn't what makes the fix work on this device, it's just housekeeping so
+a reinstall or another device doesn't see a "deleted" person reappear
+either; the tombstone alone is what guarantees this device never
+resurrects it.
+
+Deliberately did not add a queued/retry mechanism for the remote delete
+(no `people_deletes_pending` push table, say) — a failed one-shot remote
+delete just means a stale row lingers in Supabase for a person this
+device has already fully forgotten locally; harmless, and adding a
+proper delete-sync queue felt like solving a problem nobody's hit yet.
+Worth revisiting if multi-device roster sync becomes a real workflow.
+
+Verified: rolldown syntax check on all 4 touched files (`db.js`,
+`peopleQueries.js`, `pull.js`, `PeopleScreen.jsx`), full `vite build`,
+grepped the built bundle for the new dialog copy and the
+`deleted_people` table name to confirm both shipped. Not verified: the
+Supabase-delete-fails-silently path (never actually simulated a network
+drop mid-delete), and whether the tombstone table should ever be pruned
+(right now it only grows — fine at roster scale, but flagging it).
+
+## App display name: "Lasenggo" (dropped "3000")
+User: "I think it would be best if you turn..." → eventually "I think
+let's name the app Lasenggo" — after discussing why "Lasenggo 3000"
+didn't feel right as the *app's* name specifically.
+
+**Scope of this change**: "Lasenggo 3000" stays the project/product name
+for the overall system (hardware + app together) — it's still the title
+in CONTEXT.md, PRD.md, CLAUDE.md, the repo name, and (per CONTEXT.md's
+own terminology table) the BLE advertised device name stays
+`Lasenggo3000` with no space, since that's the physical device
+identifying itself, not the app. Only the *app's own* display identity —
+what someone sees as the app name, the page title, and the in-app
+header on the Participants screen — changes to just "Lasenggo." The
+mock sci-fi "3000" numbering reads fine for a gadget on the table; on a
+phone home screen or app-switcher, it was long and a little silly in a
+way that didn't match the rest of the UI's tone.
+
+Changed in four places: `capacitor.config.ts`'s `appName` (what Android
+shows as the installed app's name), `index.html`'s `<title>` (browser
+tab / PWA title), `android/app/src/main/res/values/strings.xml`'s
+`app_name` and `title_activity_main` (Android's own app label and
+activity title — these are source files, separate from the generated
+`android/app/src/main/assets/...` build output which regenerates on the
+next native build, not touched directly), and the big `<h1>` header at
+the top of `ParticipantList.jsx` (the first thing anyone sees on
+opening the app).
+
+Verified: rolldown syntax check on `ParticipantList.jsx`, full `vite
+build`, grepped the built bundle and confirmed zero remaining instances
+of "Lasenggo 3000" and exactly the expected "Lasenggo" in the title/
+header. Not verified: the native Android app icon label (strings.xml
+drives it, but actually seeing it update requires a real Android build,
+not just the web `vite build` done here).
+
+## App icon: shot glass in a ring, ink background
+User opened the icon topic ("Now let's move to the Icon for this app we
+didn't talk about it yet") — the launcher icon, favicon, and adaptive-icon
+layers were all still Capacitor/Android Studio's untouched defaults (a
+generic teal-grid background, the stock Android robot-face foreground, a
+purple Vite-blob favicon) — never customized since the project scaffold.
+
+**Concept, chosen through a few rounds of visual iteration** (mocked up
+live in an artifact rather than generating final assets blind, since a
+wrong guess means redoing every density): a small shot glass at the
+center of a ring of six dots. This is CONTEXT.md's own description of
+tagayan drawn directly — "one shared glass passed around a circle" — and
+reads clearly even shrunk to a 40px home-screen icon. Earlier passes
+tried a fancier glass (open rim ellipse, waisted/flared base, wall
+highlight, bubbles) but the user correctly called it out as reading like
+"a common cup" rather than a shot glass; a reference image they shared
+settled it — a plain rounded taper (wider top, narrower base) with a
+thin "cut line" near the bottom marking the foot is instantly
+recognizable as a shot glass, and fancier detail was actively hurting
+recognizability, not helping it. Final pass also removed the liquid
+fill per request — the icon shows an empty glass, not a filled one.
+
+**Background**: ink (`#191310`) with the ember (`#e98a2e`) glass+ring,
+not the reverse (ember background, ink subject). Matches the app's own
+"Night Market Circuit" dark theme exactly — opening the app feels like
+continuing the icon rather than switching color worlds — and a thin
+ember line on dark reads as a small glowing accent rather than a flat
+block of solid orange across the whole icon.
+
+**What changed, concretely**:
+- `public/favicon.svg` — full icon (rounded-square ink background +
+  ember glass/ring) replacing the default Vite purple-blob SVG.
+- `android/app/src/main/res/values/ic_launcher_background.xml` — adaptive
+  icon's background color changed from the Android Studio default
+  `#FFFFFF` to `#191310`.
+- `android/app/src/main/res/mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/` —
+  `ic_launcher.png` and `ic_launcher_round.png` (legacy pre-API26
+  fallback: full ink-background square/round icon, at 48/72/96/144/192px)
+  and `ic_launcher_foreground.png` (the adaptive icon's foreground layer:
+  transparent background, just the ember glass+ring, at the matching
+  108/162/216/324/432px scale — foreground art lives on a 108dp canvas
+  per Android's adaptive-icon spec, 2.25x the legacy 48dp icon) — all
+  regenerated from a master SVG via `sharp` (no `@capacitor/assets` or
+  similar tool installed in this project; rasterized directly).
+- Removed `android/app/src/main/res/drawable/ic_launcher_background.xml`
+  and `drawable-v24/ic_launcher_foreground.xml` — confirmed unused dead
+  weight first (grepped the manifest and both `mipmap-anydpi-v26/*.xml`
+  files; the real adaptive-icon definition references `@color/
+  ic_launcher_background` and `@mipmap/ic_launcher_foreground`, never
+  these `@drawable/` vector versions — they were Android Studio template
+  leftovers from project creation, never wired to anything).
+
+Verified: full `vite build` succeeds, checked every generated PNG's
+actual pixel dimensions match its density bucket exactly, confirmed
+`favicon.svg` is still well-formed XML with its viewBox intact. Not
+verified: how the adaptive icon actually looks on a real Android
+launcher (circle/squircle/teardrop mask vary by OEM launcher) — only
+checked the legacy square/round PNGs and the foreground layer in
+isolation, not the composited adaptive-icon result on an actual device.
+
+## Splash screen: same icon, centered on ink
+User: "alright let's move to the splash" — right after the launcher
+icon, the splash screen (`android/app/src/main/res/drawable*/splash.png`,
+wired up via `styles.xml`'s `AppTheme.NoActionBarLaunch` ->
+`android:background="@drawable/splash"`) was still the default white
+placeholder from the Capacitor/Android Studio scaffold, never touched.
+
+No `@capacitor/splash-screen` plugin is installed in this project — the
+native splash shown while the APK's process starts comes straight from
+these drawable resources and the theme that points at them, independent
+of any JS-side splash-screen plugin (that plugin only controls when the
+splash gets dismissed from JS, which this app doesn't use).
+
+Reused the exact same shot-glass+ring artwork from the launcher icon
+(`icon-foreground.svg`) rather than inventing separate splash art, and
+centered it at ~42% of the screen's shorter edge on a solid ink
+(`#191310`) background — same reasoning as the icon's background choice:
+one consistent visual identity from the moment the APK launches through
+to the app's own UI, instead of a different "splash brand" the user sees
+for half a second and then never again.
+
+Regenerated all 11 files Android expects here (1 default + 5 portrait
+densities + 5 landscape densities — unlike the launcher icon, Android's
+legacy splash mechanism keys off screen density *and* orientation, not
+just density) via the same `sharp` compositing approach as the icon: a
+solid-color background canvas per exact target resolution, with the
+icon artwork rasterized and centered on top.
+
+Verified: checked every regenerated PNG's exact pixel dimensions against
+what was already there (so the replacement matches what each density/
+orientation bucket expects) and sampled background pixels at multiple
+corners per file to confirm a uniform `#191310` fill with no stray
+edge/border artifacts from the compositing step. Not rebuilt via `vite
+build` for this one — these are native Android drawable resources the
+web build doesn't touch, so a web build can't exercise or break them;
+verification here was PNG-level instead. Not verified: how it actually
+looks full-screen on a real device for the instant between process
+start and the web view mounting — only checked in isolation.
+
+## Animated splash: ring of dots lighting up in turn order
+User: "let's create a splash screen...with an animation" — the static
+splash from the previous task is a single baked-in image and can't be
+animated at the native level in any meaningful way. Built the real
+two-layer version instead: the native `splash.png` (already in place)
+shows for the instant before React has loaded, then hands off to a real
+animated screen built inside the app, which fades into the actual UI
+once the app is ready.
+
+**Concept, previewed live before touching app code** (same reasoning as
+the icon: a wrong guess here means redoing a wired-up React component
+and CSS, not just a mockup): the six ring dots fire in sequence around
+the circle — "turn order coming alive," since turn order is the app's
+actual core mechanic. Iterated twice on the preview: the glass originally
+in the center read as too small (the SVG's viewBox was still the full
+108-unit icon canvas while only drawing the small glass sub-region,
+leaving mostly empty space — not actually a sizing problem, a cropping
+one), then by request the glass was dropped entirely and the dots sized
+up (22px -> 34px, ring radius widened to match) to be the whole show.
+
+**What got built**:
+- Installed `@capacitor/splash-screen` (not previously a dependency —
+  the static splash task didn't need it, since a native drawable shows
+  itself with no plugin involved; *controlling when it goes away* does
+  need it). `capacitor.config.ts` sets `launchAutoHide: false` so
+  Capacitor's own default 3s auto-hide timer can't race the handoff —
+  the app explicitly calls `SplashScreen.hide()` the instant the React
+  splash mounts, so there's exactly one transition (native -> AppSplash),
+  never a native-auto-hides-first gap of blank white underneath.
+  `backgroundColor: '#191310'` matches `splash.png`'s own fill, in case
+  the native layer needs to redraw its background before hide() takes
+  effect.
+- New `src/shared/components/AppSplash.jsx`: six dots positioned via
+  `--dx`/`--dy` custom properties (one shared `@keyframes splash-dot` in
+  `index.css` rather than six near-duplicate keyframes), pulsing
+  opacity/scale in a staggered loop. Takes a `fading` prop for its own
+  300ms opacity transition; owns no timing decisions itself.
+- `App.jsx` owns the actual show/hide logic: splash stays up until
+  `initDatabase()` settles (ready *or* error — a failed db isn't
+  recoverable by waiting longer, so error doesn't block the splash any
+  more than ready does) AND a 1600ms minimum has elapsed, whichever is
+  later. The minimum exists because local SQLite init is usually fast —
+  without it, the ring animation would frequently get cut off
+  mid-sequence before even reaching the later dots, which would read as
+  broken rather than intentional. Deliberately does NOT wait on
+  `ensureAnonymousSession()` — auth is non-blocking everywhere else in
+  this app (its own comment says failing it never blocks the session
+  flow), so gating the splash on it would contradict that.
+- Respects the app's existing global `prefers-reduced-motion` rule in
+  `index.css` (all `animation-duration` forced to `0.01ms`,
+  `iteration-count` to `1`) automatically, since `splash-dot` is just
+  another `@keyframes` under that same blanket rule — no special-casing
+  needed.
+
+Verified: rolldown syntax check on `App.jsx`, `AppSplash.jsx`, and
+`capacitor.config.ts`; full `vite build`; grepped the built bundle for
+the wordmark text, the `splash-dot` keyframe name in the compiled CSS,
+and confirmed `SplashScreen` is present in the bundled JS; ran `npx cap
+sync android`, which picked up the new plugin (`@capacitor/
+splash-screen@8.0.2` now listed alongside the existing sqlite plugin).
+Not verified: how the actual handoff feels on a real device — timing
+that looks right by reading the code (dots finish their last pulse
+around ~1.9s in, minimum is 1600ms, fade is 300ms) can still feel off
+in practice; worth watching an actual cold launch once there's a build
+to install.
+
+## Splash v2: one-shot reveal with a pour, instead of a looping ring
+User, after the first animated splash shipped: it "feels like a loading
+screen not a splash." Correct diagnosis: the dots pulsed on an infinite
+loop for as long as the app was initializing, which is exactly what a
+spinner does. A splash should resolve into a finished brand mark and
+then sit still.
+
+Reworked (previewed in an artifact first, then approved) into a single
+~2.55s sequence that plays once with `forwards` fill and then holds:
+the six ring dots pop in clockwise with a small overshoot, a faint
+circle traces in behind them, a shot glass appears at the center, a
+stream pours in (stroke-dashoffset draw), the liquid fills to about
+two-thirds (scaleY from the bottom, clipped to the glass interior), the
+stream's tail drops in, and the wordmark arrives last. The user asked
+for the cup and pour specifically; the glass is sized to read clearly
+(76x95px) after an earlier preview's glass came out too small.
+
+All timing moved into `.splash-*` classes in `index.css` (replacing the
+old `splash-dot` loop keyframe); `AppSplash.jsx` is now just markup.
+`MIN_SPLASH_MS` in `App.jsx` went from 1600 to 2600 so a fast SQLite
+init can't fade the splash out mid-pour. Added a splash-specific
+reduced-motion rule that zeroes `animation-delay` too: the global rule
+only shortens durations, which would have left the pieces popping in
+one by one over two seconds.
+
+Note for future edits: copying `AppSplash.jsx` to the device through
+the file-commit bridge silently wrote a stale cached copy of the old
+file (reported success, wrong contents). Caught by grepping the built
+bundle for the new class names; rewrote the file directly on the device.
+
+Verified: rolldown syntax check, full `vite build`, grepped the bundle
+for every new `splash-*` class and the compiled CSS for the new
+keyframes, `npx cap sync android`. Not verified on a real device.
+
+## App icon v2: fits the adaptive-icon safe zone, matches the splash
+User: "let's improve the icon of the app." Found a real defect while
+reviewing the v1 icon: Android only guarantees the inner 66 of the 108dp
+adaptive-icon canvas will be visible (a 33dp radius from center), and
+circle-masking launchers crop right around there. v1's dots reached 36dp
+from center, so their outer edges got shaved on circle launchers.
+
+Compared three options in an artifact, each shown under a circle mask, a
+rounded-square mask, and at home-screen size, next to v1 with the safe
+zone drawn on it. User picked option A: the splash's final frame as a
+still. A faint linking circle (opacity 0.3) joins the six dots, and a
+larger shot glass (the splash's own glass path, scaled 0.42) sits at the
+center, poured about two-thirds full. Ring radius 26dp, dot radius 4.5dp,
+so the outermost art sits at 30.5dp, inside the 33dp safe radius.
+
+Note this brings the liquid back after v1 deliberately removed it ("just
+only a glass"); the user chose the filled version knowingly from the
+side-by-side, where option B was the empty-glass equivalent.
+
+Assets regenerated with sharp from one shared SVG:
+- `mipmap-*/ic_launcher_foreground.png`: full 108dp canvas, transparent.
+- `mipmap-*/ic_launcher.png` and `ic_launcher_round.png` (pre-Android 8):
+  now rendered from the inner 72dp visible region, on a rounded-square
+  and a circle respectively. v1 rendered the full 108 canvas edge to
+  edge, which made the art smaller than on adaptive launchers, and used
+  the same square image for the round variant.
+- `public/favicon.svg`: same 72dp crop on a rounded square.
+- `drawable*/splash.png` (all 11): new art, cropped to its own bounds,
+  centered at 42% of the short edge on ink.
+
+Verification note: files copied to the device through the file-commit
+bridge come back with different byte checksums (the bridge adds content
+metadata), so compared decoded pixel data instead. All 26 PNGs matched
+pixel for pixel. Also `vite build` and `npx cap sync android`.
+
+Known, not addressed here: on Android 12+, the system splash shows the
+adaptive launcher icon by itself, then the web splash starts its reveal
+from an empty screen, so the mark briefly disappears before animating
+back in. Fixing that means either starting the web animation from the
+same frame the system shows or styling the Android 12 splash
+(windowSplashScreenAnimatedIcon); needs testing on a real device.
+
+## Drink outcome: record whether a pour was actually drunk
+User: "we have a gap at the Pour feature ... it only records the pour of
+the content but we can't verify if that participant really drink it."
+Correct: a POUR row proves the drink went into the cup, nothing more.
+
+**Decision**: after every pour, the turn stays on that person until the
+pour's outcome is recorded, and only then moves to the next person. The
+Pour/Pass buttons are replaced by three choices: **Finished** (big
+default, the common case), **Left some** (then "A little" / "About half"
+/ "Most of it", stored as 25/50/75% of the pour's approximate mL), and
+**Tapon** (thrown out). Stored on the POUR row itself as `events.outcome`
+('finished' | 'partial' | 'tapon') and `events.left_ml`; drunk mL is
+derived (pour approxMl minus left_ml), never stored.
+
+**Why a gate rather than an optional tag**: in tagayan the next pour
+waits for the glass to come back anyway, so holding the turn matches the
+real ritual, and an optional tag would mostly go unrecorded. Cost is one
+extra tap per pour; "Finished" is made the largest button so the common
+case stays one obvious tap.
+
+**What this can't do**: no app or sensor can tell a drink that was
+swallowed from one dumped out of sight. "Finished" means the cup came back
+empty. The group watching is still the real check. Said so in the code
+and in ARCHITECTURE.md rather than overselling it.
+
+**Hardware path**: the planned load cell already reports HAS_DRINK/EMPTY.
+Once BLE exists, the cup returning at its pre-pour weight can set
+`finished` automatically (and a heavier return, `partial` with a measured
+`left_ml`), replacing the tap with no schema change. Noted in
+ARCHITECTURE.md next to the STATUS table.
+
+**Details worth knowing**:
+- Pending state (`pendingPour`) is in-memory. If the session ends or the
+  app closes mid-drink, that pour keeps a NULL outcome. NULL is shown as
+  "not confirmed", never guessed as drunk or not drunk. Sessions from
+  before this feature have only NULL outcomes, and the new "Drank ~X of
+  ~Y" stat line stays hidden for them, so old history looks unchanged.
+- `useTurnManager.onPourConfirmed` now takes `{ advance }`; the session
+  screen passes `false` and calls the newly exposed `advanceTurn()` after
+  the outcome. The undo snapshot is still taken at pour time, so "Undo
+  pour" works both while waiting (cancels the wait) and after (deletes the
+  POUR row, outcome included).
+- If the drinker is paused while the outcome is pending, the turn already
+  moved on, so recording the outcome does not advance again (it would
+  skip the next person).
+- `setPourOutcome` resets `synced = 0`; the POUR row is often already in
+  Supabase by then, and `syncEvents` upserts by id, so the second push
+  updates it. RLS on `events` is a single ALL policy, so updates are
+  allowed. Pull also carries the two new columns.
+- Drink depletion ("X mL left" in the bottle) is unchanged: liquid left
+  the bottle whether or not it was drunk.
+- Shared logic lives in `src/features/pour/drinkOutcome.js`
+  (`summarizeOutcomes`, `leftMlFor`, `describeOutcome`), used by both the
+  live SessionLog and HistoryDetail so they can't disagree.
+
+**Supabase**: applied migration `add_event_drink_outcome` to the
+lasenggo-3000 project (two nullable columns plus CHECK constraints:
+outcome in the three values, left_ml >= 0). Verified via
+information_schema afterwards.
+
+Verified: rolldown syntax checks on all 12 touched/new files; 12-case
+node test of `summarizeOutcomes`/`leftMlFor`/`describeOutcome` (mixed
+outcomes, unconfirmed pours, tapon, rounding, left_ml clamped to pour
+size), all passing; full `vite build`; grepped the bundle for the new
+UI strings and `left_ml`; `npx cap sync android`. Not verified: the flow
+on a real device, and a live sync round-trip of an outcome update.
+
+### Follow-up: dropped "Left some"
+User: "we don't need the 'Left some' since we can see it on the glass
+because the glass will glow if there's still a portion on it." Right per
+PRD.md: the LED ring stays lit while the cup holds liquid (HAS_DRINK) and
+goes dark when it's empty, so an unfinished cup is visible to the whole
+circle and the drinker just keeps going until it's empty. A manual
+"how much is left" step added a tap for a case the table can already see.
+
+The outcome panel is now two buttons: Finished (wider, the common case)
+and Tapon. The 'partial' value and `left_ml` stay in the schema and in
+`summarizeOutcomes`/`describeOutcome`: the load cell can still measure a
+cup that comes back heavier than it left, which is real data the app
+would want once BLE exists. Only the manual button and its 25/50/75%
+picker were removed. Until hardware exists there's no glow, so in the
+meantime a pour is simply marked Finished or Tapon.
+
+Verified: syntax check, node test of the outcome math (still passing,
+including phrasing a measured partial), `vite build` with the picker's
+text confirmed gone from the bundle, `npx cap sync android`.
+
+### Follow-up: confirm before Tapon
+User asked for a warning dialog on the outcome step and chose Tapon only
+(over Finished, or both). Tapon sits right next to Finished and marks the
+drink as thrown out in that person's stats and History, so a stray tap is
+costly; Finished is the common case and stays one tap.
+
+Tapping Tapon now opens a confirm dialog ("Mark this drink as tapon?",
+naming the person, the pour size and the drink) with Cancel and a maroon
+Tapon button. Same dialog shape as History's delete confirm (backdrop tap
+cancels). It only renders while a pour is pending, so Undo, which clears
+the pending pour, also closes it. Verified with a syntax check, `vite
+build` (dialog text present in the bundle), and `npx cap sync android`.
+
+### Follow-up: tapon shown in the graph and as an activity tag
+User: tapon "doesn't look good" as text in the Session log, wanted it in
+the graph instead, and "tapon didn't even log at 'Activity log'".
+
+The Activity log bug: the outcome *was* saved and fetched, but it was
+appended to the end of the pour's text ("poured (Standard) · Gin ·
+tapon"), and that span truncates in the narrow session panel, so the
+word was cut off. Fixed by showing tapon as its own small "TAPON" tag
+outside the truncating text (plus a red dot instead of ember for that
+row). `describeOutcome` no longer phrases tapon at all.
+
+Graph: `ParticipantStatBar` now carves tapon pours out of their
+Light/Standard/Heavy segment into a Tapon segment (`TAPON_COLOR`,
+`bg-maroon-dim`), with a matching count chip, and the shared legend gained
+a Tapon entry. Every pour still counts toward the bar's length; only the
+color changes. `summarizeOutcomes` tracks `taponByVolume` to make that
+split. The "Drank ~X of ~Y" text line keeps only drunk/poured and "not
+confirmed"; the "tapon N×" and "left some N×" text was removed.
+
+Verified: syntax checks, node test of the per-size tapon split and the
+resulting bar segments, `vite build`, `npx cap sync android`.
+
+### Follow-up: every pour and pass gets an activity tag
+User liked the TAPON tag and asked for the same on every row instead of
+the "finished" text: "specify how many drink they drank is it Heavy,
+Standard, Light, Tapon, and Pass."
+
+`ActivityFeed` now gives each POUR and PASS row exactly one tag, outside
+the truncating text: LIGHT / STANDARD / HEAVY (the pour size, in the
+stat bar's colors: pour-light, ember, pour-heavy), TAPON (maroon, replaces
+the size tag when thrown out), or PASS (neutral). The row dot uses the
+same color as its tag. The text is now just "poured · <drink>" or
+"passed"; the "(Standard)" and "· finished" wording was removed since the
+tag carries both. `describeOutcome` only phrases a measured partial now
+(load cell, later). A pour still waiting on its outcome, or from before
+outcomes existed, shows its size tag. PAUSE/RESUME rows have no tag.
+
+Verified: syntax checks, `vite build` with all eight new tag color
+classes confirmed in the compiled CSS, `npx cap sync android`.
+
+### Follow-up: activity rows wrap instead of truncating
+User: on a phone the Activity log "didn't display the whole text", with no
+way to read the rest. Each row used `truncate` (one line, ellipsis), and
+at phone width the side-by-side tag and time left too little room, so most
+pour rows ended in "…" partway through the drink name.
+
+Rows now wrap (`break-words`, top-aligned) instead of truncating, and the
+tag and time stack vertically on the right so the text keeps most of the
+row's width. Applies to the live session and History (shared
+`ActivityFeed`). Checked by rendering both layouts at 360px wide with the
+app's compiled CSS (Playwright screenshot): before, four of five sample
+rows were cut off; after, all text is visible and wraps to two lines where
+needed.
+
+## Turn timer: clock ticking, and timeouts logged to the Activity log
+User: when the mid-session timer is on, "sound like the time is clocking",
+and when time's up, "log it on 'Activity log' to the current turn".
+
+**Ticking**: `playTick` in `src/shared/playBuzzer.js` plays one short
+synthesized click per second (Web Audio, no audio file, offline-safe like
+the buzzer). It alternates a higher tick and a lower tock so it reads as
+a clock, and gets higher and louder for the last 5 seconds to build
+tension; it's quieter than the buzzer so the buzzer still stands out. It
+skips 0, where the buzzer plays as before. `primeAudio()` is called from
+the timer duration buttons: Android's WebView keeps audio suspended until
+a user gesture, and the ticks fire from a timer rather than a tap, so the
+tap that turns the timer on is used to unlock sound.
+
+**Timeout log**: when the timer runs out, a new `TIMEOUT` event is logged
+for whoever's turn it is (note = the duration, e.g. "30s"). It shows in
+the Activity log as "<name> ran out of time (30s)" with a red TIME'S UP
+tag. It doesn't change the turn and isn't undoable: the timer stays a
+soft signal, same as before. It logs once per expiry because
+`useTurnTimer` only flips `expired` once per turn; current person and
+duration are read through refs so the effect depends only on the expiry.
+Stats, outcome math and History counts only look at POUR/PASS, so
+TIMEOUT rows don't affect them. If the timer runs out while someone is
+still drinking (outcome pending), it's logged against them, which is
+what "taking too long" means there.
+
+**Supabase**: the `events.type` CHECK only allowed POUR/PASS/PAUSE/
+RESUME, and sync pushes events in one batch, so one TIMEOUT row would
+have failed the whole push. Applied migration `allow_timeout_event_type`
+widening the CHECK to include TIMEOUT (verified the new definition
+afterwards). Local SQLite has no CHECK on type. ARCHITECTURE.md updated.
+
+Verified: syntax checks, `vite build` (strings present in bundle),
+`npx cap sync android`. Not verified: how the ticks sound on a real
+phone speaker and whether Android's WebView honors the gesture unlock;
+both need a device.
+
+### Follow-up: timeouts merged into their turn's row
+User asked to show "ran out of time" on the same Activity log line as the
+pour or pass instead of as its own row. Agreed: the timeout is part of
+that turn, and two rows read as two separate events.
+
+Display only: TIMEOUT stays its own row in the database (honest record,
+syncs as before). `mergeTimeouts` (exported from `ActivityFeed.jsx`)
+folds each TIMEOUT into one POUR/PASS row, looking only at POUR/PASS
+neighbours (pause/resume rows are skipped over):
+- the action just before it, if that's the same person's POUR (time ran
+  out while they were still drinking);
+- otherwise the action just after it, if that's by the same person (time
+  ran out before they poured or passed).
+Otherwise it stays a standalone "ran out of time" row: the person hasn't
+acted yet (live session), or they were paused / the session ended first.
+The merged row keeps its action tag and adds a red "· ran out of time
+(30s)" to its text, which now wraps on phones. SessionLog merges before
+taking its 12 most recent rows, so a timeout doesn't use up a slot.
+
+Verified: node tests of the merge rules (before acting, while drinking,
+not yet acted, paused, pause/resume rows in between, a different
+person's action, idempotence, empty list), all passing after correcting
+one wrong expectation in the test itself; `vite build`; `npx cap sync
+android`.
+
+### Fix: turn timer stops once Pour is pressed
+User spotted that the timer kept going after Pour. Caused by the
+drink-outcome change: `useTurnTimer` resets when the turn index changes,
+and Pour no longer advances the turn until Finished/Tapon, so the timer
+kept counting through the drink, ticking, buzzing and logging "ran out
+of time" on someone who had already poured.
+
+User chose "stop until next turn" (over restarting it as a drinking
+clock). `useTurnTimer` gained a `running` argument that freezes the
+countdown in place without resetting it; the session screen passes false
+from the moment Pour is pressed (including the simulated "Pouring…"
+second) until the outcome is recorded. Advancing the turn then resets
+the clock for the next person as before. No ticks play while it's
+stopped, since the tick effect only fires when the seconds change. The
+badge reads "Ns · paused" meanwhile. Undo during the drink resumes the
+same turn's countdown from where it stopped.
+
+Verified: ran the real hook in headless Chromium (Playwright) with a 3s
+duration: counts down while running, holds its value with no expiry for
+2.3s while stopped, starts fresh at 3 on the next turn, and still
+expires normally when not stopped. Plus `vite build` and `npx cap sync
+android`.
+
+### Correction: the timer times the drinking, not the decision
+The previous entry ("turn timer stops once Pour is pressed") misread the
+user. What they meant: "after I click Pour that's when the timer starts."
+So the timer is now a drink timer:
+- While someone decides Pour/Pass it sits at the full duration, not
+  counting (badge: "Drink timer: 30s").
+- It starts when their pour lands (pendingPour set) and counts down with
+  the ticking sound.
+- Finished/Tapon (or Undo) stops it and resets to full for the next pour.
+- If it runs out while they're drinking: buzzer, and the TIMEOUT is
+  logged against the drinker (not whoever the turn index points at, in
+  case they were paused mid-drink). The Activity log merges it onto their
+  pour row ("poured · Gin · ran out of time (30s)").
+
+Implementation: `useTurnTimer` is now keyed per pour ('pour-<n>' from a
+counter, 'idle' between pours) with `running = Boolean(pendingPour)`.
+Ticks only play while running, so the reset back to full is silent.
+Label "Turn timer: Off" became "Drink timer: Off".
+
+Bug found and fixed by the browser test: when a countdown that had hit
+0 was stopped and reset (Finished after time ran out), the ticking
+effect reran in the same commit as the reset with the stale 0 and set
+`expired` back to true, leaving "Time's up!" stuck on the next person.
+The ticking effect now returns early when not running, before the
+expiry check.
+
+Verified: real hook in headless Chromium with a 3s duration: holds at 3
+while deciding, counts after pour, resets on Finished, a second pour
+starts fresh and expires while drinking, and the outcome after a time-up
+clears it (this last step failed before the fix). Plus `vite build` and
+`npx cap sync android`.
+
+## Saved drinks: tap a drink you've had before to fill name + size
+User: "it records the participants, what if I also record the drinks and
+its content so I can just tap the drink if I saw it, just like the
+feature when adding a participant." Agreed: groups drink the same few
+things session after session, and typing name + bottle size every time
+was the slowest part of setup.
+
+**How it works** (mirrors the People roster on purpose):
+- `saved_drinks` (local + Supabase), one row per name + bottle size, so
+  "Red Horse 500mL" and "Red Horse 1L" are separate one-tap picks. No
+  "add" button: `recordSavedDrink` runs inside `createSession`,
+  `addDrink` and `updateDrink`, so every way of entering a drink
+  (Start Session, start tracking, switch, "same drink", queue, edit)
+  feeds the list. Exact match (name ignoring case + same size) only bumps
+  `last_used_at`. It never throws, so a failure can't block logging the
+  drink itself.
+- `DrinkNameInput` replaces the plain drink-name field in all six places.
+  Focusing it lists saved drinks (most recent first, filtered as you
+  type, same look and keyboard behavior as the "Who's joining"
+  suggestions); tapping one fills the name and the size, in L from
+  1000mL up (`volumeMlToInput`). It reloads the list on each focus so a
+  drink saved a moment ago appears without a reload.
+- Drinks screen (button next to People): tap to fix name/size, ✕ to
+  remove with the same confirm dialog as People. Edits only change future
+  picks; past sessions keep what they were logged with.
+- Deletes write a `deleted_saved_drinks` tombstone before anything else
+  and best-effort delete the Supabase row, so a sync pull can't bring a
+  deleted drink back (same fix People needed earlier).
+
+**Sync** (user chose cloud sync over phone-only): Supabase migration
+`create_saved_drinks` (RLS on, one ALL policy `device_id = (select
+auth.uid())`, index on device_id). Pushed by `syncSavedDrinks` in
+`runSync`, pulled by `pullSavedDrinks` in `pullSessions`. Unlike
+`renamePerson`, `updateSavedDrink` resets `synced = 0` so edits actually
+reach the cloud. Security advisor: no new issues beyond the
+anonymous-access notice every table here has by design.
+
+**Also fixed (pre-existing, found while testing)**: on a 360px-wide phone
+the "Who's joining" First name box was squeezed to a sliver and Last name
+overflowed the card, because text inputs keep a built-in minimum width.
+Added `min-w-0` to both. The header row (Session history / People /
+Drinks) now wraps instead of overflowing.
+
+**Known limit**: editing a queued drink from inside the "+N more queued"
+dropdown puts the suggestion list inside that dropdown's own scroll area,
+so it may need a scroll to see. Rare path; left as is.
+
+Verified end to end in the real built app (headless Chromium, 360px
+wide, real SQLite via jeep-sqlite, offline): fresh install shows no
+suggestions; starting a session with "Red Horse 1L" saves it; after a
+reload it's offered and one tap fills "Red Horse" + 1 + L; a non-matching
+query hides the list; the Drinks screen lists it, edits it to "Red Horse
+Stallion 500mL", asks before removing, shows the empty state, and the
+removal survives a reload; name fields fit at 360px; no page errors. Plus
+syntax checks on every touched file and `npx cap sync android`. Cloud
+sync round-trip not exercised (no network to Supabase from the test
+environment).
+
+## Start screen and session mode: with the device, or manual
+User: the app opened straight into adding participants; asked for a
+screen that connects to Bluetooth first, while keeping the app usable
+without the hardware ("just record what drink, how many participants"),
+with History saying whether a session used the hardware.
+
+**Decision**: a start screen on every launch (user chose every time over
+remembering the last choice) with two options:
+- **Connect to Lasenggo 3000**: shown, disabled, marked "Coming soon".
+  There's no Bluetooth code (app/ble-connect is still open) and no
+  device; faking a connection would label sessions as device sessions
+  that never were. User chose this over hiding it or faking it.
+- **Use without the device** (manual mode): everything works as before;
+  Pour logs a drink poured by hand.
+Not a hard gate: manual rounds stay one tap away, since most rounds may
+never use the device.
+
+Details:
+- `sessions.mode` ('manual' | 'hardware', NOT NULL DEFAULT 'manual'),
+  locally via `migrateAddSessionMode` and in Supabase via migration
+  `add_session_mode` (with a CHECK). Every existing session predates any
+  hardware, so the default backfills them correctly (all 51 cloud
+  sessions verified as 'manual'). Pushed and pulled by sync.
+- `createSession` takes the mode; `App.jsx` holds it (null until picked,
+  which renders `StartScreen` instead of every other screen).
+- Participants screen shows a "Manual · no device" chip with Change (back
+  to the start screen). The session pill says "Manual · no device"
+  instead of "Simulated — no hardware connected".
+- Manual Pour is now immediate: the ~900ms "Pouring…" delay only stood in
+  for the device's pump, and stays for the future device path.
+- History: `SessionModeBadge` (MANUAL, neutral, glass glyph; LASENGGO 3000,
+  ember, Bluetooth glyph) on each list row above the participant count,
+  and in the session detail header.
+- Not done yet, for when Bluetooth exists: enabling Connect, and carrying
+  on in manual mode if the device disconnects mid-session (agreed in
+  discussion). Added to TASKS.md.
+
+Verified in the real built app (headless Chromium, 360px, real SQLite,
+offline): start screen after the splash with Connect disabled and
+"Coming soon"; manual choice shows the chip; Change returns to the start
+screen; the session pill reads "Manual · no device"; Pour reaches the
+Finished/Tapon step in ~100ms; History list and detail show the MANUAL
+badge; the start screen shows again after a reload; no page errors.
+
+## Start screen: big connect circle with a real Bluetooth search
+User proposed replacing the plain "Connect" option with a big circle made
+of the app's six-dot mark: tapping it turns on Bluetooth, the dots animate
+while pairing (like the splash) until it connects. Agreed: it reuses the
+brand mark, and a looping animation is right here because the app really
+is waiting on the device (the opposite of the splash, where a loop read
+as a loading screen and was removed).
+
+User chose a **real Bluetooth search** over an animation-only placeholder.
+So this is the first slice of app/ble-connect:
+- Added `@capacitor-community/bluetooth-le` ^8.3.0 (Capacitor 8 peer).
+  `npx cap sync` now lists it as the third Android plugin.
+- AndroidManifest: per the plugin README, location permissions capped at
+  maxSdkVersion 30 and BLUETOOTH_SCAN with `neverForLocation`, plus
+  `androidNeverForLocation: true` at init, so Android 12+ doesn't ask for
+  location just to find the device. (The plugin's own manifest adds
+  BLUETOOTH/BLUETOOTH_ADMIN ≤30, BLUETOOTH_CONNECT and the optional BLE
+  feature.)
+- `src/features/ble/connectDevice.js`: initialize; on Android, prompt to
+  turn Bluetooth on if it's off; scan for the advertised name
+  `Lasenggo3000` (ARCHITECTURE.md) for up to 12s; connect. In a browser,
+  Web Bluetooth shows its own picker instead of a silent scan. Failures
+  are typed: unsupported, bluetooth-off, permission, not-found,
+  connect-failed, cancelled. `cancelSearch()` stops a scan;
+  `disconnectDevice()` is used when switching modes.
+- No GATT work yet: POUR/TARE/STOP and STATUS need the firmware's
+  service/characteristic UUIDs, which don't exist. In device mode Pour is
+  still the simulated 900ms stand-in. Until the ESP32 exists, every
+  search ends in "Couldn't find Lasenggo 3000", which is the honest
+  result; the same code finds it once it advertises.
+
+**Circle states** (`data-state` on the wrapper drives the CSS in
+index.css): idle (dim dots, ring breathing, "Tap to connect"); searching
+(dots light one after another on a loop, "Looking for Lasenggo 3000…",
+tap again or Cancel to stop); connected (all dots lit, the glass fills,
+"Connected", then continues to participants in device mode after ~1.1s);
+failed (dots dimmer, red title, a plain reason per error code, tap to
+retry). The message area has a fixed min height so the circle doesn't
+jump between states. "Use without the device" stays underneath as a
+smaller option and also cancels a search in progress.
+
+**App wiring**: connecting sets mode 'hardware' and keeps the device id;
+if the device disconnects, mode falls back to 'manual' for what comes
+next (a session already started keeps its label). Change on the
+participants screen disconnects and returns to the start screen. Device
+mode's session pill now reads "Lasenggo 3000 connected".
+
+Verified in the real built app (headless Chromium, 360px) with a fake
+Web Bluetooth adapter injected before load, three cases: found (idle ->
+searching with the dot loop running -> asks only for a device named
+Lasenggo3000 -> Connected -> participants in device mode -> History
+marks the session LASENGGO 3000), not found ("Couldn't find", tap
+retries, manual still works mid-search), and no Bluetooth ("isn't
+available here"); 14/14 checks, no page errors. Not verified: an actual
+Android build/permission flow and a real scan; this environment has no
+Android SDK or Bluetooth radio, and there's no device to find yet.

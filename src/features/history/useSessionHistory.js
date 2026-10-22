@@ -57,5 +57,15 @@ export function useSessionHistory() {
     refresh()
   }, [refresh])
 
-  return { sessions, loading, refresh, syncedFromCloud }
+  // app/history-list (swipe-to-delete): an optimistic local removal,
+  // separate from refresh() - refresh() flips `loading` back to true for
+  // its local-read phase, which would flash the skeleton list back in
+  // right after a delete, undoing the smooth swipe animation that led up
+  // to it. The caller removes the row from state immediately (after the
+  // DB delete has actually succeeded), no skeleton flash, no re-fetch.
+  const removeSession = useCallback((sessionId) => {
+    setSessions((prev) => prev.filter((s) => s.id !== sessionId))
+  }, [])
+
+  return { sessions, loading, refresh, removeSession, syncedFromCloud }
 }

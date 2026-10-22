@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { POUR_VOLUMES } from '../../features/pour/usePourVolume'
+import { formatVolumeMl } from '../../features/pour/volumeUnits'
 
 export const VOLUME_BY_ID = Object.fromEntries(POUR_VOLUMES.map((v) => [v.id, v]))
 // Bar segment colors, in the same light→heavy order as POUR_VOLUMES, plus
@@ -8,6 +10,10 @@ export const VOLUME_BY_ID = Object.fromEntries(POUR_VOLUMES.map((v) => [v.id, v]
 // different amount, and were too hard to tell apart at a glance.
 export const VOLUME_COLOR = { light: 'bg-pour-light', standard: 'bg-ember', heavy: 'bg-pour-heavy' }
 export const PASS_COLOR = 'bg-smoke-light'
+// app/drink-outcome: tapon pours get their own segment/chip, in the app's
+// warning red (lighter variant so it reads apart from Heavy's red-orange).
+export const TAPON_COLOR = 'bg-maroon-dim'
+const NO_TAPON = { light: 0, standard: 0, heavy: 0 }
 
 /**
  * One participant's pour/pass composition as a stacked bar — how many
@@ -28,14 +34,36 @@ export const PASS_COLOR = 'bg-smoke-light'
  * word spelled out.
  */
 export function ParticipantStatBar({ stat, maxActions, isCurrent = false, isPaused = false, pauseReason }) {
+  // app/drink-session-log (UX pass: long drink lists): with several
+  // different drinks possible per participant, showing every one inline
+  // doesn't scale in this already-compact panel — same problem the
+  // queue list had, same fix. Only the most recently poured drink shows
+  // by default; the rest collapse behind a "+N more drinks" toggle,
+  // local to this row (each participant's own expand/collapse, not
+  // shared across the roster).
+  const [drinksExpanded, setDrinksExpanded] = useState(false)
+
   const pourTotal = stat.byVolume.light + stat.byVolume.standard + stat.byVolume.heavy
   const actionTotal = pourTotal + stat.pass
   const widthPct =
     maxActions > 0 ? Math.max((actionTotal / maxActions) * 100, actionTotal > 0 ? 6 : 0) : 0
 
-  // Which volumes this participant actually poured, in the same
-  // light→heavy order as the bar segments below and the shared legend.
-  const pouredVolumes = POUR_VOLUMES.filter((v) => stat.byVolume[v.id] > 0)
+  // app/drink-outcome: tapon pours move out of their Light/Standard/Heavy
+  // segment into a Tapon segment, so the bar shows what was thrown out at
+  // a glance instead of in a line of text. Every pour still counts toward
+  // the bar's length; only its color changes.
+  const taponByVolume = stat.outcome?.taponByVolume ?? NO_TAPON
+  const taponTotal = taponByVolume.light + taponByVolume.standard + taponByVolume.heavy
+  const keptByVolume = {
+    light: stat.byVolume.light - taponByVolume.light,
+    standard: stat.byVolume.standard - taponByVolume.standard,
+    heavy: stat.byVolume.heavy - taponByVolume.heavy,
+  }
+
+  // Which volumes this participant actually poured (and didn't throw
+  // out), in the same light→heavy order as the bar segments below and the
+  // shared legend.
+  const pouredVolumes = POUR_VOLUMES.filter((v) => keptByVolume[v.id] > 0)
 
   return (
     <li className={isPaused ? 'opacity-50' : ''}>
@@ -75,6 +103,93 @@ export function ParticipantStatBar({ stat, maxActions, isCurrent = false, isPaus
           </span>
         )}
       </div>
+      {/* app/drink-session-log (fix: switching drinks lumped everyone's
+          mL into one combined total, with no way to tell how much came
+          from which drink): which drink(s) this person has actually
+          poured from this session, each with its *own* running mL/L
+          total — not just the drink's name, and not one combined number
+          either. A participant who had 150mL of one drink then switched
+          to another and had 300mL of it shows both lines separately
+          rather than a single "~450mL" that erases which drink any of it
+                    came from. Newest-drink-first (see buildStats in SessionLog.jsx
+          for why) — omitted entirely for a session with no drink
+          tracking or a participant who hasn't poured anything with a
+          drink attached yet. */}
+      {stat.drinkTotals?.length > 0 && (() => {
+        // app/drink-session-log (pour-size per drink), then (UX pass:
+        // long drink lists): render one drink's row — the same
+        // Light/Standard/Heavy counts the dots above already show for
+        // the participant as a whole, but scoped to just this one
+        // drink, so "how much" and "how" both read per-drink. Pulled
+        // into a closure (not a module-level function) since it's only
+        // ever used for this one stat's drinkTotals and needs nothing
+        // from outside this render.
+        function renderDrinkRow(d) {
+          const drinkVolumes = POUR_VOLUMES.filter((v) => d.byVolume[v.id] > 0)
+          return (
+            <li key={d.name} className="space-y-0.5 text-xs text-paper-dim/80">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="truncate">{d.name}</span>
+                <span className="shrink-0 tabular-nums">~{formatVolumeMl(d.ml)}</span>
+              </div>
+              {drinkVolumes.length > 0 && (
+                <div className="flex items-center gap-2.5 text-paper-dim/60">
+                  {drinkVolumes.map((v) => (
+                    <span
+                      key={v.id}
+                      title={`${v.label}: ${d.byVolume[v.id]}`}
+                      className="flex items-center gap-1 tabular-nums"
+                    >
+                      <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${VOLUME_COLOR[v.id]}`} />
+                      {d.byVolume[v.id]}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </li>
+          )
+        }
+
+        // Fix: this previously read `drinkTotals[length - 1]` as "most
+        // recent", which was backwards — `events` (buildStats' source)
+        // comes from getSessionEvents ordered newest-first, so a drink's
+        // *first* appearance while iterating that list is actually its
+        // *most recent* pour, and Object insertion order means
+        // `drinkTotals[0]` is the newest drink, not the oldest. The old
+        // code was defaulting to whichever drink this person poured
+        // first all session, not whichever they're currently on —
+        // reported as "it shows the first alcohol, not the current one".
+        // `drinkTotals[0]` is the fix; everything after it is already in
+        // the right (most-recent-of-the-rest-first) order with no
+        // reversal needed.
+        const latest = stat.drinkTotals[0]
+        const earlier = stat.drinkTotals.slice(1)
+
+        return (
+          <ul className="space-y-1">
+            {renderDrinkRow(latest)}
+            {earlier.length > 0 && (
+              <>
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => setDrinksExpanded((v) => !v)}
+                    className="flex items-center gap-1 text-xs font-medium text-paper-dim/70 transition hover:text-paper-dim"
+                  >
+                    {drinksExpanded ? 'Hide' : `+${earlier.length} more drink${earlier.length === 1 ? '' : 's'}`}
+                    <span
+                      className={`inline-block transition-transform ${drinksExpanded ? 'rotate-180' : ''}`}
+                    >
+                      ▾
+                    </span>
+                  </button>
+                </li>
+                {drinksExpanded && earlier.map(renderDrinkRow)}
+              </>
+            )}
+          </ul>
+        )
+      })()}
       {/* UX pass (round 2, app/volume-breakdown-stat): spelling out "1
           Light · 1 Standard · 1 Heavy poured" read as a dense sentence that
           wrapped awkwardly and duplicated the colored bar directly below
@@ -84,39 +199,69 @@ export function ParticipantStatBar({ stat, maxActions, isCurrent = false, isPaus
           the full word is still one hover/tap away via each chip's title,
           same as the bar segments always had. */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-paper-dim">
-        {pouredVolumes.length > 0 && (
+        {(pouredVolumes.length > 0 || taponTotal > 0) && (
           <span className="flex items-center gap-2.5">
             {pouredVolumes.map((v) => (
               <span
                 key={v.id}
-                title={`${v.label}: ${stat.byVolume[v.id]}`}
+                title={`${v.label}: ${keptByVolume[v.id]}`}
                 className="flex items-center gap-1.5 tabular-nums"
               >
                 <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${VOLUME_COLOR[v.id]}`} />
-                {stat.byVolume[v.id]}
+                {keptByVolume[v.id]}
               </span>
             ))}
+            {taponTotal > 0 && (
+              <span title={`Tapon: ${taponTotal}`} className="flex items-center gap-1.5 tabular-nums">
+                <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${TAPON_COLOR}`} />
+                {taponTotal}
+              </span>
+            )}
           </span>
         )}
         <span>
           {pourTotal} poured · {stat.pass} passed
-          {stat.totalMl > 0 && <span className="text-paper-dim/70"> · ~{stat.totalMl}mL</span>}
+          {stat.totalMl > 0 && (
+            <span className="text-paper-dim/70"> · ~{formatVolumeMl(stat.totalMl)}</span>
+          )}
         </span>
       </div>
+      {/* app/drink-outcome: what was actually drunk, next to what was
+          poured. Only shown once at least one of this person's pours has
+          an outcome, so sessions from before this feature (no outcomes at
+          all) look exactly as they did. Pours still waiting on, or never
+          given, an outcome are counted as "not confirmed" rather than
+          guessed either way. */}
+      {stat.outcome?.confirmed > 0 && (
+        <p className="text-xs text-paper-dim">
+          Drank ~{formatVolumeMl(stat.outcome.drankMl)}
+          <span className="text-paper-dim/70"> of ~{formatVolumeMl(stat.outcome.confirmedPouredMl)}</span>
+          {stat.outcome.unconfirmed > 0 && (
+            <span className="text-paper-dim/70"> · {stat.outcome.unconfirmed} not confirmed</span>
+          )}
+        </p>
+      )}
       <div className="h-2.5 w-full overflow-hidden rounded-full bg-ink">
         <div
           className="flex h-full gap-px transition-[width] duration-500 ease-out"
           style={{ width: `${widthPct}%` }}
         >
           {POUR_VOLUMES.map((v) =>
-            stat.byVolume[v.id] > 0 ? (
+            keptByVolume[v.id] > 0 ? (
               <div
                 key={v.id}
                 className={`h-full ${VOLUME_COLOR[v.id]}`}
-                style={{ width: `${(stat.byVolume[v.id] / actionTotal) * 100}%` }}
-                title={`${v.label}: ${stat.byVolume[v.id]}`}
+                style={{ width: `${(keptByVolume[v.id] / actionTotal) * 100}%` }}
+                title={`${v.label}: ${keptByVolume[v.id]}`}
               />
             ) : null,
+          )}
+          {taponTotal > 0 && (
+            <div
+              className={`h-full ${TAPON_COLOR}`}
+              style={{ width: `${(taponTotal / actionTotal) * 100}%` }}
+              title={`Tapon: ${taponTotal}`}
+            />
           )}
           {stat.pass > 0 && (
             <div
@@ -146,6 +291,9 @@ export function VolumeLegend() {
       </span>
       <span className="flex items-center gap-1">
         <span className="h-1.5 w-1.5 rounded-full bg-pour-light" /> Light
+      </span>
+      <span className="flex items-center gap-1">
+        <span className="h-1.5 w-1.5 rounded-full bg-maroon-dim" /> Tapon
       </span>
       <span className="flex items-center gap-1">
         <span className="h-1.5 w-1.5 rounded-full bg-smoke-light" /> Pass

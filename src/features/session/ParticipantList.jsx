@@ -1,7 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { HistoryIcon } from '../../shared/components/HistoryIcon'
 import { PeopleIcon } from '../../shared/components/PeopleIcon'
+import { GlassIcon } from '../../shared/components/GlassIcon'
 import { getPeople } from '../storage/peopleQueries'
+import { VolumeInput } from '../../shared/components/VolumeInput'
+import { DrinkNameInput } from '../../shared/components/DrinkNameInput'
+import { parseVolumeToMl, volumeMlToInput } from '../pour/volumeUnits'
 
 function ParticipantRow({
   participant,
@@ -165,6 +169,9 @@ export function ParticipantList({
   startingSession = false,
   onViewHistory,
   onViewPeople,
+  onViewDrinks,
+  mode,
+  onChangeMode,
   dbReady = true,
 }) {
   const [firstName, setFirstName] = useState('')
@@ -200,6 +207,7 @@ export function ParticipantList({
   // a name was actually given.
   const [drinkName, setDrinkName] = useState('')
   const [drinkVolumeInput, setDrinkVolumeInput] = useState('')
+  const [drinkVolumeUnit, setDrinkVolumeUnit] = useState('ml')
 
   // app/people-roster: the name field's autocomplete options, sourced from
   // the recurring "people" roster (most-recently-used first - see
@@ -379,15 +387,25 @@ export function ParticipantList({
     setLastName('')
   }
 
+  // app/drink-volume-required: a drink name without a volume used to be
+  // accepted silently — the session would start, but with nothing for the
+  // depletion bar/remaining-mL readout to measure against, which read as
+  // a bug rather than an intentionally-optional field. Volume is now
+  // required the moment a name is typed (still fine to leave the whole
+  // Drink section blank — it's only required once you've committed to a
+  // name).
+  const drinkNameGiven = drinkName.trim() !== ''
+  const drinkVolumeMissing = drinkNameGiven && parseVolumeToMl(drinkVolumeInput, drinkVolumeUnit) == null
+
   function handleStart() {
     // app/pass-limit-house-rule: blank/invalid/non-positive stays disabled
     // (null), matching useTurnManager's `passLimit` contract.
     const parsedLimit = parseInt(passLimitInput, 10)
     const passLimit = Number.isInteger(parsedLimit) && parsedLimit > 0 ? parsedLimit : null
-    // app/drink-tracking: same blank/invalid/non-positive -> null contract
+    // app/drink-tracking (volume unit follow-up): amount + unit ->
+    // whole mL via parseVolumeToMl, same blank/invalid -> null contract
     // as pass limit above.
-    const parsedVolume = parseInt(drinkVolumeInput, 10)
-    const drinkVolumeMl = Number.isInteger(parsedVolume) && parsedVolume > 0 ? parsedVolume : null
+    const drinkVolumeMl = parseVolumeToMl(drinkVolumeInput, drinkVolumeUnit)
     onStartSession(sessionName, passLimit, drinkName, drinkVolumeMl)
   }
 
@@ -396,12 +414,28 @@ export function ParticipantList({
       <div className="mx-auto max-w-md space-y-8">
         <header className="space-y-1 text-center">
           <h1 className="font-display text-3xl font-semibold tracking-tight text-paper">
-            Lasenggo 3000
+            Lasenggo
           </h1>
           <p className="text-sm text-paper-dim">
             Add everyone joining this round before you start.
           </p>
-          <div className="mt-3 flex items-center justify-center gap-2">
+          {/* app/session-mode: which mode this round will run in, picked on
+              the start screen; Change goes back to it. */}
+          {mode && onChangeMode && (
+            <div className="flex justify-center pt-1">
+              <span className="flex items-center gap-2 rounded-full bg-smoke px-3 py-1 text-xs text-paper-dim ring-1 ring-smoke-light">
+                {mode === 'hardware' ? 'Lasenggo 3000 connected' : 'Manual · no device'}
+                <button
+                  type="button"
+                  onClick={onChangeMode}
+                  className="font-semibold text-ember transition hover:text-paper"
+                >
+                  Change
+                </button>
+              </span>
+            </div>
+          )}
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
             <button
               type="button"
               onClick={onViewHistory}
@@ -421,6 +455,16 @@ export function ParticipantList({
               <PeopleIcon />
               People
             </button>
+            {/* app/saved-drinks: saved drinks list (rename/resize/remove);
+                drinks join it on their own when logged. */}
+            <button
+              type="button"
+              onClick={onViewDrinks}
+              className="flex items-center gap-1.5 rounded-lg bg-smoke px-3 py-1.5 text-sm text-paper-dim ring-1 ring-smoke-light transition hover:bg-smoke-light hover:text-paper active:scale-95"
+            >
+              <GlassIcon />
+              Drinks
+            </button>
           </div>
         </header>
 
@@ -433,8 +477,11 @@ export function ParticipantList({
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-2">
+            {/* min-w-0 on both fields: text inputs have a built-in minimum
+                width, so at phone width "Last name" refused to shrink,
+                squeezed "First name" to a sliver and overflowed the card. */}
             <div className="flex gap-2">
-              <div className="relative flex-1">
+              <div className="relative min-w-0 flex-1">
                 <input
                   type="text"
                   value={firstName}
@@ -501,7 +548,7 @@ export function ParticipantList({
                 placeholder="Last name"
                 aria-label="Last name"
                 autoComplete="off"
-                className="flex-1 rounded-xl bg-ink px-4 py-2 text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
+                className="min-w-0 flex-1 rounded-xl bg-ink px-4 py-2 text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
               />
             </div>
             <button
@@ -609,34 +656,44 @@ export function ParticipantList({
             <label htmlFor="drink-name" className="text-xs text-paper-dim">
               Drink
             </label>
-            <div className="flex gap-2">
-              <input
+            <div className="flex flex-wrap gap-2">
+              {/* app/saved-drinks: tap a saved drink to fill name + size. */}
+              <DrinkNameInput
                 id="drink-name"
-                type="text"
                 value={drinkName}
-                onChange={(e) => setDrinkName(e.target.value)}
+                onChange={setDrinkName}
+                onPick={(d) => {
+                  setDrinkName(d.name)
+                  const v = volumeMlToInput(d.volume_ml)
+                  setDrinkVolumeInput(v.amount)
+                  setDrinkVolumeUnit(v.unit)
+                }}
                 placeholder="e.g. Red Horse"
-                className="flex-1 rounded-xl bg-ink px-4 py-2 text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
+                wrapperClassName="min-w-[140px] flex-1"
+                className="rounded-xl bg-ink px-4 py-2 text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light focus:ring-2 focus:ring-ember"
               />
-              <input
-                id="drink-volume"
-                type="number"
-                min="1"
-                inputMode="numeric"
-                value={drinkVolumeInput}
-                onChange={(e) => setDrinkVolumeInput(e.target.value)}
-                placeholder="mL"
-                aria-label="Drink volume in mL"
-                className="w-24 rounded-xl bg-ink px-4 py-2 text-paper placeholder-paper-dim/60 outline-none ring-1 ring-smoke-light [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none focus:ring-2 focus:ring-ember"
+              <VolumeInput
+                idPrefix="drink-volume"
+                label="Drink volume"
+                amount={drinkVolumeInput}
+                unit={drinkVolumeUnit}
+                onAmountChange={setDrinkVolumeInput}
+                onUnitChange={setDrinkVolumeUnit}
+                className="shrink-0"
               />
             </div>
+            {drinkVolumeMissing && (
+              <p className="px-1 text-xs text-maroon-dim">
+                Add a volume for {drinkName.trim()}, or clear the name to skip drink tracking.
+              </p>
+            )}
           </div>
         </section>
 
         <button
           type="button"
           onClick={handleStart}
-          disabled={participants.length < 2 || startingSession}
+          disabled={participants.length < 2 || startingSession || drinkVolumeMissing}
           className="w-full rounded-xl bg-ember px-4 py-3 font-display text-lg font-semibold text-ink transition active:scale-[0.98] disabled:opacity-30"
         >
           {startingSession ? 'Starting…' : 'Start session'}

@@ -102,6 +102,17 @@ export function useParticipants(initial = []) {
     })
   }, [])
 
+  // app/history-resume: the one bulk setter this hook didn't have -
+  // every other mutation here is incremental (add one, remove one, move
+  // one) because that's all Start Session's own UI ever needed. Resuming
+  // a past session needs to replace the whole roster at once, with the
+  // *same* participant ids that session's DB rows already use (not new
+  // ones from addParticipant), so events/turn history already tied to
+  // those ids stay connected instead of silently orphaned.
+  const loadParticipants = useCallback((list) => {
+    setParticipants(list)
+  }, [])
+
   return {
     participants,
     addParticipant,
@@ -110,5 +121,6 @@ export function useParticipants(initial = []) {
     clearParticipants,
     moveParticipant,
     reorderParticipants,
+    loadParticipants,
   }
 }
